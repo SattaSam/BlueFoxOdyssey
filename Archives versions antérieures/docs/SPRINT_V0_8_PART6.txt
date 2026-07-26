@@ -1,0 +1,4 @@
+V0.8 Part6
+- Ajout des bases de contrôle joueur
+- Préparation caméra troisième personne
+Étape suivante: déplacement réel du modèle et biomes.
