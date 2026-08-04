@@ -60,6 +60,7 @@
   let lastFlushAt = 0;
   let startupReady = false;
   let startupPromise = null;
+  let newGameResetInProgress = false;
 
   const keys = () =>
     Array.from({ length: global.localStorage.length }, (_, index) =>
@@ -333,7 +334,7 @@
   };
 
   const flush = async () => {
-    if (!startupReady) return false;
+    if (!startupReady || newGameResetInProgress) return false;
     const now = Date.now();
     if (now - lastFlushAt < 3000) return false;
     lastFlushAt = now;
@@ -421,8 +422,70 @@
     root.append(popover);
   };
 
+  const resetRuntimeState = () => {
+    const errors = [];
+    const run = (callback) => {
+      try {
+        callback();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+
+    // Réinitialise d'abord les sources de vérité encore vivantes en mémoire.
+    // Elles ne doivent pas pouvoir réécrire l'ancien inventaire ou les anciennes
+    // progressions pendant les événements pagehide/beforeunload du rechargement.
+    run(() => BF.progression?.reset?.());
+    run(() => BF.multiProgression?.reset?.());
+    run(() => BF.mapExploration?.reset?.());
+    run(() => BF.survival?.reset?.());
+
+    run(() => {
+      const memory = BF.currentEngine?.missionManager?.memory;
+      if (!memory) return;
+      memory.state = typeof memory.defaultState === "function"
+        ? memory.defaultState()
+        : {
+            version: 3,
+            activeMissionId: "",
+            primaryMissionId: "",
+            activeMissionIds: [],
+            missionLifecycle: {},
+            pendingActivations: {},
+            rewardedMissions: {},
+            siteProgression: {},
+            missions: {},
+            facts: {},
+            history: [],
+            updatedAt: Date.now()
+          };
+      memory.save?.();
+    });
+
+    run(() => {
+      const manager = BF.currentEngine?.missionManager;
+      if (!manager) return;
+      manager.currentAction = null;
+      manager.primaryMissionId = "";
+      manager.activeMissionId = "";
+      manager.activeMissionIds = [];
+      manager.pendingPrimaryMissionId = null;
+      manager.pendingPauseMissionId = null;
+      manager.trees?.clear?.();
+      manager.tree = null;
+    });
+
+    return errors;
+  };
+
   const startNewGame = async () => {
+    // La récupération doit contenir l'état de la partie qui va être abandonnée.
     await createRecoverySnapshot();
+
+    // Bloque immédiatement toute sauvegarde automatique pendant la purge.
+    newGameResetInProgress = true;
+    startupReady = false;
+
     try {
       await fileRequest("/api/saves/auto", { method: "DELETE" });
     } catch {
@@ -430,12 +493,17 @@
       // ne peut pas être supprimé.
     }
 
+    resetRuntimeState();
     clearActive();
+
+    // Les sauvegardes manuelles sont volontairement conservées. Seuls les
+    // instantanés automatiques et les marqueurs de session active sont retirés.
     global.localStorage.removeItem(SLOT_KEYS.auto);
     global.localStorage.removeItem(SLOT_KEYS.backup);
     global.localStorage.removeItem(ACTIVE_SLOT_KEY);
     global.localStorage.removeItem(RESTORED_AT_KEY);
     global.localStorage.removeItem(LAST_SESSION_END_KEY);
+    global.localStorage.removeItem(FILE_BOOTSTRAP_KEY);
 
     const startedAt = Date.now();
     global.localStorage.setItem("bluefox_new_game_start_v1", String(startedAt));
