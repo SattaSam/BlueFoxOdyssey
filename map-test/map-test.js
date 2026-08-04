@@ -58,6 +58,96 @@ const profileSelect = document.querySelector("#biome-profile");
 Object.keys(PALETTES).forEach(profile => profileSelect.add(new Option(profile, profile)));
 profileSelect.value = "forest";
 
+const BUDGET_MODE_KEY = "bluefox_map_test_budget_mode_v1";
+const BUDGET_VALUE_KEY = "bluefox_map_test_budget_value_v1";
+const clampNumber = (value, min, max) => Math.max(min, Math.min(max, Number(value) || min));
+const engineBudgetRange = count =>
+  BF.ObjectSpawner.mapObjectBudgets?.[count] ||
+  BF.ObjectSpawner.mapObjectBudgets?.[6] ||
+  { min: count * 20, max: count * 25 };
+
+function mountBudgetControls() {
+  const countSelect = document.querySelector("#plateau-count");
+  const section = countSelect?.closest("section");
+  const newMapButton = document.querySelector("#new-map");
+  if (!section || !newMapButton || document.querySelector("#map-test-budget-controls")) return;
+
+  const root = document.createElement("div");
+  root.id = "map-test-budget-controls";
+  root.innerHTML = `
+    <label>Budget d'objets
+      <select id="map-test-budget-mode">
+        <option value="engine">Moteur du jeu</option>
+        <option value="custom">Personnalisé</option>
+      </select>
+    </label>
+    <label>Nombre total d'objets
+      <input id="map-test-budget-value" type="number" min="1" step="1">
+    </label>
+    <small id="map-test-budget-hint"></small>
+  `;
+  section.insertBefore(root, newMapButton);
+
+  const mode = root.querySelector("#map-test-budget-mode");
+  const value = root.querySelector("#map-test-budget-value");
+  mode.value = localStorage.getItem(BUDGET_MODE_KEY) || "engine";
+  value.value = localStorage.getItem(BUDGET_VALUE_KEY) || "140";
+
+  const refresh = () => {
+    const count = clampNumber(countSelect.value, 1, 6);
+    const range = engineBudgetRange(count);
+    const custom = mode.value === "custom";
+    value.disabled = !custom;
+    value.min = String(Math.max(1, Math.floor(range.min * 0.35)));
+    value.max = String(Math.ceil(range.max * 2));
+    if (!custom) value.value = String(Math.round((range.min + range.max) / 2));
+    else value.value = String(Math.round(clampNumber(value.value, value.min, value.max)));
+    root.querySelector("#map-test-budget-hint").textContent = custom
+      ? `Budget personnalisé : ${value.value} objets au total.`
+      : `Budget moteur : tirage entre ${range.min} et ${range.max} objets.`;
+  };
+
+  mode.addEventListener("change", () => {
+    localStorage.setItem(BUDGET_MODE_KEY, mode.value);
+    refresh();
+  });
+  value.addEventListener("input", () => {
+    localStorage.setItem(BUDGET_VALUE_KEY, value.value);
+    refresh();
+  });
+  countSelect.addEventListener("change", refresh);
+  refresh();
+}
+
+function selectedMapBudget(count) {
+  const mode = document.querySelector("#map-test-budget-mode")?.value || "engine";
+  const range = engineBudgetRange(count);
+  if (mode === "custom") {
+    return Math.round(clampNumber(
+      document.querySelector("#map-test-budget-value")?.value,
+      Math.max(1, Math.floor(range.min * 0.35)),
+      Math.ceil(range.max * 2)
+    ));
+  }
+  return Math.round(range.min + Math.random() * (range.max - range.min));
+}
+
+function distributeBudget(total, count) {
+  let remaining = Math.max(count, Math.round(total));
+  const allocations = [];
+  for (let index = 0; index < count; index += 1) {
+    const left = count - index;
+    const average = remaining / left;
+    const budget = left === 1
+      ? remaining
+      : Math.max(1, Math.round(average * (0.88 + Math.random() * 0.24)));
+    allocations.push(budget);
+    remaining -= budget;
+  }
+  return allocations;
+}
+mountBudgetControls();
+
 const microSceneCatalog = document.querySelector("#micro-scene-catalog");
 const templates = BF.MicroScenes.list().sort((a,b) => (a.name || a.id).localeCompare(b.name || b.id, "fr"));
 templates.forEach(template => microSceneCatalog.add(new Option(`${template.name || template.id} · ${template.objects.length} objets`, template.id)));
@@ -142,6 +232,53 @@ function clearMap() {
   mapRoot = new THREE.Group(); scene.add(mapRoot);
   plateaus=[]; sceneInstances=[]; selectedScene=null; spawner=null; foxAction=null; foxTarget=null;
 }
+function removeSpawnRecord(record) {
+  record?.root?.parent?.remove(record.root);
+  if (record?.root && BF.disposeObject) BF.disposeObject(record.root);
+}
+
+function populatePlateauToCount(profile, targetCount, options) {
+  const startIndex = spawner.instances.length;
+  const target = Math.max(0, Math.round(targetCount));
+  let placed = 0;
+  let stalledPasses = 0;
+  let passes = 0;
+  const maxPasses = Math.max(18, target * 3);
+
+  while (placed < target && passes < maxPasses && stalledPasses < 10) {
+    passes += 1;
+    const remaining = target - placed;
+    const costBudget = Math.max(4, Math.min(24, Math.ceil(remaining * 1.65)));
+    const before = spawner.instances.length;
+
+    spawner.populateBiome(profile, {
+      ...options,
+      budget: costBudget,
+      maxAttempts: Math.max(120, costBudget * 45)
+    });
+
+    const added = spawner.instances.length - before;
+    if (added <= 0) stalledPasses += 1;
+    else stalledPasses = 0;
+    placed = spawner.instances.length - startIndex;
+  }
+
+  if (placed > target) {
+    const excess = placed - target;
+    const removed = spawner.instances.splice(spawner.instances.length - excess, excess);
+    removed.forEach(removeSpawnRecord);
+    placed = target;
+  }
+
+  return Object.freeze({
+    target,
+    placed,
+    missing: Math.max(0, target - placed),
+    passes,
+    saturated: placed < target
+  });
+}
+
 function createPlateaus(count, profile, options = {}) {
   clearMap();
   const palette = PALETTES[profile] || PALETTES.alien;
@@ -151,13 +288,43 @@ function createPlateaus(count, profile, options = {}) {
     slab.position.set(x,0,z); slab.receiveShadow=true; slab.userData.plateauIndex=index; mapRoot.add(slab); plateaus.push(slab);
   });
   spawner = new BF.ObjectSpawner({THREE,scene:mapRoot,palette,random:Math.random});
+  let targetObjectBudget = 0;
+  let plateauBudgets = [];
+  let populationResults = [];
   if (options.populate !== false) {
-    LAYOUTS[count].forEach(([x,z]) => spawner.populateBiome(profile,{bounds:{minX:x-24,maxX:x+24,minZ:z-24,maxZ:z+24,y:.35},budget:10,scene:mapRoot,palette}));
+    targetObjectBudget = selectedMapBudget(count);
+    plateauBudgets = distributeBudget(targetObjectBudget, count);
+    populationResults = LAYOUTS[count].map(([x,z], index) => populatePlateauToCount(
+      profile,
+      plateauBudgets[index],
+      {
+        bounds:{minX:x-24,maxX:x+24,minZ:z-24,maxZ:z+24,y:.35},
+        scene:mapRoot,
+        palette
+      }
+    ));
   }
+  const actualObjectCount = populationResults.reduce((sum, result) => sum + result.placed, 0);
+  const missingObjectCount = Math.max(0, targetObjectBudget - actualObjectCount);
   fox.position.set(LAYOUTS[count][0][0],.35,LAYOUTS[count][0][1]+10);
   controls.target.copy(fox.position);
-  generatedConfig={count,profile,palette,terrainUrls:catalogTerrains().slice(0,count)};
-  setState(`Map ${count} plateau${count>1?"x":""} générée · autonomie active.`);
+  generatedConfig={
+    count,
+    profile,
+    palette,
+    terrainUrls:catalogTerrains().slice(0,count),
+    targetObjectBudget,
+    plateauBudgets,
+    actualObjectCount,
+    missingObjectCount,
+    populationResults
+  };
+  setState(options.populate === false
+    ? `Map ${count} plateau${count>1?"x":""} générée sans peuplement.`
+    : `Map ${count} plateau${count>1?"x":""} · objectif ${targetObjectBudget} · placés ${actualObjectCount}${missingObjectCount ? ` · déficit ${missingObjectCount}` : ""}.`);
+  if (missingObjectCount) {
+    toast(`${actualObjectCount}/${targetObjectBudget} objets placés : espace ou règles de distance saturés.`);
+  }
 }
 
 function createStageLabel(text, x, z) {
@@ -327,7 +494,7 @@ function updateFox(dt,now) {
 const slug=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,42)||"map-sans-nom";
 async function refreshIndex(){try{const response=await fetch("/api/custom-maps/next-index");const result=await response.json();document.querySelector("#map-index").textContent=`${String(result.number).padStart(2,"0")}-${slug(document.querySelector("#map-name").value)}`;}catch{document.querySelector("#map-index").textContent="attribué lors de la sauvegarde";}}
 document.querySelector("#map-name").addEventListener("input",refreshIndex);
-document.querySelector("#save-map").addEventListener("click",async()=>{const name=document.querySelector("#map-name").value.trim();if(!name)return toast("Saisissez un nom de map.");if(!generatedConfig)return toast("Générez d’abord une map.");const payload={name,slug:slug(name),plateauCount:generatedConfig.count,profile:generatedConfig.profile,palette:generatedConfig.palette,terrainUrls:generatedConfig.terrainUrls,sceneUrl:window.BLUEFOX_MAP_ASSETS?.catalog?.maps?.find(map=>map.terrains?.length)?.scene?.url||null,seed:Math.floor(Math.random()*2147483647)+1,microScenes:sceneInstances.map(entry=>({id:entry.id,position:[entry.root.position.x,entry.root.position.y,entry.root.position.z].map(value=>Number(value.toFixed(4))),rotation:[entry.root.rotation.x,entry.root.rotation.y,entry.root.rotation.z].map(value=>Number(value.toFixed(6)))}))};try{const response=await fetch("/api/custom-maps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const result=await response.json();if(!response.ok)throw new Error(result.error||"Sauvegarde refusée");document.querySelector("#map-index").textContent=result.index;toast(`${result.index} sauvegardée dans le moteur.`);refreshIndex();}catch(error){toast(`Échec : ${error.message}`);}});
+document.querySelector("#save-map").addEventListener("click",async()=>{const name=document.querySelector("#map-name").value.trim();if(!name)return toast("Saisissez un nom de map.");if(!generatedConfig)return toast("Générez d’abord une map.");const payload={name,slug:slug(name),plateauCount:generatedConfig.count,profile:generatedConfig.profile,palette:generatedConfig.palette,terrainUrls:generatedConfig.terrainUrls,sceneUrl:window.BLUEFOX_MAP_ASSETS?.catalog?.maps?.find(map=>map.terrains?.length)?.scene?.url||null,seed:Math.floor(Math.random()*2147483647)+1,populationBudget:{targetObjects:generatedConfig.targetObjectBudget||undefined,actualObjects:generatedConfig.actualObjectCount||undefined},microScenes:sceneInstances.map(entry=>({id:entry.id,position:[entry.root.position.x,entry.root.position.y,entry.root.position.z].map(value=>Number(value.toFixed(4))),rotation:[entry.root.rotation.x,entry.root.rotation.y,entry.root.rotation.z].map(value=>Number(value.toFixed(6)))}))};try{const response=await fetch("/api/custom-maps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const result=await response.json();if(!response.ok)throw new Error(result.error||"Sauvegarde refusée");document.querySelector("#map-index").textContent=result.index;toast(`${result.index} sauvegardée dans le moteur.`);refreshIndex();}catch(error){toast(`Échec : ${error.message}`);}});
 
 function resize(){const width=canvas.clientWidth,height=canvas.clientHeight;if(canvas.width!==Math.floor(width*renderer.getPixelRatio())||canvas.height!==Math.floor(height*renderer.getPixelRatio())){renderer.setSize(width,height,false);camera.aspect=width/Math.max(1,height);camera.updateProjectionMatrix();}}
 function loop(){requestAnimationFrame(loop);const dt=Math.min(.05,clock.getDelta()),now=performance.now();resize();controls.update();updateFox(dt,now);BF.SpecialObjectRuntime?.update(scene,clock.elapsedTime);renderer.render(scene,camera);}
