@@ -321,8 +321,19 @@
           (context.needs?.rest && action.type === Missions.ActionType.REST) ||
           (context.needs?.food && action.type === Missions.ActionType.EAT)
         ) {
-          score += 90;
-          reasons.push("besoin prioritaire");
+          score += 120;
+          reasons.push("besoin vital prioritaire");
+        }
+        const energy = Number(context.energy);
+        const costlyTypes = new Set([
+          Missions.ActionType.COLLECT,
+          Missions.ActionType.EXTRACT,
+          Missions.ActionType.BUILD,
+          Missions.ActionType.TRAVEL
+        ]);
+        if (Number.isFinite(energy) && energy < 35 && costlyTypes.has(action.type)) {
+          score -= energy < 25 ? 95 : 35;
+          reasons.push("coût énergétique défavorable");
         }
       } else {
         score -= 120;
@@ -358,6 +369,22 @@
         false,
         `Priorité automatique : ${best.reasons.join(", ")}.`
       );
+    }
+
+
+    hasActivePrimaryMission() {
+      if (!this.primaryMissionId || !this.tree) return false;
+      const lifecycle = this.memory.state.missionLifecycle?.[this.primaryMissionId];
+      return lifecycle?.status === "active" && !this.tree.root.isComplete;
+    }
+
+    primaryActionAssessment() {
+      if (!this.hasActivePrimaryMission()) return null;
+      return this.assessMission(this.primaryMissionId, this.bridge.context());
+    }
+
+    hasRunnablePrimaryMission() {
+      return Boolean(this.primaryActionAssessment()?.action);
     }
 
     applyPendingTransitions() {
