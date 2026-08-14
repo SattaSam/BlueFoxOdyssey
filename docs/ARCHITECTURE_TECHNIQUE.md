@@ -1,6 +1,6 @@
 # BlueFox Odyssey — Architecture technique
 
-Référence : **V0.16.20 + correctifs cumulatifs et générateur V1 du 2 août 2026**
+Référence : **commit `a0ca8dc9664966f5b9ffcc7a5e80c2c03af286d2` — 14 août 2026**
 
 ## Démarrage
 
@@ -55,6 +55,10 @@ Les quatre modules du catalogue doivent exister et être chargés avant
 | Afficher et manipuler la carte Planète | `engine/ui-enhancements.js` et `engine/ui-enhancements.css` |
 | Définir les pondérations de génération | `engine/map-generation-rules.js` |
 | Générer et restaurer les définitions procédurales | `engine/map-generator.js` |
+| Définir pistes, segments, séquences et profils musicaux | `data/music-catalog.js` |
+| Lire, enchaîner et fondre les segments musicaux | `engine/adaptive-music-engine-v1.js` |
+| Traduire gameplay, missions, survie et BAC en contexte musical | `engine/adaptive-music-gameplay-bridge-v1.js` |
+| Afficher et persister la commande musique | `engine/adaptive-music-ui-v1.js` |
 
 ## Discipline des hotfixes cumulatifs
 
@@ -109,6 +113,17 @@ ObjectLibrary + BiomeRules + MicroScenes
 
 `MapRegistry` fournit le contexte de Map ; il ne décide plus quels objets
 générer.
+
+## Contrat des micro-scènes CUSTOM
+
+- CUO Lab enregistre les transformations locales X/Y/Z, rotations, hauteurs et variantes.
+- Le registre canonique de production est `data/custom-micro-scenes.json`, projeté dans `data/custom-micro-scenes.js`.
+- CUO Lab, MAP_Test et le jeu doivent interpréter ces données sans correction locale divergente.
+- `ObjectSpawner` choisit uniquement l'origine et la rotation globale d'une instance ; il ne réécrit pas les pivots internes.
+- Plusieurs instances d'une même MSC peuvent être placées à des ancrages différents.
+- Les fichiers maîtres individuels sont conservés dans `assets/MSC_saves/`.
+
+Pour les mondes sous-marins bioluminescents, une des trois MSC coralliennes est choisie de façon déterministe et son coût est retranché du budget décoratif. Les arches droites isolées sont retirées de la population aquatique. Les rochers blanchis ne peuvent être déclenchés que par une identité structurée explicitement glacée ; une simple mention dans une description ne suffit pas.
 
 ## Source unique de Zone
 
@@ -170,6 +185,28 @@ reçoivent aucun repli étranger.
 - Root motion neutralisé dans les animations GLB.
 - Distance caméra connue : 4,5 à 34 unités.
 - Cyclorama incurvé, bord inférieur proche du plateau et défilement doux.
+- Réglages caméra persistants entre les changements de map.
+- Carte Planète centrée automatiquement sur BlueFox uniquement à la première ouverture d'une partie ; position et zoom utilisateur conservés ensuite.
+
+## Musique adaptative
+
+Chaîne autoritaire :
+
+```text
+événements jeu + mission + survie + activité récente
+                         ↓
+       AdaptiveMusicGameplayBridge (contexte/priorité)
+                         ↓
+               état réel du BAC (modulation)
+                         ↓
+       MusicCatalog (séquence/segment compatible)
+                         ↓
+       AdaptiveMusicEngine (double deck/crossfade)
+```
+
+Le pont ne change pas de thème après chaque objet. Il attend trois actions similaires ou une dominance supérieure à 50 % sur au moins six actions dans une fenêtre de cinq minutes. Une entrée de map pose un contexte temporaire distinct, puis rend la main à l'activité dominante. Le chargement d'une map reste prioritaire : aucun traitement audio ne doit bloquer le pipeline 3D.
+
+Les axes et émotions musicaux doivent provenir des diagnostics réels du BAC. Aucun vocabulaire émotionnel parallèle ne doit être inventé dans le moteur audio. Le volume joueur est persistant et les écarts propres aux segments restent volontairement faibles.
 
 ## Nettoyage et persistance
 
@@ -230,3 +267,192 @@ plus considérée comme source d’autorité visuelle.
 Une Zone n’est pas validée à l’arrivée. `EXPLORE_ZONE` représente la
 reconnaissance géographique ; l’objectif parent doit encore réunir trois relevés
 différents et une cartographie avant de devenir `completed`.
+
+
+# Extension BibleRuntime — Patrons, fiches et arbitrage BAC
+
+## Responsabilités
+
+| Besoin | Fichier / couche autoritaire |
+| --- | --- |
+| Patrons de mission | `data/bible-patterns.js` |
+| Fiches / catalogue Bible injectables | `data/bible-catalog.js` |
+| Traduction Patron + Fiche vers définition moteur | `engine/bible-runtime.js` |
+| Arbre et cycle de vie des missions | `engine/mission-manager.js` |
+| Planification d'une action réalisable | `engine/mission-planner.js` |
+| Exécution d'une action moteur | `engine/action-bridge.js` |
+| Événements objets réels et progression passive | `engine/object-m0-bridge.js` + `ObjectEvents` |
+| Arbitrage entre comportements / axes | BAC |
+| Persistance des missions | `engine/mission-memory.js` |
+| Quantités d'inventaire et transactions | `engine/progression-registry.js` |
+| Effets déclaratifs et sites établis | `engine/bible-runtime-v0-1-unified.js` |
+
+## Pipeline officiel
+
+```text
+Bible documentaire
+      ↓
+classification par patron
+      ↓
+fiche légère
+      ↓
+BibleRuntime
+      ↓
+définition MissionTree
+      ↓
+MissionManager / Planner
+      ↓
+ActionBridge / ObjectEvents
+      ↓
+BAC + WorldEngine
+```
+
+BibleRuntime n'est pas une seconde IA ni un moteur parallèle. Il sert d'adaptateur
+entre la documentation narrative et le moteur de missions existant.
+
+## Patrons V1
+
+### DÉCOUVRIR / COMPRENDRE
+Cas type : observation → inspection éventuelle → analyse → connaissance.
+
+### ACCUMULER / ATTEINDRE UN SEUIL
+Cas type : N collectes, N observations, N rencontres, N zones, N analyses.
+Les événements sont comptés indépendamment de la mission qui a motivé l'action.
+
+### PRÉPARER → PRODUIRE / DÉBLOQUER
+Cas type : prérequis + ressources / connaissances → résolution automatique.
+
+Sorties normalisées :
+
+- `WORLD` : objet / micro-scène dans le monde ;
+- `INVENTORY` : objet ajouté à l'inventaire ;
+- `KNOWLEDGE` : blueprint / recherche débloqué.
+
+Une sortie de mission ne doit pas imposer artificiellement une action `BUILD`
+si le résultat attendu peut être appliqué directement.
+
+## Multi-missions et BAC
+
+Le moteur distingue :
+
+```text
+Mission principale
+    → influence forte sur les décisions autonomes
+
+Missions secondaires
+    → influence faible mais réelle
+    → progression passive permanente
+```
+
+Le budget d'influence des missions secondaires est global : multiplier le nombre
+de missions secondaires ne doit jamais multiplier mécaniquement leur poids total.
+
+Valeur de test validée : principale `100`, budget global secondaires `20`.
+
+Le BAC reçoit les axes :
+
+- survival ;
+- exploration ;
+- collection / logistics ;
+- research / knowledge ;
+- construction / technology.
+
+## Contrat d'exécution d'une action mission
+
+`ActionBridge.execute()` ne peut renvoyer `true` que si une action réelle a
+effectivement été acceptée par le moteur.
+
+Une interaction refusée doit :
+
+1. renvoyer `false` ;
+2. nettoyer les marqueurs de l'objet ;
+3. ne pas créer de `currentAction` fantôme ;
+4. remettre à zéro toute cible de déplacement devenue résiduelle.
+
+## Watchdog des actions orphelines
+
+Une `currentAction` peut être annulée et replannifiée si :
+
+- elle existe depuis plusieurs secondes ;
+- aucune interaction réelle n'est en cours ;
+- aucune routine, transition, exploration de zone ou portail n'est actif ;
+- BlueFox n'est plus réellement en déplacement.
+
+Ce watchdog est une sécurité ; il ne doit pas interrompre une action moteur encore
+active.
+
+## Persistance F5
+
+`MissionMemory` restaure :
+
+- mission principale ;
+- missions actives ;
+- lifecycle ;
+- arbres ;
+- compteurs ;
+- activations en attente.
+
+Un simple chargement ou un catalogue vide ne doit jamais être interprété comme une
+commande de purge.
+
+Seule une action explicite de type **Nouvelle partie** peut remettre la progression
+de mission à zéro.
+
+## Contrat validé Camp / ressources
+
+La collecte suit une seule chaîne autoritaire :
+
+```text
+interaction réelle
+→ métadonnées CUO (`inventoryKey`, quantité)
+→ `RESOURCE_COLLECTED`
+→ registre central + fan-out missions
+```
+
+Une mission ne modifie jamais artificiellement son compteur pour compenser un
+événement manquant. Le même événement ne peut être appliqué deux fois, mais une
+nouvelle collecte après réapparition de l'objet constitue un nouvel événement.
+
+Pour `BIBLE-V01-CAMP`, la résolution est transactionnelle : le registre central
+consomme `10` bois une seule fois, puis `MissionMemory.state.siteProgression`
+enregistre le site `camp` de la Map. Le rendu `MSC-CUSTOM-CAMP` est dérivé de ce
+site. Une recharge ou un nouveau chargement de Map restaure le rendu à la fin de
+`WorldEngine.loadMap()` ; les temporisations UI et les événements de Map ne sont
+pas des mécanismes de restauration autoritaires.
+
+## Contrat validé des missions liées à une cible
+
+Une fiche peut demander une liaison à la définition d'objet ou à son instance.
+Pour `BIBLE-V01-ARCHAEOLOGY`, la liaison `instance` impose que Observer,
+Inspecter et Analyser concernent exactement la même instance. La validation
+finale dépend d'un site réellement établi à proximité, lu depuis
+`siteProgression`; aucun fallback propre à une Map n'est autorisé.
+
+## Hydratation des missions terminées
+
+`MissionManager` restaure aussi les arbres terminés enregistrés, tout en les
+excluant des missions actives. L'UI du catalogue calcule alors sa progression à
+partir de l'arbre restauré. Pour les anciennes sauvegardes marquées `completed`
+sans arbre sauvegardé, la projection publique utilise une progression complète
+de compatibilité ; elle ne recrée pas une mission active.
+
+# Extension topologie Planète — 8 août 2026
+
+La topologie spatiale est portée par des coordonnées canoniques. Une coordonnée ne
+peut représenter qu'une seule Map.
+
+Règle :
+
+```text
+déplacement vers coordonnée libre
+→ génération d'une nouvelle Map
+
+déplacement vers coordonnée déjà occupée
+→ reconnexion vers la Map existante
+```
+
+Le menu Planète est une projection de cette topologie, jamais une seconde source
+de vérité.
+
+Le rendu organique et la texture planétaire neutre font partie du jalon actuel.
+Le dernier réglage visuel du design de menu reste en validation.

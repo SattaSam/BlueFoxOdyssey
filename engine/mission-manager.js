@@ -1,4 +1,4 @@
-(function (global) {
+﻿(function (global) {
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
@@ -19,13 +19,28 @@
         [this.primaryMissionId, ...rememberedIds]
           .filter(Boolean)
           .filter((id) => this.definition(id))
+          .filter((id) =>
+            this.memory.state.missionLifecycle?.[id]?.status !== "completed"
+          )
           .filter((id) => !this.isLegacyUnscopedSiteMission(id))
       )];
       Object.keys(this.memory.state.missionLifecycle || {}).forEach((id) => {
         if (!this.isLegacyUnscopedSiteMission(id)) return;
         this.memory.state.missionLifecycle[id].status = "available";
       });
-      this.trees = new Map(this.activeMissionIds.map((id) => [
+      const completedIds = Object.keys(
+        this.memory.state.missionLifecycle || {}
+      ).filter((id) =>
+        this.memory.state.missionLifecycle[id]?.status === "completed" &&
+        this.definition(id) &&
+        this.memory.state.missions?.[id] &&
+        !this.isLegacyUnscopedSiteMission(id)
+      );
+      const restorableIds = [...new Set([
+        ...this.activeMissionIds,
+        ...completedIds
+      ])];
+      this.trees = new Map(restorableIds.map((id) => [
         id,
         this.planner.restoreOrCreate(id)
       ]));
@@ -97,8 +112,13 @@
     }
 
     resolveInitialMission(fallback) {
-      const candidates = [fallback]
+      const candidates = [
+        fallback,
+        this.memory.state.primaryMissionId,
+        this.memory.state.activeMissionId
+      ]
         .filter(Boolean)
+        .filter((id, index, values) => values.indexOf(id) === index)
         .filter((id) => !this.isLegacyUnscopedSiteMission(id));
       return candidates.find((id) => this.definition(id)) || "";
     }
@@ -462,6 +482,105 @@
       return changed;
     }
 
+    missionActionAxis(missionId, action) {
+      const definition = this.definition(missionId) || {};
+      if (definition.passivePriorityAxis) return definition.passivePriorityAxis;
+      if (definition.priorityAxis) return definition.priorityAxis;
+      const type = action?.type;
+      if ([Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(type)) return "collection";
+      if ([
+        Missions.ActionType.INSPECT,
+        Missions.ActionType.ANALYZE,
+        Missions.ActionType.OBSERVE,
+        Missions.ActionType.RESEARCH,
+        Missions.ActionType.CRAFT,
+        Missions.ActionType.BUILD
+      ].includes(type)) return "research";
+      if ([Missions.ActionType.EXPLORE_ZONE, Missions.ActionType.TRAVEL].includes(type)) return "exploration";
+      if ([Missions.ActionType.REST, Missions.ActionType.EAT].includes(type)) return "survival";
+      return "exploration";
+    }
+
+    chooseRunnableMissionAction(context) {
+      const assessments = this.activeMissionIds
+        .filter((id) => this.ensureLifecycle(id).status === "active" && this.trees.has(id))
+        .map((id) => this.assessMission(id, context))
+        .filter((candidate) => candidate?.action);
+
+      const primary = assessments.find(
+        (candidate) => candidate.missionId === this.primaryMissionId
+      ) || null;
+
+      const secondaries = assessments
+        .filter((candidate) => candidate.missionId !== this.primaryMissionId)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 3);
+
+      if (!primary && !secondaries.length) return null;
+
+      const primaryVital = primary && (
+        (primary.action.type === Missions.ActionType.REST && context.needs?.rest) ||
+        (primary.action.type === Missions.ActionType.EAT && context.needs?.food)
+      );
+      if (primaryVital) {
+        return {
+          missionId: primary.missionId,
+          action: primary.action,
+          primary: true
+        };
+      }
+
+      const BAC = BF.BAC;
+      if (!BAC?.weightedPick) {
+        const fallback = primary || secondaries[0];
+        return fallback
+          ? {
+              missionId: fallback.missionId,
+              action: fallback.action,
+              primary: fallback.missionId === this.primaryMissionId
+            }
+          : null;
+      }
+
+      const options = [];
+      if (primary) {
+        options.push({
+          id: `mission-primary:${primary.missionId}`,
+          axis: this.missionActionAxis(primary.missionId, primary.action),
+          baseWeight: 100,
+          candidate: primary
+        });
+      }
+
+      if (secondaries.length) {
+        const secondaryBudget = primary ? 20 : 100;
+        const totalScore = secondaries.reduce(
+          (sum, candidate) => sum + Math.max(1, Number(candidate.score) || 1),
+          0
+        );
+        secondaries.forEach((candidate) => {
+          options.push({
+            id: `mission-secondary:${candidate.missionId}`,
+            axis: this.missionActionAxis(candidate.missionId, candidate.action),
+            baseWeight:
+              secondaryBudget *
+              (Math.max(1, Number(candidate.score) || 1) / totalScore),
+            candidate
+          });
+        });
+      }
+
+      const selected = BAC.weightedPick(options);
+      const candidate = selected?.candidate || primary || secondaries[0];
+      return candidate
+        ? {
+            missionId: candidate.missionId,
+            action: candidate.action,
+            primary: candidate.missionId === this.primaryMissionId
+          }
+        : null;
+    }
+
     update(now) {
       if (!this.enabled) return false;
       this.applyPendingTransitions();
@@ -469,34 +588,74 @@
         this.lastPriorityReviewAt = now;
         this.selectBestPrimary(now);
       }
-      if (
-        !this.tree ||
-        this.tree.root.isComplete ||
-        this.ensureLifecycle(this.primaryMissionId).status !== "active"
-      ) return false;
-      if (this.currentAction) return true;
+
+      // mission-action-watchdog-v1
+      if (this.currentAction) {
+        const actionAge =
+          Date.now() - Number(this.currentAction.issuedAt || Date.now());
+        const engineIdle =
+          !this.bridge.isEngineBusy() &&
+          !this.engine.pendingInteraction &&
+          !this.engine.currentRoutine &&
+          !this.engine.pendingGate &&
+          !this.engine.pendingZoneExploration &&
+          this.engine.character.root.position.distanceTo(
+            this.engine.character.target
+          ) < 0.25;
+
+        if (engineIdle && actionAge > 5000) {
+          const orphan = this.currentAction;
+          this.memory.remember("action-orphaned", {
+            ...orphan,
+            reason: "engine-idle-with-current-action",
+            ageMs: actionAge
+          });
+          this.currentAction = null;
+          this.retryAfter = now + 650;
+          this.engine.callbacks?.onAction?.(
+            `Mission : action interrompue, nouvelle tentative pour « ${orphan.title} ».`
+          );
+          this.publish();
+        } else {
+          return true;
+        }
+      }
+
       if (now < this.retryAfter || now - this.lastPlanAt < 1200) return false;
       if (this.bridge.isEngineBusy()) return false;
 
       this.lastPlanAt = now;
-      const action = this.planner.nextAction(this.tree, this.bridge.context());
-      if (!action) {
+      const selected = this.chooseRunnableMissionAction(this.bridge.context());
+      if (!selected?.action) {
         this.retryAfter = now + 5000;
         return false;
       }
-      if (!this.bridge.execute(action, now)) {
+
+      const action = {
+        ...selected.action,
+        missionId: selected.missionId,
+        isSecondary: !selected.primary
+      };
+      const tree = this.trees.get(selected.missionId);
+      if (!tree || !this.bridge.execute(action, now)) {
         this.retryAfter = now + 4000;
         return false;
       }
+
       this.currentAction = action;
-      const node = this.tree.find(action.nodeId);
+      const node = tree.find(action.nodeId);
       if (node && node.status === Missions.MissionStatus.AVAILABLE) {
         node.status = Missions.MissionStatus.ACTIVE;
         if (!node.startedAt) node.startedAt = Date.now();
       }
-      this.engine.callbacks.onAction(`Mission : ${action.title}.`);
+
+      this.engine.callbacks.onAction(
+        selected.primary
+          ? `Mission : ${action.title}.`
+          : `Mission secondaire : ${action.title}.`
+      );
       this.memory.remember("action-started", action);
-      this.memory.saveTree(this.tree);
+      this.memory.saveTree(tree);
       this.publish();
       return true;
     }
@@ -514,30 +673,33 @@
         return changed > 0;
       }
       const completedAction = this.currentAction;
-      if (!this.planner.applyCompletion(this.tree, completedAction, detail)) {
+      const missionId = completedAction.missionId || this.primaryMissionId;
+      const actionTree = this.trees.get(missionId) || this.tree;
+      if (!actionTree) return false;
+      if (!this.planner.applyCompletion(actionTree, completedAction, detail)) {
         return false;
       }
       this.memory.remember(type, detail);
       this.memory.remember("action-completed", completedAction);
       this.currentAction = null;
       this.retryAfter = performance.now() + 650;
-      this.memory.saveTree(this.tree);
+      this.memory.saveTree(actionTree);
       if (passive) {
         this.progressPassiveMissions(type, detail, {
-          missionId: this.primaryMissionId,
+          missionId,
           nodeId: completedAction.nodeId
         });
       }
       this.syncLifecycleFromTrees();
       this.catalogController?.schedule();
       this.publish();
-      if (this.tree.root.isComplete) {
+      if (actionTree.root.isComplete) {
         this.reevaluatePendingActivations();
         this.engine.callbacks.onAction(
-          `Mission accomplie : ${this.tree.title}.`
+          `Mission accomplie : ${actionTree.title}.`
         );
         this.engine.callbacks.onStatus(
-          `« ${this.tree.title} » terminée. BlueFox réévalue uniquement les projets déjà actifs.`
+          `« ${actionTree.title} » terminée. BlueFox réévalue uniquement les projets déjà actifs.`
         );
       }
       return true;
@@ -577,7 +739,34 @@
     }
 
     getState() {
-      if (!this.tree) {
+      const missionIds = [...(this.activeMissionIds || [])]
+        .filter((id) => this.trees?.has(id));
+      const missionStateIds = [...this.trees.keys()]
+        .filter((id) => ["active", "completed"].includes(this.ensureLifecycle(id).status));
+      const missionStates = missionStateIds
+        .sort((left, right) =>
+          Number(right === this.primaryMissionId) -
+          Number(left === this.primaryMissionId)
+        )
+        .map((id) => {
+          const tree = this.trees.get(id);
+          return {
+            missionId: id,
+            title: tree.title,
+            description: tree.description,
+            status: tree.root.status,
+            lifecycleStatus: this.ensureLifecycle(id).status,
+            completedAt: this.ensureLifecycle(id).completedAt || 0,
+            progress: this.treeProgress(tree),
+            journalIntro: this.definition(id)?.journalIntro ||
+              `J’ai ouvert cette mission parce que ${this.ensureLifecycle(id).discoveryReason || "mes observations indiquent qu’elle est désormais réalisable"}.`,
+            discoveryReason: this.ensureLifecycle(id).discoveryReason,
+            isPrimary: id === this.primaryMissionId,
+            tree: tree.toJSON()
+          };
+        });
+
+      if (!this.tree && !missionStates.length) {
         return {
           version: "M2",
           primaryMissionId: "",
@@ -597,6 +786,8 @@
           inventory: { ...(BF.getProgressionState?.().inventory || {}) }
         };
       }
+
+      const displayTree = this.tree || this.trees.get(missionIds[0]) || null;
       return {
         version: "M2",
         primaryMissionId: this.primaryMissionId,
@@ -606,42 +797,24 @@
         pendingPrimaryMissionTitle: this.pendingPrimaryMissionId
           ? this.trees.get(this.pendingPrimaryMissionId)?.title || ""
           : "",
-        missionId: this.tree.id,
-        title: this.tree.title,
-        description: this.tree.description,
-        status: this.tree.root.status,
+        missionId: displayTree?.id || "",
+        title: displayTree?.title || "",
+        description: displayTree?.description || "",
+        status: displayTree?.root?.status || "idle",
         currentAction: this.currentAction
           ? { ...this.currentAction, params: { ...this.currentAction.params } }
           : null,
-        available: this.tree.availableLeaves().map((node) => ({
-          id: node.id,
-          title: node.title,
-          type: node.type,
-          progress: node.progress,
-          target: node.target
-        })),
-        tree: this.tree.toJSON(),
-        missions: [...this.trees.keys()]
-          .sort((left, right) =>
-            Number(right === this.primaryMissionId) -
-            Number(left === this.primaryMissionId)
-          )
-          .map((id) => {
-          const tree = this.trees.get(id);
-          return {
-            missionId: id,
-            title: tree.title,
-            description: tree.description,
-            status: tree.root.status,
-            lifecycleStatus: this.ensureLifecycle(id).status,
-            progress: this.treeProgress(tree),
-            journalIntro: this.definition(id)?.journalIntro ||
-              `J’ai ouvert cette mission parce que ${this.ensureLifecycle(id).discoveryReason || "mes observations indiquent qu’elle est désormais réalisable"} Mon ambition est de la faire progresser sans négliger mes besoins ni les autres projets actifs.`,
-            discoveryReason: this.ensureLifecycle(id).discoveryReason,
-            isPrimary: id === this.primaryMissionId,
-            tree: tree.toJSON()
-          };
-          }),
+        available: displayTree
+          ? displayTree.availableLeaves().map((node) => ({
+              id: node.id,
+              title: node.title,
+              type: node.type,
+              progress: node.progress,
+              target: node.target
+            }))
+          : [],
+        tree: displayTree ? displayTree.toJSON() : null,
+        missions: missionStates,
         catalog: Object.keys(Missions.definitions)
           .filter((id) => id !== "foundation")
           .filter((id) => Missions.definitions[id].instanceScope !== "map")
@@ -660,7 +833,9 @@
               Missions.definitions[id].instanceScope || "global",
             progress: this.trees.has(id)
               ? this.treeProgress(this.trees.get(id))
-              : 0,
+              : this.memory.state.missionLifecycle[id].status === "completed"
+                ? 1
+                : 0,
             journalIntro: Missions.definitions[id].journalIntro ||
               `Cette mission est apparue lorsque ma progression a atteint un nouveau seuil. Je veux maintenant vérifier méthodiquement ce que ces découvertes rendent possible.`,
             discoveryReason: this.memory.state.missionLifecycle[id].discoveryReason,

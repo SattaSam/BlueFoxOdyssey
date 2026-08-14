@@ -1,4 +1,4 @@
-(function (global) {
+﻿(function (global) {
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
@@ -25,8 +25,8 @@
       this.catalogController = null;
       this.enabled = true;
 
-      this.resetLegacyMissionState();
-      this.purgeLegacyMissionPersistence();
+      // Un catalogue vide n'est plus une commande de destruction :
+      // seule "Nouvelle partie" efface explicitement l'état de mission.
       this.publish();
     }
 
@@ -39,6 +39,8 @@
       state.missionLifecycle = {};
       state.pendingActivations = {};
       state.rewardedMissions = {};
+      state.processedObjectEvents = {};
+      state.effectReceipts = {};
       state.missions = {};
       state.siteProgression = {};
       state.facts = {

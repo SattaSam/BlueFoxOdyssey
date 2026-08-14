@@ -5,6 +5,8 @@
   let latestState = null;
   let lastSignature = "";
   let browserStatus = "active";
+  let completionHideTimer = null;
+  const HUD_COMPLETION_MS = 6000;
   const hudExpandedMissions = new Set();
   const browserExpandedMissions = new Set();
   let hudInitialized = false;
@@ -29,18 +31,22 @@
       energyMeter?.classList.add("survival-energy-meter");
     }
     let missionMeters = [...container.querySelectorAll("label:not(.survival-energy-meter)")];
-    while (missionMeters.length < 2 && missionMeters[0]) {
+    while (missionMeters.length < 3 && missionMeters[0]) {
       const clone = missionMeters[0].cloneNode(true);
       clone.classList.add("tracked-mission-meter");
       container.appendChild(clone);
       missionMeters.push(clone);
     }
-    const meters = missionMeters.slice(0, 2);
+    const meters = missionMeters.slice(0, 3);
     if (!meters.length) return;
     const tracked = [...(state.missions || [])]
       .filter((mission) => mission.lifecycleStatus === "active")
-      .sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary))
-      .slice(0, 2);
+      .sort((left, right) => {
+        const leftRank = Number(left.priorityRank) || (left.isPrimary ? 1 : 99);
+        const rightRank = Number(right.priorityRank) || (right.isPrimary ? 1 : 99);
+        return leftRank - rightRank;
+      })
+      .slice(0, 3);
     meters.forEach((meter, index) => {
       meter.classList.add("tracked-mission-meter");
       const mission = tracked[index];
@@ -58,7 +64,8 @@
       const percent = Math.round((mission.progress || 0) * 100);
       const valueText = `${percent}%`;
       const width = `${percent}%`;
-      const title = mission.isPrimary ? "Mission prioritaire" : "Deuxième mission suivie";
+      const rank = Number(mission.priorityRank) || (mission.isPrimary ? 1 : 0);
+      const title = rank ? `Mission prioritaire Top ${rank}` : "Mission suivie";
       if (label && label.textContent !== mission.title) label.textContent = mission.title;
       if (value && value.textContent !== valueText) value.textContent = valueText;
       if (fill && fill.style.width !== width) fill.style.width = width;
@@ -123,7 +130,37 @@
   function render(state) {
     renderTrackedMissionMeters(state||{});
     const card = document.querySelector(".mission-card");
-    if (!card || !state?.tree?.root) return;
+    if (!card || !state) return;
+    const intentBar = document.querySelector(".intent-bar");
+    const hasRealIntention = Boolean(
+      state.currentAction ||
+      (state.missions || []).some((mission) => mission.lifecycleStatus === "active")
+    );
+    intentBar?.classList.toggle("bluefox-intent-ready", hasRealIntention);
+
+    const now = Date.now();
+    const transientCompleted = [...(state.missions || [])]
+      .filter((mission) =>
+        mission.lifecycleStatus === "completed" &&
+        Number(mission.completedAt || 0) > 0 &&
+        now - Number(mission.completedAt) < HUD_COMPLETION_MS
+      )
+      .sort((left, right) => Number(right.completedAt) - Number(left.completedAt))
+      .slice(0, 1);
+    if (completionHideTimer) {
+      clearTimeout(completionHideTimer);
+      completionHideTimer = null;
+    }
+    if (transientCompleted[0]) {
+      const remaining = Math.max(
+        0,
+        HUD_COMPLETION_MS - (now - Number(transientCompleted[0].completedAt))
+      );
+      completionHideTimer = setTimeout(() => {
+        lastSignature = "";
+        render(BF.getMissionState?.() || latestState || {});
+      }, remaining + 25);
+    }
 
     let panel = card.querySelector(".m0-mission-panel");
     if (!panel) {
@@ -143,20 +180,25 @@
       status: state.status,
       selectionReason: state.selectionReason || "",
       pendingPrimaryMissionId: state.pendingPrimaryMissionId || null,
+      prioritizedMissionIds: state.prioritizedMissionIds || [],
+      missionGuidanceEnabled: state.missionGuidanceEnabled !== false,
+      missionGuidanceResumeAt: state.missionGuidanceResumeAt || 0,
       currentAction: state.currentAction?.id || null,
+      hudCompleted: transientCompleted.map((mission) => mission.missionId),
       missions: (state.missions || []).map((mission) => [
         mission.missionId,
         mission.status,
         mission.lifecycleStatus,
         Math.round((mission.progress || 0) * 100),
-        mission.isPrimary
+        mission.isPrimary,
+        mission.priorityRank || 0
       ]),
       catalog: (state.catalog || []).map((mission) => [
         mission.missionId,
         mission.status,
         Math.round((mission.progress || 0) * 100)
       ]),
-      children: state.tree.root.children.map((node) => [
+      children: (state.tree?.root?.children || []).map((node) => [
         node.id,
         node.progress,
         node.target,
@@ -183,17 +225,21 @@
         `Prochaine priorité après l’action en cours : ${state.pendingPrimaryMissionTitle || state.pendingPrimaryMissionId}`
       ));
     }
-    const visibleMissions = [...(state.missions || [])]
+    const activeMissions = [...(state.missions || [])]
       .filter((mission) => mission.lifecycleStatus === "active")
-      .sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary))
-      .slice(0, 5);
+      .sort((left, right) => {
+        const leftRank = Number(left.priorityRank) || (left.isPrimary ? 1 : 99);
+        const rightRank = Number(right.priorityRank) || (right.isPrimary ? 1 : 99);
+        return leftRank - rightRank;
+      });
+    const visibleMissions = [...activeMissions, ...transientCompleted].slice(0, 5);
     visibleMissions.forEach((mission) => {
       const details = document.createElement("details");
-      details.className = `mission-card-entry${mission.isPrimary ? " primary" : ""}`;
+      details.className = `mission-card-entry${mission.isPrimary ? " primary" : ""}${mission.lifecycleStatus === "completed" ? " completed" : ""}`;
       details.dataset.missionId = mission.missionId;
-      details.open = hudInitialized
+      details.open = mission.lifecycleStatus === "completed" || (hudInitialized
         ? hudExpandedMissions.has(mission.missionId)
-        : mission.isPrimary;
+        : mission.isPrimary);
       details.addEventListener("toggle", () => {
         if (details.open) hudExpandedMissions.add(mission.missionId);
         else hudExpandedMissions.delete(mission.missionId);
@@ -205,7 +251,9 @@
         createTextElement(
           "small",
           "",
-          `${mission.isPrimary ? "PRIORITAIRE · " : ""}${percent} %`
+          mission.lifecycleStatus === "completed"
+            ? "TERMINÉE · 100 %"
+            : `${mission.priorityRank ? `TOP ${mission.priorityRank} · ` : mission.isPrimary ? "PRIORITAIRE · " : ""}${percent} %`
         )
       );
       details.appendChild(summary);
@@ -285,6 +333,31 @@
     browser.append(close);
     browser.appendChild(createTextElement("div", "eyebrow", "JOURNAL DES MISSIONS"));
     browser.appendChild(createTextElement("h2", "", "Missions de BlueFox"));
+
+    const guidance = document.createElement("div");
+    guidance.className = "mission-guidance-controls";
+    const guidanceEnabled = state.missionGuidanceEnabled !== false;
+    const guidanceStatus = createTextElement(
+      "small",
+      "mission-guidance-status",
+      guidanceEnabled
+        ? "Priorisation automatique active · jusqu’à 3 missions suivies"
+        : `Mode libre temporaire${state.missionGuidanceResumeAt ? ` · retour auto dans ${Math.max(1, Math.ceil((state.missionGuidanceResumeAt - Date.now()) / 60000))} min` : ""}`
+    );
+    const guidanceButton = createTextElement(
+      "button",
+      "mission-guidance-button",
+      guidanceEnabled ? "Mode libre temporaire" : "Reprendre les priorités"
+    );
+    guidanceButton.type = "button";
+    guidanceButton.addEventListener("click", () => {
+      if (guidanceEnabled) BF.suspendMissionGuidance?.();
+      else BF.resumeMissionGuidance?.();
+      global.setTimeout(refresh, 0);
+    });
+    guidance.append(guidanceStatus, guidanceButton);
+    browser.appendChild(guidance);
+
     const tabs = document.createElement("nav");
     tabs.className = "mission-browser-tabs";
     statuses.forEach(([status, label]) => {
@@ -317,7 +390,11 @@
         const percent = Math.round((mission.progress || 0) * 100);
         summary.append(
           createTextElement("b", "", mission.title || mission.missionId),
-          createTextElement("small", "", `${mission.scope || "global"} · ${percent} %`)
+          createTextElement(
+            "small",
+            "",
+            `${mission.priorityRank ? `TOP ${mission.priorityRank} · ` : ""}${mission.scope || "global"} · ${percent} %`
+          )
         );
         details.appendChild(summary);
         const body = document.createElement("div");

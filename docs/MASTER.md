@@ -1,10 +1,12 @@
 # BLUEFOX ODYSSEY — MASTER
 
 ## État de référence
-Dernière mise à jour : 2026-07-31
+Dernière mise à jour : 2026-08-14
 
 ### Version de travail
-- Base PC connue : V16.20.
+- Base GitHub de référence : commit `a0ca8dc9664966f5b9ffcc7a5e80c2c03af286d2` (`neige et sous marin bioluminescent`).
+- Ce commit est le jalon cumulatif courant de l'Étape 5 et remplace comme base de reprise les anciens correctifs nommés V12/V15/V17/V19/V20.
+- Base PC historique : V16.20.
 - Version mobile/APK précédente : V16.14, considérée obsolète.
 - Développement mobile à reprendre depuis la V16.20 à jour.
 - Objectif : builds testables régulièrement, Web puis Android.
@@ -61,11 +63,12 @@ Objectif d’architecture validé :
 - conserver les objets inspectables ou observables ;
 - émettre un événement de progression correspondant à l’action réelle.
 
-### État du patch `world-engine.js`
-- Le dernier patch livré pour les interactions est NON VALIDÉ et NON FONCTIONNEL.
-- Des références codées en dur à `Crystal` / `crystal` subsistent dans `world-engine.js`.
-- Ce patch ne doit pas servir de base de production.
-- La reprise devra partir de la version GitHub courante, avec audit complet du fichier et de ses dépendances avant toute correction.
+### État du chantier interactions / missions
+- Le Runtime missionnel V0.1 est gelé comme fondation fonctionnelle.
+- Quatre missions représentatives sont validées : Camp, Discovery, Archaeology et Reconnaissance.
+- La collecte est pilotée par les métadonnées CUO et un événement canonique ;
+  aucun compteur direct propre à la mission Camp ne doit être réintroduit.
+- Les anciens jalons V15 à V20 sont absorbés par le dépôt courant et ne constituent plus des bases parallèles.
 
 ### Méthode de développement obligatoire
 Avant tout correctif :
@@ -81,3 +84,207 @@ Avant tout correctif :
 
 ### Direction actuelle
 Priorité à la stabilité, au rendu lisible et aux petits livrables réellement testables.
+
+
+## Jalon narratif / missions — 2026-08-08
+
+### Principe officiel Bible → moteur
+
+La **Bible documentaire reste une source narrative humaine**. Elle n'est pas réécrite
+sous forme de données moteur ligne par ligne.
+
+Chaîne officielle :
+
+```text
+BIBLE
+  ↓
+PATRON DE MISSION
+  ↓
+FICHE DE MISSION
+  ↓
+BibleRuntime
+  ↓
+MissionManager + ObjectEvents + BAC
+  ↓
+Moteur du jeu
+```
+
+Le **patron** contient la mécanique commune à une famille de missions.
+La **fiche** ne contient que les paramètres propres à une mission.
+
+Règle de production : traiter la Bible **patron par patron**, convertir toutes les
+missions compatibles en lot, auditer la passe, valider, puis seulement passer au
+patron suivant.
+
+### Patrons V1 validés
+
+1. **DÉCOUVRIR / COMPRENDRE**
+   - déclencheur ;
+   - observer / inspecter ;
+   - éventuellement analyser ;
+   - seuil ou condition de compréhension ;
+   - narration ;
+   - conséquence / récompense.
+
+2. **ACCUMULER / ATTEINDRE UN SEUIL**
+   - compter des événements réels du jeu ;
+   - une action peut créditer plusieurs missions simultanément ;
+   - seuil atteint ;
+   - narration ;
+   - conséquence / récompense.
+
+3. **PRÉPARER → PRODUIRE / DÉBLOQUER**
+   - prérequis / ressources / connaissances ;
+   - conditions remplies ;
+   - résolution automatique ;
+   - narration ;
+   - résultat.
+
+### Fiche de mission V1
+
+Une fiche doit rester légère et humaine :
+
+- Mission ;
+- Patron ;
+- Axe BAC principal / secondaire éventuel ;
+- Déclenchement ;
+- Objectif ;
+- Résolution ;
+- Résultat ;
+- Narration ;
+- Suite.
+
+Ne pas recopier dans chaque fiche les règles déjà définies par le patron.
+
+### Axes BAC V1
+
+Axes comportementaux retenus :
+
+- Survie ;
+- Exploration ;
+- Collecte / Logistique ;
+- Recherche / Connaissance ;
+- Construction / Technologie.
+
+La mission prioritaire influence fortement BlueFox.
+Les missions secondaires restent actives, progressent passivement à partir des
+événements réels et peuvent occasionnellement proposer une action autonome sans
+devenir prioritaires.
+
+### Résolution des objectifs BUILD / fabrication
+
+Un objectif de fabrication ou de construction n'exige pas nécessairement une
+action physique supplémentaire de BlueFox.
+
+Quand les conditions sont satisfaites, la mission peut produire directement une
+sortie standard :
+
+- **MONDE** : apparition d'un objet ou d'une micro-scène
+  (camp, drone, balise, etc.) ;
+- **INVENTAIRE** : ajout d'un outil ou objet fabriqué dans le sac ;
+- **CONNAISSANCE** : ajout d'un blueprint / recherche connue.
+
+Ce principe devient la piste prioritaire pour `BIBLE-V0-CAMP` et les futures
+missions de construction.
+
+### État technique mission validé
+
+- BibleRuntime V0 chargé avant le moteur monde ;
+- trois patrons / trois missions techniques de test ;
+- missions multiples actives ;
+- mission principale distincte des secondaires ;
+- progression passive multi-missions via les événements réels ;
+- une mission secondaire peut progresser sans devenir prioritaire ;
+- persistance F5 des missions, compteurs et priorité validée ;
+- ancienne purge Mission V0 rendue non destructive au démarrage ;
+- arbitrage autonome principale / secondaires raccordé au BAC ;
+- poids de référence : principale `100`, budget global secondaires `20` ;
+- une action secondaire conserve son `missionId` et se termine sur son propre arbre ;
+- refus d'interaction propagé proprement au MissionManager ;
+- reset de cible résiduelle après interaction refusée ;
+- watchdog des `currentAction` orphelines.
+
+Limite connue : blocage ponctuel autour d'un arbre-cactus lors d'une observation,
+probablement lié à la hitbox / approche ; correction reportée.
+
+## Carte Planète — état 2026-08-08
+
+La topologie coordonnée du monde est désormais la référence : une carte possède
+une position spatiale et une exploration vers une coordonnée déjà occupée doit
+reconnecter la carte existante au lieu d'en générer une nouvelle.
+
+Le menu Planète représente cette topologie de manière organique avec les zones
+explorées, une texture planétaire neutre et des liaisons cohérentes.
+
+Le **dernier design visuel du menu Planète est en cours de validation** :
+ne pas le considérer définitivement figé tant que la validation dédiée n'est pas
+clôturée.
+
+## Jalon missions Camp / Archéologie — 2026-08-09
+
+### V15 — collecte de bois et établissement du camp
+
+- L'objet `tree_fallen` porte le libellé joueur **Bois**.
+- Un buisson produit `2` bois et un bois tombé produit `1` bois.
+- Chaque collecte réelle crédite immédiatement l'inventaire et toutes les missions
+  compatibles par un unique événement canonique `RESOURCE_COLLECTED`.
+- L'identité d'événement assure l'idempotence sans interdire de récolter une même
+  instance après sa réapparition.
+- `BIBLE-V01-CAMP` exige `10` bois réellement présents dans le registre central.
+- Les `10` bois sont consommés une seule fois par une transaction persistante.
+- La résolution établit un site logique `camp`, stage `1`, sur la Map courante et
+  fait apparaître `MSC-CUSTOM-CAMP` près de la capsule.
+
+### V16 — « Étudier une trace ancienne »
+
+- Déclenchement par observation d'un objet portant les tags `technology` ou `ruin`.
+- La cible est liée à l'instance exacte observée.
+- Séquence obligatoire : **Observer → Inspecter → Analyser**.
+- La mission ne peut se terminer qu'à proximité d'un camp réellement établi ;
+  aucune présence de secours propre à Crystal n'est admise.
+- Le verrou de retour est réévalué par la boucle monde à partir de l'état persistant
+  du site.
+
+### V17 — hydratation et restauration visuelle
+
+- Les arbres des missions terminées sont restaurés dans `MissionManager` après F5.
+- Le catalogue expose une progression terminée cohérente même pour une ancienne
+  sauvegarde ne possédant pas encore d'arbre sauvegardé.
+- Le rendu du site est restauré de façon déterministe à la fin de
+  `WorldEngine.loadMap()` par `BibleRuntime.renderCurrentSite()`.
+- L'état logique du camp reste autoritaire ; le rendu 3D est une projection de cet
+  état, pas une seconde source de vérité.
+
+Le cumulatif V17 a été validé et confirmé en jeu. Les contrôles automatisés
+associés passent : **27 tests sur 27**.
+
+## Jalon Étape 5 — monde, interface et population — 2026-08-14
+
+- Contrat MSC validé : une scène créée dans CUO Lab conserve exactement ses transformations locales dans MAP_Test et dans le jeu ; ObjectSpawner reste libre de choisir son ancrage global.
+- Trois scènes `MSC-CUSTOM-CORAILBIOLUMINESCENT1/2/3` sont enregistrées et une variante est garantie sur chaque monde sous-marin bioluminescent.
+- Ces scènes remplacent les arches droites sous-marines isolées ; aucune lumière supplémentaire n'est créée.
+- Les rochers blanchis sont réservés aux identités explicites glace, banquise, neige ou toundra.
+- Les chemins principaux restent dégagés sur les configurations de 4 et 6 plateaux ; les gros volumes de couture restent cantonnés hors de ces axes.
+- La caméra joueur et le glissement de la carte Planète persistent ; le premier affichage d'une partie centre la carte sur BlueFox, puis le recentrage redevient volontaire.
+- Le menu Planète dispose des repères BlueFox, camp, balise et drone ; le volet droit est ancré en haut.
+- Le dosage fongique réduit les champignons-lanternes et renforce spores et champignons géants, avec surveillance de la charge 3D.
+
+## Musique adaptative — état courant
+
+Le moteur musical est désormais raccordé au jeu. Ses sources autoritaires sont `data/music-catalog.js`, `engine/adaptive-music-engine-v1.js`, `engine/adaptive-music-gameplay-bridge-v1.js` et `engine/adaptive-music-ui-v1.js`.
+
+Principes validés :
+
+- doubles lecteurs audio et fondus croisés ;
+- séquences composées d'intros, boucles, développements, ponts et inserts ;
+- choix guidé d'abord par le contexte réel, puis modulé par les axes et émotions réellement exposés par le BAC ;
+- changement d'ambiance après trois actions similaires ou lorsqu'une activité dépasse 50 % d'au moins six actions sur une fenêtre de cinq minutes ;
+- ponctuation spécifique à l'entrée d'une map sans relancer systématiquement la même introduction ;
+- bouton musique persistant, regroupé avec les commandes caméra et bulles ;
+- priorité aux séquences longues et développées, avec anti-répétition.
+
+Le chantier audio reste en validation d'écoute. Les découpes E2, F et Relic E, la normalisation des micro-sons, la stabilité des transitions longues et l'absence totale de silence pendant les changements de map doivent être finalisées avant gel.
+
+### Prochaine reprise
+
+Finaliser la qualification de l'Étape 5, puis reprendre l'harmonisation CUO ↔ Bible ↔ moteur. Le suivi opérationnel unique est `ROADMAP_TODO_RUNTIME_CLOTURE_CUO_PRIORITAIRE.md`.
