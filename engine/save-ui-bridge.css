@@ -70,9 +70,78 @@
   font-size: 10px;
 }
 
+/* Premier lancement : le joueur ne voit que Nouvelle partie. */
+.save-game-controls.first-launch > h3,
+.save-game-controls.first-launch > .save-game-status,
+.save-game-controls.first-launch .save-game-button,
+.save-game-controls.first-launch .load-game-button {
+  display: none;
+}
+
+.save-game-controls.first-launch {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.save-game-controls.first-launch .save-game-actions {
+  grid-template-columns: minmax(180px, 260px);
+  justify-content: center;
+}
+
+/* Intro nouvelle partie. Aucun nouveau module UI : l'overlay appartient au Save UI. */
+html.bluefox-intro-open,
+html.bluefox-intro-open body {
+  overflow: hidden !important;
+}
+
+.bluefox-intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+.bluefox-intro-video {
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  background: #000;
+}
+
+.bluefox-intro-skip {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 2147483647;
+  min-width: 96px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, .52);
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(0, 0, 0, .58);
+  font: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.bluefox-intro-skip:hover,
+.bluefox-intro-skip:focus-visible {
+  background: rgba(18, 48, 66, .82);
+  outline: 2px solid rgba(125, 220, 255, .7);
+  outline-offset: 2px;
+}
+
 @media (max-width: 520px) {
   .save-game-actions {
     grid-template-columns: repeat(3, minmax(78px, 1fr));
     overflow-x: auto;
+  }
+
+  .save-game-controls.first-launch .save-game-actions {
+    grid-template-columns: minmax(160px, 1fr);
+    overflow: visible;
   }
 }

@@ -8,6 +8,7 @@
   const FILE_BOOTSTRAP_KEY = "bluefox_file_save_bootstrap_v1";
   const FILE_DIAGNOSTICS_KEY = "bluefox_file_save_diagnostics_v1";
   const AUTOSAVE_INTERVAL_MS = 90000;
+  const INTRO_VIDEO_PATH = "assets/video/bluefox-intro.mp4";
 
   const SLOT_KEYS = Object.freeze({
     auto: "bluefox_autosave_slot_v1",
@@ -62,6 +63,8 @@
   let startupReady = false;
   let startupPromise = null;
   let newGameResetInProgress = false;
+  let introInProgress = false;
+  let introOverlay = null;
 
   const keys = () =>
     Array.from({ length: global.localStorage.length }, (_, index) =>
@@ -195,9 +198,6 @@
       throw new Error("Instantané de sauvegarde invalide.");
     }
 
-    // Une sauvegarde est un état complet du jeu, pas un calque sur la partie courante.
-    // Sans cette purge, un inventaire/progression plus récent pouvait survivre au
-    // chargement d'une sauvegarde plus ancienne.
     clearActive();
 
     Object.entries(snapshot.state).forEach(([key, value]) => {
@@ -467,6 +467,73 @@
     global.location.reload();
   };
 
+  const removeIntroOverlay = () => {
+    introOverlay?.remove();
+    introOverlay = null;
+    global.document.documentElement.classList.remove("bluefox-intro-open");
+  };
+
+  const pauseExistingMedia = (introVideo) => {
+    global.document.querySelectorAll("audio, video").forEach((media) => {
+      if (media === introVideo) return;
+      try { media.pause(); } catch {}
+    });
+  };
+
+  const playIntroThenStartNewGame = async () => {
+    if (introInProgress) return;
+    introInProgress = true;
+
+    const overlay = global.document.createElement("div");
+    overlay.className = "bluefox-intro-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Introduction de BlueFox Odyssey");
+
+    const video = global.document.createElement("video");
+    video.className = "bluefox-intro-video";
+    video.src = INTRO_VIDEO_PATH;
+    video.preload = "auto";
+    video.autoplay = true;
+    video.playsInline = true;
+    video.controls = false;
+
+    const skip = button("Passer", "bluefox-intro-skip", () => finish("skip"));
+
+    let finished = false;
+    const finish = async () => {
+      if (finished) return;
+      finished = true;
+      try { video.pause(); } catch {}
+      removeIntroOverlay();
+      try {
+        await startNewGame();
+      } finally {
+        introInProgress = false;
+      }
+    };
+
+    video.addEventListener("ended", finish, { once: true });
+    video.addEventListener("error", finish, { once: true });
+    video.addEventListener("abort", finish, { once: true });
+
+    overlay.append(video, skip);
+    global.document.body.append(overlay);
+    introOverlay = overlay;
+    global.document.documentElement.classList.add("bluefox-intro-open");
+
+    pauseExistingMedia(video);
+
+    try {
+      const playResult = video.play();
+      if (playResult && typeof playResult.catch === "function") {
+        await playResult.catch(finish);
+      }
+    } catch {
+      await finish();
+    }
+  };
+
   const showNewGameConfirmation = (root) => {
     closePopover(root);
     const popover = global.document.createElement("div");
@@ -477,7 +544,7 @@
     popover.append(
       warning,
       button("Annuler", "new-game-cancel-button", () => closePopover(root)),
-      button("Confirmer", "new-game-confirm-button", startNewGame)
+      button("Confirmer", "new-game-confirm-button", playIntroThenStartNewGame)
     );
     root.append(popover);
   };
@@ -515,6 +582,24 @@
     );
   };
 
+  const refreshFirstLaunchState = async (root) => {
+    if (!root?.isConnected) return false;
+    let slots = null;
+    try {
+      slots = await BF.getSaveSlots();
+    } catch {}
+
+    const hasExistingSave = Boolean(slots?.auto || slots?.[1] || slots?.[2]);
+    const hasStartedGame = Boolean(
+      global.localStorage.getItem("bluefox_new_game_start_v1")
+    );
+    const firstLaunch = !hasStartedGame && !hasExistingSave;
+
+    root.classList.toggle("first-launch", firstLaunch);
+    root.dataset.firstLaunch = firstLaunch ? "true" : "false";
+    return firstLaunch;
+  };
+
   const ensureSaveControls = () => {
     const target = global.document.querySelector(SAVE_UI_CONFIG.targetSelector);
     if (!target) return false;
@@ -526,6 +611,7 @@
       root = buildSaveControls();
       target.append(root);
     }
+    refreshFirstLaunchState(root);
     return true;
   };
 
@@ -557,6 +643,7 @@
   });
 
   BF.refreshSaveUI = ensureSaveControls;
+  BF.playNewGameIntro = playIntroThenStartNewGame;
   BF.getSaveUiDiagnostics = () =>
     Object.freeze({
       version: SAVE_UI_CONFIG.version,
