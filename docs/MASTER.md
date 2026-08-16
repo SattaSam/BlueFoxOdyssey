@@ -1,106 +1,75 @@
 # BLUEFOX ODYSSEY — MASTER
 
 ## État de référence
-Dernière mise à jour : 2026-08-14
+Dernière mise à jour : 2026-08-16
 
 ### Version de travail
-- Base GitHub de référence : commit `a0ca8dc9664966f5b9ffcc7a5e80c2c03af286d2` (`neige et sous marin bioluminescent`).
-- Ce commit est le jalon cumulatif courant de l'Étape 5 et remplace comme base de reprise les anciens correctifs nommés V12/V15/V17/V19/V20.
+- Base GitHub de référence : commit `d1796bf312f5e86da65317087b6c58db803bcd3c` — **fix regression 4**.
+- Le chantier tutoriel T01 à T08 a été intégré techniquement à partir de cette base dans le cumulatif livré le 16 août 2026.
+- Statut tutoriel : **T01 à T08 intégrés techniquement, validation en jeu encore à effectuer**.
+- Les tests P01 à P08 sont explicitement à faire avant de considérer ce jalon comme validé.
 - Base PC historique : V16.20.
 - Version mobile/APK précédente : V16.14, considérée obsolète.
-- Développement mobile à reprendre depuis la V16.20 à jour.
+- Développement mobile à reprendre depuis la base PC stable courante.
 - Objectif : builds testables régulièrement, Web puis Android.
 
-### Architecture 3D concernée
+## Avancement global
+Estimation de pilotage au 16 août 2026 : **environ 78 %**.
+
+Le cœur fonctionnel est largement en place : monde 3D, CUO, micro-scènes, génération de maps, navigation/topologie, autonomie/BAC, missions génériques, survie/rations, journal/UI, musique adaptative et chaîne Bible → moteur.
+
+Le reliquat principal porte sur :
+- validation en jeu et non-régression longue ;
+- tests T01 à T08 ;
+- récupération puis intégration T09 à T12 ;
+- GAME-shelter complet ;
+- factions / réputation ;
+- industrialisation progressive des 182 missions ;
+- finitions performance, audio, UI et packaging/mobile.
+
+## Gouvernance documentaire officielle
+Documents de pilotage actifs :
+- `MASTER.md`
+- `ARCHITECTURE_TECHNIQUE.md`
+- `ROADMAP_TODO.md`
+- `DEV_HISTORIQUE.md`
+- `MUSIC_SYSTEM_V1.md`
+
+Les DOCX/MD historiques restent des annexes ou sources documentaires et ne doivent pas remplacer ces fichiers pour le pilotage courant.
+
+## Architecture 3D concernée
 Fichiers principaux :
 - `engine/bluefox3d-core.js`
 - `engine/map-registry.js`
 - `engine/world-engine.js`
+- `engine/object-library.js`
+- `engine/object-spawner.js`
+- `engine/micro-scenes.js`
 - `game.js` uniquement si des réglages restent compilés ou embarqués à la racine.
 
-### Rendu des plateaux
-Décisions validées :
-- amélioration modérée, sans refonte complète du terrain ;
-- réglages de texture et de matériau en priorité ;
-- réduction visuelle des zones d’environ 10 % ;
-- transitions simples entre zones voisines ;
-- optimisation des UV ;
-- éviter les shaders complexes ;
-- tester `MeshBasicMaterial` uniquement si les réglages actuels restent insuffisants.
+## Contrat MSC validé
+- CUO Lab, MAP_Test et moteur du jeu doivent restituer exactement les mêmes transformations locales enregistrées.
+- `ObjectSpawner` choisit uniquement l'ancrage et la rotation globale d'une instance MSC.
+- Les scènes déjà créées et les associations mission↔MSC déjà décidées doivent être réutilisées avant toute création nouvelle.
+- Les trois MSC coralliennes sous-marines bioluminescentes restent intégrées.
+- Les rochers blanchis restent exclus de tout contexte non glace/banquise/neige/toundra.
 
-### Gestion des anciennes maps
-Le moteur doit retirer proprement l’ancienne map avant de charger la suivante :
-- détachement de la scène avec `removeFromParent()` ;
-- libération des géométries, matériaux et textures ;
-- aucune ancienne texture de plateau ne doit rester visible après changement de map.
+## Système de missions et progression
+- Le Runtime missionnel V0.1 / MissionManager M2 reste la fondation fonctionnelle.
+- Une action peut faire progresser plusieurs missions déjà actives.
+- Un même événement ne peut révéler qu'une seule nouvelle mission.
+- Mission principale et missions secondaires coexistent ; les secondaires progressent passivement.
+- `MissionMemory` reste la mémoire persistante des lifecycles, faits, historiques, effets et sites.
+- Le registre central de progression reste autoritaire pour les quantités d'inventaire.
+- Les modes d'autonomie canoniques restent `off`, `movement-only` et `full`.
 
-### Images
-- Décors panoramiques : fichiers `N...`
-- Textures de zones : fichiers `0N_x`
-- Association préférentielle par numéro.
-- Une texture correspond à une zone.
-- Une map peut comporter de 1 à 6 zones.
-
-### Système de missions et progression
-- Ajouter un registre central de progression comme source de vérité unique, sans remplacer brutalement le moteur existant.
-- Les actions du jeu émettent des événements standardisés : collecte, inspection, découverte, exploration, rencontre, analyse, recherche, palier atteint.
-- Une même action peut alimenter plusieurs missions, recherches, maîtrises, indicateurs de map et événements de journal.
-- Distinguer strictement :
-  1. compteurs historiques ;
-  2. inventaire actuel ;
-  3. ressources consommées ou déposées ;
-  4. découvertes uniques ;
-  5. paliers déjà atteints.
-- Conserver des progressions à plusieurs portées : zone, map, planète, faction, mission, global.
-- L’exploration d’une map se mesure en pourcentage de surface ou secteurs parcourus.
-- L’expertise d’une map se mesure en objets collectés ou inspectés, ressources identifiées, POI analysés, phénomènes observés, ruines scannées et espèces étudiées.
-
-### Interactions objets
-Objectif d’architecture validé :
-- remplacer les branches codées en dur sur des types comme `crystal` et `fiber` par une résolution pilotée par métadonnées ;
-- supporter au minimum : collecter, inspecter, observer, analyser, extraire ;
-- ne retirer du monde que les objets explicitement collectables ;
-- conserver les objets inspectables ou observables ;
-- émettre un événement de progression correspondant à l’action réelle.
-
-### État du chantier interactions / missions
-- Le Runtime missionnel V0.1 est gelé comme fondation fonctionnelle.
-- Quatre missions représentatives sont validées : Camp, Discovery, Archaeology et Reconnaissance.
-- La collecte est pilotée par les métadonnées CUO et un événement canonique ;
-  aucun compteur direct propre à la mission Camp ne doit être réintroduit.
-- Les anciens jalons V15 à V20 sont absorbés par le dépôt courant et ne constituent plus des bases parallèles.
-
-### Méthode de développement obligatoire
-Avant tout correctif :
-1. diagnostic approfondi du symptôme ;
-2. audit complet du fichier concerné ;
-3. audit de ses dépendances, appels et effets de bord ;
-4. reproduction du bug et tests pertinents ;
-5. vérification des interactions avec les fonctionnalités voisines ;
-6. demande des fichiers manquants si nécessaire ;
-7. correction seulement après l’audit ;
-8. relance des tests ciblés et de non-régression ;
-9. résumé de la cause racine, des fichiers modifiés et des validations.
-
-### Direction actuelle
-Priorité à la stabilité, au rendu lisible et aux petits livrables réellement testables.
-
-
-## Jalon narratif / missions — 2026-08-08
-
-### Principe officiel Bible → moteur
-
-La **Bible documentaire reste une source narrative humaine**. Elle n'est pas réécrite
-sous forme de données moteur ligne par ligne.
-
-Chaîne officielle :
-
+## Principe officiel Bible → moteur
 ```text
-BIBLE
+BIBLE DOCUMENTAIRE
   ↓
 PATRON DE MISSION
   ↓
-FICHE DE MISSION
+FICHE DE MISSION PARAMÉTRÉE
   ↓
 BibleRuntime
   ↓
@@ -109,182 +78,34 @@ MissionManager + ObjectEvents + BAC
 Moteur du jeu
 ```
 
-Le **patron** contient la mécanique commune à une famille de missions.
-La **fiche** ne contient que les paramètres propres à une mission.
+Le patron porte la mécanique commune. La fiche ne contient que les paramètres propres à une mission.
 
-Règle de production : traiter la Bible **patron par patron**, convertir toutes les
-missions compatibles en lot, auditer la passe, valider, puis seulement passer au
-patron suivant.
+## Tutoriel T01 à T08 — état courant
+Le lot T01 à T08 est maintenant **intégré techniquement** mais reste **à valider en jeu**.
 
-### Patrons V1 validés
+Principes fonctionnels retenus :
+- T01 : reconnaissance du Site du crash / capsule réelle de la map `crystal`.
+- T02 : premières ressources : plante, bois, minerais.
+- T03 : établissement du premier Camp avec la MSC et le placement canonique existants.
+- T04 : démonstration de progression parallèle ; la première nouvelle collecte de bois pendant T04 valide T04, tandis que le compteur bois du futur Refuge continue séparément vers 100.
+- T05 : exploration à 60 % de la map de départ `crystal` (map à un plateau).
+- T06 : analyse de 3 objets différents, incluant la stèle et l'arche ; synthèse dans le Journal.
+- T07 : suggestion de direction via le menu Planète, déplacement en semi-autonomie, cible de curiosité sur la nouvelle map et MSC de secours si nécessaire.
+- T08 : suggestion explicite de retour au camp puis retour par itinéraire connu.
 
-1. **DÉCOUVRIR / COMPRENDRE**
-   - déclencheur ;
-   - observer / inspecter ;
-   - éventuellement analyser ;
-   - seuil ou condition de compréhension ;
-   - narration ;
-   - conséquence / récompense.
+### Validation obligatoire
+- **P01 à P08 : tests en jeu à faire.**
+- Vérifier sauvegarde/reprise à chaque étape.
+- Vérifier la chaîne des prérequis et l'absence d'auto-validation indue.
+- Vérifier les indications UI tutoriel.
+- Vérifier les transitions d'autonomie T01-T08.
+- Vérifier la non-régression BAC/navigation/rations.
 
-2. **ACCUMULER / ATTEINDRE UN SEUIL**
-   - compter des événements réels du jeu ;
-   - une action peut créditer plusieurs missions simultanément ;
-   - seuil atteint ;
-   - narration ;
-   - conséquence / récompense.
-
-3. **PRÉPARER → PRODUIRE / DÉBLOQUER**
-   - prérequis / ressources / connaissances ;
-   - conditions remplies ;
-   - résolution automatique ;
-   - narration ;
-   - résultat.
-
-### Fiche de mission V1
-
-Une fiche doit rester légère et humaine :
-
-- Mission ;
-- Patron ;
-- Axe BAC principal / secondaire éventuel ;
-- Déclenchement ;
-- Objectif ;
-- Résolution ;
-- Résultat ;
-- Narration ;
-- Suite.
-
-Ne pas recopier dans chaque fiche les règles déjà définies par le patron.
-
-### Axes BAC V1
-
-Axes comportementaux retenus :
-
-- Survie ;
-- Exploration ;
-- Collecte / Logistique ;
-- Recherche / Connaissance ;
-- Construction / Technologie.
-
-La mission prioritaire influence fortement BlueFox.
-Les missions secondaires restent actives, progressent passivement à partir des
-événements réels et peuvent occasionnellement proposer une action autonome sans
-devenir prioritaires.
-
-### Résolution des objectifs BUILD / fabrication
-
-Un objectif de fabrication ou de construction n'exige pas nécessairement une
-action physique supplémentaire de BlueFox.
-
-Quand les conditions sont satisfaites, la mission peut produire directement une
-sortie standard :
-
-- **MONDE** : apparition d'un objet ou d'une micro-scène
-  (camp, drone, balise, etc.) ;
-- **INVENTAIRE** : ajout d'un outil ou objet fabriqué dans le sac ;
-- **CONNAISSANCE** : ajout d'un blueprint / recherche connue.
-
-Ce principe devient la piste prioritaire pour `BIBLE-V0-CAMP` et les futures
-missions de construction.
-
-### État technique mission validé
-
-- BibleRuntime V0 chargé avant le moteur monde ;
-- trois patrons / trois missions techniques de test ;
-- missions multiples actives ;
-- mission principale distincte des secondaires ;
-- progression passive multi-missions via les événements réels ;
-- une mission secondaire peut progresser sans devenir prioritaire ;
-- persistance F5 des missions, compteurs et priorité validée ;
-- ancienne purge Mission V0 rendue non destructive au démarrage ;
-- arbitrage autonome principale / secondaires raccordé au BAC ;
-- poids de référence : principale `100`, budget global secondaires `20` ;
-- une action secondaire conserve son `missionId` et se termine sur son propre arbre ;
-- refus d'interaction propagé proprement au MissionManager ;
-- reset de cible résiduelle après interaction refusée ;
-- watchdog des `currentAction` orphelines.
-
-Limite connue : blocage ponctuel autour d'un arbre-cactus lors d'une observation,
-probablement lié à la hitbox / approche ; correction reportée.
-
-## Carte Planète — état 2026-08-08
-
-La topologie coordonnée du monde est désormais la référence : une carte possède
-une position spatiale et une exploration vers une coordonnée déjà occupée doit
-reconnecter la carte existante au lieu d'en générer une nouvelle.
-
-Le menu Planète représente cette topologie de manière organique avec les zones
-explorées, une texture planétaire neutre et des liaisons cohérentes.
-
-Le **dernier design visuel du menu Planète est en cours de validation** :
-ne pas le considérer définitivement figé tant que la validation dédiée n'est pas
-clôturée.
-
-## Jalon missions Camp / Archéologie — 2026-08-09
-
-### V15 — collecte de bois et établissement du camp
-
-- L'objet `tree_fallen` porte le libellé joueur **Bois**.
-- Un buisson produit `2` bois et un bois tombé produit `1` bois.
-- Chaque collecte réelle crédite immédiatement l'inventaire et toutes les missions
-  compatibles par un unique événement canonique `RESOURCE_COLLECTED`.
-- L'identité d'événement assure l'idempotence sans interdire de récolter une même
-  instance après sa réapparition.
-- `BIBLE-V01-CAMP` exige `10` bois réellement présents dans le registre central.
-- Les `10` bois sont consommés une seule fois par une transaction persistante.
-- La résolution établit un site logique `camp`, stage `1`, sur la Map courante et
-  fait apparaître `MSC-CUSTOM-CAMP` près de la capsule.
-
-### V16 — « Étudier une trace ancienne »
-
-- Déclenchement par observation d'un objet portant les tags `technology` ou `ruin`.
-- La cible est liée à l'instance exacte observée.
-- Séquence obligatoire : **Observer → Inspecter → Analyser**.
-- La mission ne peut se terminer qu'à proximité d'un camp réellement établi ;
-  aucune présence de secours propre à Crystal n'est admise.
-- Le verrou de retour est réévalué par la boucle monde à partir de l'état persistant
-  du site.
-
-### V17 — hydratation et restauration visuelle
-
-- Les arbres des missions terminées sont restaurés dans `MissionManager` après F5.
-- Le catalogue expose une progression terminée cohérente même pour une ancienne
-  sauvegarde ne possédant pas encore d'arbre sauvegardé.
-- Le rendu du site est restauré de façon déterministe à la fin de
-  `WorldEngine.loadMap()` par `BibleRuntime.renderCurrentSite()`.
-- L'état logique du camp reste autoritaire ; le rendu 3D est une projection de cet
-  état, pas une seconde source de vérité.
-
-Le cumulatif V17 a été validé et confirmé en jeu. Les contrôles automatisés
-associés passent : **27 tests sur 27**.
-
-## Jalon Étape 5 — monde, interface et population — 2026-08-14
-
-- Contrat MSC validé : une scène créée dans CUO Lab conserve exactement ses transformations locales dans MAP_Test et dans le jeu ; ObjectSpawner reste libre de choisir son ancrage global.
-- Trois scènes `MSC-CUSTOM-CORAILBIOLUMINESCENT1/2/3` sont enregistrées et une variante est garantie sur chaque monde sous-marin bioluminescent.
-- Ces scènes remplacent les arches droites sous-marines isolées ; aucune lumière supplémentaire n'est créée.
-- Les rochers blanchis sont réservés aux identités explicites glace, banquise, neige ou toundra.
-- Les chemins principaux restent dégagés sur les configurations de 4 et 6 plateaux ; les gros volumes de couture restent cantonnés hors de ces axes.
-- La caméra joueur et le glissement de la carte Planète persistent ; le premier affichage d'une partie centre la carte sur BlueFox, puis le recentrage redevient volontaire.
-- Le menu Planète dispose des repères BlueFox, camp, balise et drone ; le volet droit est ancré en haut.
-- Le dosage fongique réduit les champignons-lanternes et renforce spores et champignons géants, avec surveillance de la charge 3D.
-
-## Musique adaptative — état courant
-
-Le moteur musical est désormais raccordé au jeu. Ses sources autoritaires sont `data/music-catalog.js`, `engine/adaptive-music-engine-v1.js`, `engine/adaptive-music-gameplay-bridge-v1.js` et `engine/adaptive-music-ui-v1.js`.
-
-Principes validés :
-
-- doubles lecteurs audio et fondus croisés ;
-- séquences composées d'intros, boucles, développements, ponts et inserts ;
-- choix guidé d'abord par le contexte réel, puis modulé par les axes et émotions réellement exposés par le BAC ;
-- changement d'ambiance après trois actions similaires ou lorsqu'une activité dépasse 50 % d'au moins six actions sur une fenêtre de cinq minutes ;
-- ponctuation spécifique à l'entrée d'une map sans relancer systématiquement la même introduction ;
-- bouton musique persistant, regroupé avec les commandes caméra et bulles ;
-- priorité aux séquences longues et développées, avec anti-répétition.
-
-Le chantier audio reste en validation d'écoute. Les découpes E2, F et Relic E, la normalisation des micro-sons, la stabilité des transitions longues et l'absence totale de silence pendant les changements de map doivent être finalisées avant gel.
-
-### Prochaine reprise
-
-Finaliser la qualification de l'Étape 5, puis reprendre l'harmonisation CUO ↔ Bible ↔ moteur. Le suivi opérationnel unique est `ROADMAP_TODO_RUNTIME_CLOTURE_CUO_PRIORITAIRE.md`.
+## Direction actuelle
+Priorité immédiate :
+1. tester P01 à P08 en jeu et corriger uniquement les défauts réellement reproduits ;
+2. stabiliser définitivement le lot T01 à T08 ;
+3. récupérer les détails canoniques T09 à T12 ;
+4. traiter GAME-shelter complet ;
+5. poursuivre factions/réputation et industrialisation des 182 missions ;
+6. finitions gameplay, audio, performances et packaging.

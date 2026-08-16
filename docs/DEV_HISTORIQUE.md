@@ -1,258 +1,64 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
-## Session du 2026-07-31
+## Session du 16 août 2026 — Intégration tutoriel T01 à T08
 
-### Objectif
-Remplacer le système d’interactions codé en dur dans `engine/world-engine.js` par une logique générique pilotée par les métadonnées des objets.
+### Base
+- Commit de référence : `d1796bf312f5e86da65317087b6c58db803bcd3c` — `fix regression 4`.
 
-### Architecture visée
-- profil d’interaction dérivé des métadonnées ;
-- actions supportées : collecter, inspecter, observer, analyser, extraire ;
-- message générique ;
-- événement de mission correspondant à l’action ;
-- retrait de l’objet uniquement s’il est collectable ;
-- conservation des objets inspectables ou observables ;
-- autonomie fondée sur l’éligibilité générique à l’interaction.
+### Contexte
+Le lot tutoriel T01 à T08 a été reconnecté à la chaîne missionnelle existante en réutilisant les éléments déjà présents dans le dépôt : capsule du Site du crash, Camp, placements, événements objets, exploration, Journal, menu Planète, navigation connue et support MSC.
 
-### Incident
-Le patch livré n’est pas fonctionnel.
-Des références à `Crystal` / `crystal` sont toujours présentes dans `world-engine.js`.
-Le patch doit être considéré comme abandonné et ne doit pas être intégré comme base fiable.
+### Décisions fonctionnelles
+- T01 : capsule réelle du Site du crash.
+- T02 : collecte de trois familles : plante, bois, minerais.
+- T03 : premier Camp, avec MSC et placement canoniques existants.
+- T04 : démonstration de progression parallèle. Le projet Refuge reste un projet séparé ; une nouvelle collecte de 1 bois pendant T04 valide T04 et rend T05 disponible. Le compteur bois Refuge poursuit indépendamment son objectif de 100.
+- T05 : 60 % de la map `crystal`, qui comporte un seul plateau.
+- T06 : 3 objets distincts à étudier, dont stèle et arche ; synthèse dans le Journal et guidage vers le Journal.
+- T07 : guidage vers le menu Planète, suggestion d'une direction, déplacement en semi-autonomie et cible de curiosité sur la nouvelle map. Une MSC de secours peut garantir la cible si nécessaire.
+- T08 : guidage vers la commande de retour au camp et retour autonome par route connue.
 
-### Décision
-La prochaine reprise doit recommencer depuis la version GitHub courante et suivre le protocole complet :
-diagnostic, audit du fichier, audit des dépendances, reproduction, tests, correction, puis non-régression.
+### Autonomie / BAC
+- Les modes canoniques restent `off`, `movement-only`, `full`.
+- Les protections BAC et watchdog ont été réalignées avec ces modes.
+- Le comportement `movement-only` doit limiter l'autonomie aux déplacements/exploration.
+- Les mécanismes de rations et les optimisations récentes de navigation doivent être préservés.
 
-### Clôture
-Aucun correctif `world-engine.js` n’est validé pendant cette session.
-Les documents de référence sont mis à jour pour refléter cet état.
-# Session du 1er août 2026 — Sprints Missions 1 à 4
+### Statut
+- Intégration technique : **faite**.
+- Validation en jeu : **non faite**.
+- **Tests P01 à P08 à effectuer avant validation du jalon.**
 
-- Réactivation du moteur multi-missions avec mission principale unique.
-- Progression passive des missions secondaires et suppression du clignotement UI.
-- Cycle de vie persistant : disponible, active, pause, terminée et échouée.
-- Priorisation automatique expliquée et changement différé après l’action en cours.
-- Catalogue déclaratif raccordé au registre central, recalcul historique idempotent.
-- Chaîne locale obligatoire et instanciée par Map : `camp → refuge → base`.
-- Ingénierie I déverrouillée après cinq roches ou cristaux distincts.
-- Menu Missions complet avec notes personnelles de BlueFox.
-- Inventaire séparé entre sac et stockage partagé des camps.
-- Glisser-déposer manuel et dépôt automatique au camp de base principal.
-- `map-registry.js`, `CharacterController` et `PathPlanner` inchangés.
-- Tests syntaxiques et logiques réussis ; validation navigateur encore requise.
+### Validation attendue
+- chaîne complète T01 → T08 ;
+- absence d'auto-validation par historique antérieur ;
+- sauvegarde/reprise à chaque étape ;
+- T04 valide uniquement sur une nouvelle collecte de bois pendant T04 ;
+- T06 impose bien 3 objets distincts ;
+- T07/T08 fonctionnent sur topologie réelle ;
+- UI tutorielle visible et compréhensible ;
+- aucune régression BAC/navigation/rations/musique/chargement.
 
-# Session du 2 août 2026 — Générateur V1 et préparation CUO
+### Avancement projet
+Estimation de pilotage après cette intégration : **environ 78 %**.
 
-- Formalisation des pondérations de biomes, tailles, richesses, ressources et
-  micro-scènes dans `map-generation-rules.js`.
-- Ajout de `map-generator.js` : seed par partie, génération incrémentielle et
-  sauvegarde des définitions complètes.
-- Crystal confirmée comme Map narrative fixe 1/1, hors tirage.
-- Progression des premières découvertes fixée à 2, 4 et 6 plateaux.
-- Compatibilité protégée avec l’ancienne UI React et les sauvegardes V1/V2.
-- Budgets recalibrés de 60–75 à 132–150 objets selon la taille de Map.
-- Maps 6/6 dotées de 1 à 3 micro-scènes principales.
-- Suppression de l’exploration locale purement aléatoire ; exploration d’un
-  plateau réservée à une mission ou une demande joueur.
-- Protection des trajets vers les passages contre les collectes de reprise.
-- Nom d’une terre inconnue masqué jusqu’à la découverte officielle.
-- Sélection des textures corrigée : priorité aux textures associées, répétition
-  permise, replis uniquement dans un biome identique ou compatible.
-- Décision suivante : construire un banc 3D séparé pour valider visuellement le
-  CUO avant son activation progressive dans les biomes.
+Le travail restant est principalement de validation et d'industrialisation : tests T01-T08, T09-T12, GAME-shelter complet, factions/réputation, industrialisation des 182 missions, performance/finitions et packaging/mobile.
 
+---
 
-# Session du 7–8 août 2026 — BibleRuntime V0, missions multi-actives et topologie Planète
+## Session du 15 août 2026 — Audit Bible / CUO / moteur et stratégie de patrons
 
-## BibleRuntime / architecture narrative
+### Base
+- V5 Stable : `d59376559e71032b478fb01a84fdb9bdd6611736`.
 
-- Audit du moteur avant intégration afin d'éviter un compilateur/interpréteur
-  parallèle trop complexe.
-- Validation du principe :
-  `Bible → Patron → Fiche → BibleRuntime → MissionManager/ObjectEvents/BAC`.
-- La Bible reste un document narratif humain.
-- Le traitement se fait par lots, patron par patron.
-- Trois patrons V1 retenus :
-  - Découvrir / Comprendre ;
-  - Accumuler / Atteindre un seuil ;
-  - Préparer → Produire / Débloquer.
-- Fiche V1 volontairement courte :
-  mission, patron, axe BAC, déclenchement, objectif, résolution, résultat,
-  narration, suite.
-- Trois missions techniques V0 installées :
-  - `BIBLE-V0-CAMP` ;
-  - `BIBLE-V0-DISCOVERY` ;
-  - `BIBLE-V0-ARCHAEOLOGY`.
+### Audit documentaire
+- Bible principale : 182 missions normalisées.
+- Principe confirmé : la narration reste souveraine ; la technique traduit sans réécrire.
+- Les MSC associées doivent distinguer trois rôles : triggerContext, objectiveSubject, scenarioSupport.
 
-## Tests missions
-
-- `DISCOVERY` :
-  - observation validée ;
-  - analyse validée lorsqu'un vrai événement `OBJECT_ANALYZED` est produit.
-- Confirmation de la distinction moteur entre :
-  - `OBJECT_INSPECTED` ;
-  - `OBJECT_ANALYZED` ;
-  - `RESOURCE_COLLECTED`.
-- Confirmation que les missions secondaires doivent progresser passivement
-  indépendamment de la priorité.
-- Fan-out ObjectEvents corrigé pour les missions multiples.
-- Persistance F5 validée : une mission conserve son état terminé et ses compteurs
-  après rechargement.
-- Suppression du comportement historique de purge Mission V0 au chargement.
-
-## BAC / missions secondaires
-
-- Raccord des missions secondaires au cycle autonome.
-- Mission principale : poids de référence `100`.
-- Missions secondaires : budget global `20`.
-- Les secondaires se partagent ce budget : leur quantité ne multiplie pas leur
-  influence totale.
-- Une action secondaire conserve son `missionId`.
-- La complétion est appliquée à l'arbre de la mission réellement exécutée.
-- Test concluant : BlueFox peut exécuter une action secondaire puis revenir à la
-  mission prioritaire.
-
-## Correctifs de robustesse
-
-Plusieurs gels ont été reproduits et isolés.
-
-1. Interaction refusée mais déclarée comme démarrée :
-   - propagation du `false` jusqu'au MissionManager ;
-   - prévention des `currentAction` fantômes.
-
-2. Cible de déplacement résiduelle après refus :
-   - reset du target sur la position de BlueFox ;
-   - nettoyage de l'état d'approche.
-
-3. `currentAction` orpheline :
-   - ajout d'un watchdog ;
-   - si le moteur réel est idle plusieurs secondes, annulation et replanning.
-
-Limite restante observée :
-- blocage au pied d'un arbre-cactus lors d'une observation ;
-- probablement hitbox / approche ;
-- reporté volontairement hors du chantier missions.
-
-## Nouvelle orientation BUILD / production
-
-Décision fonctionnelle :
-
-Une mission de construction ne nécessite pas forcément une action BUILD physique.
-Lorsque les conditions sont remplies, le résultat peut être appliqué
-automatiquement.
-
-Sorties V1 :
-
-- `WORLD` : objet / micro-scène apparaît dans le monde ;
-- `INVENTORY` : objet fabriqué apparaît dans le sac ;
-- `KNOWLEDGE` : blueprint / recherche est débloqué.
-
-Premier cas à valider : `BIBLE-V0-CAMP`.
-Réutilisations prévues : drones, balises d'analyse, outils, blueprints.
-
-## Topologie et menu Planète
-
-- Mise en place d'une topologie spatiale coordonnée.
-- Une coordonnée déjà occupée doit reconnecter une Map existante au lieu d'en
-  générer une nouvelle.
-- Projection organique de la topologie sur le menu Planète.
-- Ajout d'une texture planétaire neutre.
-- Le dernier design visuel du menu Planète est encore en validation dans le
-  chantier dédié ; ne pas le marquer comme définitivement terminé avant clôture
-  de cette validation.
-
-## Clôture de session
-
-Le jalon technique permet désormais d'envisager l'intégration de la Bible par lots
-plutôt que mission par mission.
-
-Prochaine priorité :
-- système de résolution / sorties `WORLD`, `INVENTORY`, `KNOWLEDGE` ;
-- validation de `BIBLE-V0-CAMP` ;
-- puis première vraie passe de conversion de la Bible par patron.
-
-# Session du 9 août 2026 — Cumulatif V15 à V17 validé en jeu
-
-## Base et méthode
-
-- Reprise depuis le dépôt GitHub au commit `5e381d3` (`V4.5 missionV12+ UI`).
-- Audit des chaînes collecte, progression, inventaire, résolution, persistance,
-  hydratation et rendu avant correction.
-- Conservation d'un paquet cumulatif propre limité aux fichiers du jeu modifiés.
-
-## V15 — Camp / Bois
-
-- Renommage joueur de `tree_fallen` en **Bois**.
-- Quantités CUO validées : buisson `2`, bois tombé `1`.
-- Remplacement des comptages parallèles par un seul événement canonique
-  `RESOURCE_COLLECTED`, distribué au registre et aux missions.
-- Idempotence fondée sur l'identité de l'événement, compatible avec une nouvelle
-  collecte de la même instance après sa réapparition.
-- Mission Camp terminée uniquement après `10` bois réellement collectés.
-- Consommation transactionnelle et unique des `10` bois.
-- Établissement persistant du site Camp et apparition de `MSC-CUSTOM-CAMP` près
-  de la capsule.
-- Patch validé et vérifié en jeu.
-
-## V16 — Étudier une trace ancienne
-
-- Activation sur observation d'une cible `technology` ou `ruin`.
-- Liaison à l'instance exacte et séquence Observer → Inspecter → Analyser.
-- Validation finale uniquement près d'un site Camp réellement établi.
-- Suppression du faux refuge implicite propre à Crystal.
-- Mission réalisée sans défaut en jeu.
-
-## V17 — restauration après chargement
-
-Diagnostic confirmé : le site Camp était correctement sauvegardé, mais sa
-projection 3D n'était pas restaurée au chargement ; les missions Camp et
-Découverte terminées n'avaient pas non plus leur arbre hydraté dans le gestionnaire,
-ce qui produisait un affichage à `0 %`.
-
-Correction retenue :
-
-- hydratation des arbres terminés dans `MissionManager`, hors liste active ;
-- compatibilité d'affichage pour les anciennes sauvegardes terminées sans arbre ;
-- restauration déterministe du site à la fin de `WorldEngine.loadMap()` via
-  `BibleRuntime.renderCurrentSite()` ;
-- suppression de la restauration dépendante d'une temporisation ou d'un événement UI.
-
-Résultat : cumulatif V17 validé et confirmé en jeu ; **27 tests automatisés sur
-27 réussis**.
-
-## Reprise suivante
-
-Construire une quatrième mission uniquement à partir d'une fiche déclarative,
-puis vérifier son cycle complet, la sauvegarde/recharge et la non-régression des
-trois missions existantes.
-
-# Session du 13–14 août 2026 — Étape 5, population et musique adaptative
-
-## Base cumulative
-
-- Reprise de l'Étape 5 sur `b1615bb`.
-- Publication du commit `a0ca8dc9664966f5b9ffcc7a5e80c2c03af286d2` le 14 août 2026.
-- Le commit intègre les trois MSC coralliennes, la règle neige resserrée, les registres synchronisés, les tests et la TODO active.
-
-## Population et micro-scènes
-
-- Trois MSC coralliennes enregistrées dans les sources maîtres et les catalogues jeu/MAP_Test/CUO Lab.
-- Une variante garantie dans les mondes sous-marins bioluminescents, choisie de façon déterministe.
-- Suppression des arches droites isolées de la population sous-marine.
-- Compensation du nombre d'objets de la MSC dans le budget décoratif.
-- Blanchiment d'un rocher sur trois uniquement lorsque le biome, profil, nom ou identifiant de trait exprime explicitement glace, banquise, neige ou toundra.
-- Suite ciblée portée à 16 tests réussis ; suite globale observée à 36/45, avec les neuf échecs historiques déjà consignés.
-
-## Musique adaptative
-
-- Passage d'un contrat préparatoire à un moteur raccordé au jeu : catalogue, double lecteur, pont gameplay/BAC et bouton de coupure persistant.
-- Réduction des changements trop fréquents : trois actions semblables consécutives ou activité dominante supérieure à 50 % d'au moins six actions sur cinq minutes.
-- Ajout de variations d'entrée de map, de développements longs, de ponts et d'un historique anti-répétition.
-- Les axes et émotions utilisés sont ceux réellement fournis par le BAC ; le contexte de gameplay reste prioritaire.
-- Validation d'écoute encore ouverte : E2, F, Relic E, normalisation des micro-sons, silences occasionnels, monotonie en autonomie et absence d'impact sur le chargement des maps.
-
-## Discipline documentaire
-
-- `ROADMAP_TODO_RUNTIME_CLOTURE_CUO_PRIORITAIRE.md` devient explicitement la seule TODO active.
-- `TODO.md` et `ROADMAP_TODO.md` restent des archives historiques.
-- Les références courantes sont MASTER, ARCHITECTURE_TECHNIQUE, DEV_HISTORIQUE, MUSIC_SYSTEM_V1 et la TODO active.
+### Décision architecture missions
+- Limiter le nombre de patrons.
+- Mutualiser les variantes avec des interrupteurs.
+- Développer chaque patron en parallèle du raccord moteur associé.
+- Cible de travail : environ 8 familles de patrons.
+- Le tutoriel sert de banc de validation avant industrialisation des 182 missions.
