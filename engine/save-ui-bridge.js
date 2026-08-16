@@ -49,6 +49,7 @@
     lastAttemptAt: 0,
     lastSuccessAt: 0,
     lastFailureAt: 0,
+    lastSkippedAt: 0,
     lastSlot: null,
     lastBytes: 0,
     lastError: "",
@@ -65,6 +66,7 @@
   let newGameResetInProgress = false;
   let introInProgress = false;
   let introOverlay = null;
+  let lastAutoStateSignature = null;
 
   const keys = () =>
     Array.from({ length: global.localStorage.length }, (_, index) =>
@@ -101,8 +103,11 @@
     Object.fromEntries(
       keys()
         .filter((key) => key.startsWith("bluefox_") && !RESERVED_KEYS.has(key))
+        .sort()
         .map((key) => [key, global.localStorage.getItem(key)])
     );
+
+  const stateSignature = (state) => JSON.stringify(state || {});
 
   const validSnapshot = (snapshot) =>
     Boolean(
@@ -117,6 +122,7 @@
 
   const buildSnapshot = (slot) => {
     const runtimeErrors = persistRuntime();
+    const state = captureState();
     return {
       snapshot: {
         format: "bluefox-save-file",
@@ -127,8 +133,9 @@
         slot: String(slot),
         savedAt: Date.now(),
         originAtSave: global.location.origin,
-        state: captureState()
+        state
       },
+      stateSignature: stateSignature(state),
       runtimeErrors
     };
   };
@@ -214,13 +221,30 @@
     global.localStorage.setItem(RESTORED_AT_KEY, String(snapshot.savedAt));
   };
 
-  const writeSnapshot = async (slot = "auto") => {
+  const writeSnapshot = async (slot = "auto", options = {}) => {
     diagnostics.lastAttemptAt = Date.now();
     diagnostics.lastSlot = String(slot);
     diagnostics.lastError = "";
     diagnostics.verified = false;
 
-    const { snapshot, runtimeErrors } = buildSnapshot(slot);
+    const force = options.force === true || String(slot) !== "auto";
+    const {
+      snapshot,
+      stateSignature: currentSignature,
+      runtimeErrors
+    } = buildSnapshot(slot);
+
+    if (!force && lastAutoStateSignature === currentSignature) {
+      diagnostics.lastSkippedAt = Date.now();
+      diagnostics.verified = true;
+      if (runtimeErrors.length) {
+        diagnostics.lastError =
+          `${runtimeErrors.length} sous-système(s) n’ont pas pu être forcés.`;
+      }
+      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      return snapshot;
+    }
+
     const serialized = JSON.stringify(snapshot);
     diagnostics.lastBytes = serialized.length * 2;
 
@@ -235,6 +259,9 @@
       }
       diagnostics.lastSuccessAt = snapshot.savedAt;
       diagnostics.verified = true;
+      if (String(slot) === "auto") {
+        lastAutoStateSignature = currentSignature;
+      }
       if (runtimeErrors.length) {
         diagnostics.lastError =
           `${runtimeErrors.length} sous-système(s) n’ont pas pu être forcés.`;
@@ -272,6 +299,9 @@
     await createRecoverySnapshot();
     applySnapshot(snapshot, slot);
     writeLocalCache(slot, snapshot);
+    if (String(slot) === "auto") {
+      lastAutoStateSignature = stateSignature(snapshot.state);
+    }
     BF.newGameResetInProgress = false;
     global.location.reload();
     return true;
@@ -301,6 +331,14 @@
         global.location.reload();
         return false;
       }
+
+      const baseline =
+        (slot === "auto" ? fileSnapshot || localSnapshot : null) ||
+        readLocalSnapshot("auto");
+      lastAutoStateSignature = baseline?.state
+        ? stateSignature(baseline.state)
+        : null;
+
       startupReady = true;
       return true;
     })();
@@ -316,8 +354,10 @@
     return Boolean(await writeSnapshot("auto"));
   };
 
-  BF.saveGame = async (slot = 1) => Boolean(await writeSnapshot(slot));
-  BF.createManualSave = async (slot = 1) => Boolean(await writeSnapshot(slot));
+  BF.saveGame = async (slot = 1) =>
+    Boolean(await writeSnapshot(slot, { force: true }));
+  BF.createManualSave = async (slot = 1) =>
+    Boolean(await writeSnapshot(slot, { force: true }));
   BF.loadGame = async (slot = "auto") => restoreSnapshot(slot);
   BF.getSaveSlots = async () => ({
     auto: (await readFileSnapshot("auto")) || readLocalSnapshot("auto"),
@@ -447,6 +487,7 @@
     newGameResetInProgress = true;
     BF.newGameResetInProgress = true;
     startupReady = false;
+    lastAutoStateSignature = null;
     try {
       await fileRequest("/api/saves/auto", { method: "DELETE" });
     } catch {}
@@ -498,8 +539,6 @@
     video.playsInline = true;
     video.controls = false;
 
-    const skip = button("Passer", "bluefox-intro-skip", () => finish("skip"));
-
     let finished = false;
     const finish = async () => {
       if (finished) return;
@@ -512,6 +551,8 @@
         introInProgress = false;
       }
     };
+
+    const skip = button("Passer", "bluefox-intro-skip", finish);
 
     video.addEventListener("ended", finish, { once: true });
     video.addEventListener("error", finish, { once: true });
@@ -626,7 +667,18 @@
     (global.requestAnimationFrame || global.setTimeout)(run);
   };
 
-  const saveUiObserver = new MutationObserver(scheduleSaveControls);
+  const saveUiObserver = new MutationObserver((mutations) => {
+    const relevant = mutations.some((mutation) =>
+      [...mutation.addedNodes, ...mutation.removedNodes].some((node) =>
+        node?.nodeType === 1 &&
+        (
+          node.matches?.(SAVE_UI_CONFIG.targetSelector) ||
+          node.querySelector?.(SAVE_UI_CONFIG.targetSelector)
+        )
+      )
+    );
+    if (relevant) scheduleSaveControls();
+  });
   saveUiObserver.observe(global.document.documentElement, {
     childList: true,
     subtree: true

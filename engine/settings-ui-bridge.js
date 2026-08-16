@@ -47,6 +47,10 @@ let lock = false;
 let lastAxis = null;
 let autonomyUiOpen = false;
 let autonomyGateTimer = 0;
+let settingsObserver = null;
+let observedSettings = null;
+let scheduled = false;
+let scheduledAxis = null;
 
 const norm = (value) =>
   String(value || "")
@@ -279,6 +283,18 @@ function enforce(settings, axis = null) {
   }
 }
 
+function scheduleEnforce(settings, axis = null) {
+  scheduledAxis = axis || scheduledAxis;
+  if (settings.dataset.bacEnforceScheduled === "1") return;
+  settings.dataset.bacEnforceScheduled = "1";
+  requestAnimationFrame(() => {
+    settings.dataset.bacEnforceScheduled = "0";
+    const nextAxis = scheduledAxis;
+    scheduledAxis = null;
+    if (settings.isConnected) enforce(settings, nextAxis);
+  });
+}
+
 function connect(settings) {
   const items = entries(settings);
   if (items.length !== 5) return;
@@ -289,16 +305,14 @@ function connect(settings) {
     const run = () => {
       if (lock) return;
       lastAxis = item.axis;
-      queueMicrotask(() => enforce(settings, item.axis));
-      requestAnimationFrame(() => enforce(settings, item.axis));
-      setTimeout(() => enforce(settings, item.axis), 25);
+      scheduleEnforce(settings, item.axis);
     };
     item.input.addEventListener("input", run);
     item.input.addEventListener("change", run);
   });
 
   indicator(settings, items);
-  requestAnimationFrame(() => enforce(settings, null));
+  scheduleEnforce(settings, null);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -321,12 +335,6 @@ function readAutonomyUnlocks() {
     }
   } catch {}
 
-  /*
-   * Migration sûre :
-   * - une partie existante antérieure à ce correctif garde accès à SEMI/FULL ;
-   * - une Nouvelle partie fraîche repart verrouillée en OFF.
-   * Le tutoriel pourra ensuite appeler BF.unlockAutonomyMode().
-   */
   return isFreshNewGame()
     ? { semi: false, full: false }
     : { semi: true, full: true };
@@ -346,11 +354,6 @@ function readAutonomyMode() {
   const stored = String(global.localStorage.getItem(AUTONOMY_MODE_KEY) || "").toLowerCase();
   if (AUTONOMY_MODES.includes(stored)) return stored;
 
-  /*
-   * Compatibilité non-régressive :
-   * - installation du patch sur une partie existante => FULL, donc comportement 0ce458a inchangé ;
-   * - première partie / Nouvelle partie fraîche => OFF.
-   */
   const mode = isFreshNewGame()
     ? "off"
     : global.localStorage.getItem(NEW_GAME_KEY)
@@ -391,13 +394,6 @@ function cancelPlannedAutonomousAction() {
   const engine = BF.currentEngine;
   const manager = engine?.missionManager;
   if (!engine || !manager?.currentAction) return;
-
-  /*
-   * currentAction est une action planifiée par MissionManager.
-   * On annule seulement son contrat de planification. Une interaction physique
-   * déjà engagée termine proprement sa courte animation ; aucune nouvelle
-   * décision autonome ne pourra ensuite être émise en OFF.
-   */
   manager.cancelCurrentAction?.("autonomy-mode-off");
 }
 
@@ -493,12 +489,6 @@ function installAutonomyGate() {
 
     if (originalMissionUpdate) {
       manager.update = function(now) {
-        /*
-         * OFF  : aucune nouvelle action missionnelle automatique.
-         * SEMI : les objectifs/missions peuvent piloter une action, mais les
-         *        routines libres updateAutonomy/ensureActivity restent coupées.
-         * FULL : fonctionnement 0ce458a inchangé.
-         */
         if (readAutonomyMode() === "off") return false;
         return originalMissionUpdate(now);
       };
@@ -640,7 +630,6 @@ function refreshAutonomyUI() {
   return true;
 }
 
-/* API canonique exposée aux futurs raccords tutoriel. */
 BF.getAutonomyMode = readAutonomyMode;
 BF.setAutonomyMode = setAutonomyMode;
 BF.getAutonomyAvailability = () => ({
@@ -692,7 +681,6 @@ function enhance() {
   return true;
 }
 
-let scheduled = false;
 function schedule() {
   if (scheduled) return;
   scheduled = true;
@@ -702,21 +690,47 @@ function schedule() {
   });
 }
 
+function observeSettings() {
+  const settings = document.querySelector(".settings-content");
+  if (settings === observedSettings) return Boolean(settings);
+
+  settingsObserver?.disconnect();
+  settingsObserver = null;
+  observedSettings = settings || null;
+
+  if (!settings) return false;
+
+  settingsObserver = new MutationObserver(schedule);
+  settingsObserver.observe(settings, {
+    childList: true,
+    subtree: true
+  });
+  schedule();
+  return true;
+}
+
 guard();
-new MutationObserver(schedule).observe(document.documentElement, {
+
+/*
+ * Filet de sécurité global : il ne déclenche pas enhance() sur chaque mutation.
+ * Il vérifie seulement si le conteneur Réglages est apparu ou a été remplacé.
+ */
+const settingsMountObserver = new MutationObserver(() => {
+  observeSettings();
+});
+settingsMountObserver.observe(document.body || document.documentElement, {
   childList: true,
   subtree: true
 });
 
-global.addEventListener("DOMContentLoaded", schedule, { once: true });
+global.addEventListener("DOMContentLoaded", () => {
+  observeSettings();
+  schedule();
+}, { once: true });
 global.addEventListener("bluefox:autonomy-mode", refreshAutonomyUI);
 
 BF.refreshSettingsUI = enhance;
 
-/*
- * Le moteur est créé après certains bridges UI. On tente le raccord seulement
- * le temps nécessaire puis on arrête le timer : pas de polling permanent.
- */
 let gateAttempts = 0;
 autonomyGateTimer = global.setInterval(() => {
   gateAttempts += 1;
@@ -728,6 +742,7 @@ autonomyGateTimer = global.setInterval(() => {
   }
 }, 250);
 
+observeSettings();
 schedule();
 
 })(window);
