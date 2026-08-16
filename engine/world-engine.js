@@ -3,342 +3,6 @@
 
   const BF = global.BlueFox3D;
 
-  // Autonomie canonique : le choix joueur et l'état tutoriel sont distincts.
-  // Le BAC/MissionManager continuent d'utiliser getAutonomyMode(); le tutoriel
-  // ne remplace donc pas leur architecture, il ne fait que limiter temporairement
-  // le mode effectif.
-  const TUTORIAL_AUTONOMY_KEY = "bluefox_tutorial_autonomy_state_v1";
-  const USER_AUTONOMY_KEY = "bluefox_autonomy_mode_v1";
-  const TUTORIAL_STATES = new Set(["IA_OFF", "IA_TRANSITION", "IA_GUIDED", "IA_FULL"]);
-  const normalizeUserAutonomy = (mode) => mode === "movement" ? "movement-only" : mode;
-  const storedUserAutonomy = () => {
-    const mode = normalizeUserAutonomy(global.localStorage?.getItem(USER_AUTONOMY_KEY));
-    return ["off", "movement-only", "full"].includes(mode) ? mode : "full";
-  };
-  const tutorialAutonomyState = () => {
-    const state = global.localStorage?.getItem(TUTORIAL_AUTONOMY_KEY);
-    return TUTORIAL_STATES.has(state) ? state : "IA_OFF";
-  };
-  const effectiveAutonomyMode = () => {
-    const state = tutorialAutonomyState();
-    if (state === "IA_OFF" || state === "IA_TRANSITION") return "off";
-    if (state === "IA_GUIDED") return "movement-only";
-    return storedUserAutonomy();
-  };
-  BF.getTutorialAutonomyState = tutorialAutonomyState;
-  BF.setTutorialAutonomyState = (state) => {
-    if (!TUTORIAL_STATES.has(state)) return false;
-    global.localStorage?.setItem(TUTORIAL_AUTONOMY_KEY, state);
-    BF.tutorialAutonomyState = state;
-    BF.autonomyMode = effectiveAutonomyMode();
-    global.dispatchEvent?.(new CustomEvent("bluefox:tutorial-autonomy-state", { detail: { state, mode: BF.autonomyMode } }));
-    return true;
-  };
-  BF.tutorialAutonomyState = tutorialAutonomyState();
-  BF.autonomyMode = effectiveAutonomyMode();
-  // Disponible avant l'installation du BAC et protégé contre les réécritures
-  // tardives de l'UI Réglages. L'UI peut enregistrer son getter utilisateur,
-  // mais le moteur conserve toujours le mode EFFECTIF tutoriel.
-  Object.defineProperty(BF, "getAutonomyMode", {
-    configurable: true,
-    enumerable: true,
-    get() { return effectiveAutonomyMode; },
-    set(candidate) {
-      if (typeof candidate === "function" && candidate !== effectiveAutonomyMode) {
-        BF.getUserAutonomyModeSource = candidate;
-      }
-    }
-  });
-
-  // Ressource tutorielle garantie : une plante fibreuse fixe sur Crystal.
-  // On enrichit uniquement la liste des landmarks de la map de départ ;
-  // aucune règle de population générique/biome n'est modifiée.
-  if (BF.maps?.crystal?.tutorialLandmarks) {
-    const landmarks = BF.maps.crystal.tutorialLandmarks;
-    const hasFiber = landmarks.some((entry) => entry?.[0] === "fiber");
-    if (!hasFiber) {
-      BF.maps.crystal.tutorialLandmarks = Object.freeze([
-        ...landmarks,
-        Object.freeze(["fiber", 19, -14, 0, 0.35])
-      ]);
-    }
-  }
-
-  // Routage narratif Bible : narrative.* est une pensée de BlueFox par défaut.
-  // Journal/both restent persistés ; thought/both sont prononcés en bulle.
-  const narrativeSpeechQueue = [];
-  let narrativeSpeechBusy = false;
-  const speakNextNarrative = () => {
-    if (narrativeSpeechBusy || !narrativeSpeechQueue.length) return;
-    const readyAt = Number(global.localStorage?.getItem("bluefox_narrative_ready_at_v1") || 0);
-    if (BF.introRunning === true || Date.now() < readyAt) {
-      global.setTimeout(speakNextNarrative, 300);
-      return;
-    }
-    const text = narrativeSpeechQueue.shift();
-    const engine = BF.currentEngine;
-    if (!engine?.callbacks?.onSpeak) {
-      global.setTimeout(speakNextNarrative, 350);
-      return;
-    }
-    narrativeSpeechBusy = true;
-    engine.callbacks.onSpeak(text);
-    engine.lastSpeechAt = performance.now();
-    global.setTimeout(() => {
-      narrativeSpeechBusy = false;
-      speakNextNarrative();
-    }, 4300);
-  };
-  global.addEventListener?.("bluefox:intro-end", () => {
-    global.setTimeout(speakNextNarrative, 1200);
-  });
-
-  BF.sayNarrativeThought = (text) => {
-    const value = String(text || "").trim();
-    if (!value) return false;
-    narrativeSpeechQueue.push(value);
-    speakNextNarrative();
-    return true;
-  };
-
-  if (BF.bibleRuntime && !BF.bibleRuntime.__bluefoxThoughtRouting) {
-    BF.bibleRuntime.emitNarrative = function emitNarrativeAsThought(
-      mission,
-      moment,
-      context = {}
-    ) {
-      const lines = mission?.narrative?.[moment] || [];
-      if (!lines.length) return false;
-      lines.forEach((item, index) => {
-        const text = typeof item === "string" ? item : item?.text || "";
-        if (!text) return;
-        const channel = String(
-          typeof item === "object"
-            ? item.delivery || item.channel || item.type || item.kind || "thought"
-            : "thought"
-        ).toLowerCase();
-        if (channel === "journal" || channel === "both") {
-          BF.addJournalEntry?.({
-            id: `bible:${mission.id}:${moment}:${index}:${Date.now()}`,
-            type: "bible",
-            title: mission.title,
-            text,
-            mapId: context.mapId ?? BF.currentEngine?.currentMapId ?? null,
-            zoneId: context.zoneId ?? BF.currentEngine?.currentZoneIndex ?? null,
-            important: moment === "revealed" || moment === "completed"
-          });
-        }
-        if (channel !== "journal") BF.sayNarrativeThought(text);
-      });
-      return true;
-    };
-    BF.bibleRuntime.__bluefoxThoughtRouting = true;
-  }
-
-  // Matcher sémantique partagé par la couche de compatibilité CUO/Missions.
-  const normalizedMissionValue = (value) =>
-    String(value ?? "").trim().toLowerCase();
-
-  const semanticCandidatesFromEvent = (event) => {
-    const detail = event?.detail || {};
-    return {
-      objectId: normalizedMissionValue(event?.objectId),
-      kind: [
-        detail.kind,
-        event?.inventoryKey,
-        detail.inventoryKey,
-        detail.cuoType,
-        event?.family,
-        event?.objectId
-      ].map(normalizedMissionValue).filter(Boolean),
-      knowledgeFamily: normalizedMissionValue(
-        event?.knowledgeFamily || detail.knowledgeFamily
-      ),
-      subject: normalizedMissionValue(
-        detail.subject ||
-        event?.knowledgeFamily ||
-        event?.family ||
-        event?.category
-      ),
-      tags: new Set([...(event?.tags || []), ...(detail.tags || [])]
-        .map(normalizedMissionValue).filter(Boolean))
-    };
-  };
-
-  const missionParamsMatchSemantic = (params = {}, semantic = {}) => {
-    if (
-      params.objectId != null &&
-      normalizedMissionValue(params.objectId) !== semantic.objectId
-    ) return false;
-    if (
-      params.kind != null &&
-      !semantic.kind?.includes(normalizedMissionValue(params.kind))
-    ) return false;
-    if (
-      params.knowledgeFamily != null &&
-      normalizedMissionValue(params.knowledgeFamily) !== semantic.knowledgeFamily
-    ) return false;
-    if (
-      params.subject != null &&
-      normalizedMissionValue(params.subject) !== semantic.subject
-    ) return false;
-    if (
-      Array.isArray(params.kindsAny) &&
-      params.kindsAny.length &&
-      !params.kindsAny.some((kind) =>
-        semantic.kind?.includes(normalizedMissionValue(kind))
-      )
-    ) return false;
-    if (
-      Array.isArray(params.tagsAny) &&
-      params.tagsAny.length &&
-      !params.tagsAny.some((tag) => semantic.tags?.has(normalizedMissionValue(tag)))
-    ) return false;
-    if (
-      Array.isArray(params.tagsAll) &&
-      params.tagsAll.length &&
-      !params.tagsAll.every((tag) => semantic.tags?.has(normalizedMissionValue(tag)))
-    ) return false;
-    return true;
-  };
-
-  const semanticFromObject = (object) => {
-    let node = object;
-    while (node) {
-      const data = node.userData || {};
-      const functional = data.functional || {};
-      const objectId = data.catalogId || data.objectId || functional.id || null;
-      const definition =
-        BF.ObjectLibrary?.getById?.(objectId) ||
-        BF.ObjectLibrary?.get?.(functional.type || data.kind || data.type) ||
-        functional;
-      if (definition && (objectId || definition.type || definition.id)) {
-        return {
-          objectId: normalizedMissionValue(objectId || definition.id),
-          kind: [
-            definition.type,
-            definition.resource?.inventoryKey,
-            definition.resource?.family,
-            data.kind,
-            data.type
-          ].map(normalizedMissionValue).filter(Boolean),
-          knowledgeFamily: normalizedMissionValue(definition.knowledge?.family),
-          subject: normalizedMissionValue(
-            definition.semantic?.subject ||
-            definition.knowledge?.family ||
-            definition.category
-          ),
-          tags: new Set([...(definition.spawn?.tags || [])]
-            .map(normalizedMissionValue).filter(Boolean))
-        };
-      }
-      node = node.parent;
-    }
-    return { objectId: "", kind: [], knowledgeFamily: "", subject: "", tags: new Set() };
-  };
-
-  BF.installMissionRuntimeGuards = (engine = BF.currentEngine) => {
-    const Manager = BF.Missions?.MissionManager;
-    const manager = engine?.missionManager;
-    if (!Manager?.prototype || !manager || !engine) return false;
-    const proto = Manager.prototype;
-
-    if (
-      typeof proto.consumeObjectEvent === "function" &&
-      !proto.__bluefoxSemanticEventGuard
-    ) {
-      const originalConsumeObjectEvent = proto.consumeObjectEvent;
-      proto.consumeObjectEvent = function consumeObjectEventSemanticGuard(event) {
-        const semantic = semanticCandidatesFromEvent(event);
-        const temporarilyBlocked = [];
-        this.activeMissionIds?.forEach?.((missionId) => {
-          const tree = this.trees?.get?.(missionId);
-          tree?.availableLeaves?.().forEach?.((node) => {
-            if (node.params?.catalogManaged) return;
-            if (missionParamsMatchSemantic(node.params || {}, semantic)) return;
-            node.params = node.params || {};
-            temporarilyBlocked.push([node, node.params.catalogManaged]);
-            node.params.catalogManaged = true;
-          });
-        });
-        try {
-          return originalConsumeObjectEvent.call(this, event);
-        } finally {
-          temporarilyBlocked.forEach(([node, previous]) => {
-            if (previous === undefined) delete node.params.catalogManaged;
-            else node.params.catalogManaged = previous;
-          });
-        }
-      };
-      proto.__bluefoxSemanticEventGuard = true;
-    }
-
-    if (
-      typeof engine.targetInteraction === "function" &&
-      !engine.targetInteraction.__bluefoxSemanticTargetGuard
-    ) {
-      const originalTargetInteraction = engine.targetInteraction.bind(engine);
-      const guardedTargetInteraction = function guardedTargetInteraction(
-        object,
-        retry = false
-      ) {
-        const incomingSource = object?.userData?.requestedInteractionSource || "";
-        const incomingNodeId = object?.userData?.missionNodeId || "";
-        const pending = engine.pendingInteraction;
-        const sameTarget =
-          pending &&
-          ((pending.userData?.worldAnchor || pending) ===
-            (object?.userData?.worldAnchor || object));
-
-        if (
-          sameTarget &&
-          incomingSource === "mission" &&
-          (!incomingNodeId || incomingNodeId === pending?.userData?.missionNodeId)
-        ) {
-          return true;
-        }
-
-        if (!incomingSource || incomingSource === "manual") {
-          const semantic = semanticFromObject(object);
-          const orderedIds = [
-            engine.missionManager?.primaryMissionId,
-            ...(engine.missionManager?.activeMissionIds || [])
-          ].filter((id, index, values) => id && values.indexOf(id) === index);
-
-          let directive = null;
-          for (const missionId of orderedIds) {
-            const tree = engine.missionManager?.trees?.get?.(missionId);
-            const node = tree?.availableLeaves?.().find?.((candidate) => {
-              const type = normalizedMissionValue(candidate.type);
-              return ["observe", "inspect", "analyze"].includes(type) &&
-                missionParamsMatchSemantic(candidate.params || {}, semantic);
-            });
-            if (node) {
-              directive = { missionId, node };
-              break;
-            }
-          }
-
-          if (directive) {
-            object.userData.requestedInteraction = directive.node.type;
-            object.userData.requestedInteractionSource = "mission";
-            object.userData.requestedInteractionOrigin = "manual";
-            object.userData.missionNodeId = directive.node.id;
-            object.userData.missionId = directive.missionId;
-            object.userData.missionNarrativeVerb = directive.node.type;
-          }
-        }
-
-        return originalTargetInteraction(object, retry);
-      };
-      guardedTargetInteraction.__bluefoxSemanticTargetGuard = true;
-      guardedTargetInteraction.__bluefoxOriginalTargetInteraction =
-        originalTargetInteraction;
-      engine.targetInteraction = guardedTargetInteraction;
-    }
-    return true;
-  };
-
   class WorldEngine {
     constructor(options) {
       Object.assign(this, options);
@@ -414,20 +78,6 @@
       this.navigationRoute = [];
       this.persistentNavigationIntent = null;
       this.returningToBase = false;
-      this.introPaused = false;
-      this.onIntroStart = () => {
-        this.introPaused = true;
-        this.character?.stop?.();
-        if (this.pointerClickTimer) window.clearTimeout(this.pointerClickTimer);
-        if (this.cameraClickTimer) window.clearTimeout(this.cameraClickTimer);
-      };
-      this.onIntroEnd = () => {
-        this.introPaused = false;
-        this.clock?.getDelta?.();
-        const now = performance.now();
-        this.lastActivityAt = now;
-        this.lastAutonomyAt = effectiveAutonomyMode() === "off" ? now : Math.min(this.lastAutonomyAt, now - 4800);
-      };
       this.onMissingImage = (event) => {
         const source = String(event.detail?.source || "image inconnue");
         if (this.missingImageUrls.has(source)) return;
@@ -450,8 +100,6 @@
     async initialize() {
       const { THREE, OrbitControls, GLTFLoader, container } = this;
       global.addEventListener("bluefox:image-missing", this.onMissingImage);
-      global.addEventListener("bluefox:intro-start", this.onIntroStart);
-      global.addEventListener("bluefox:intro-end", this.onIntroEnd);
       BF.MapGenerator?.restore?.();
       this.restoreDiscovery();
       this.restoreMapNames();
@@ -544,50 +192,6 @@
       global.dispatchEvent(new CustomEvent("bluefox:scene-images"));
       BF.currentEngine = this;
       BF.getDiagnostics = () => this.getDiagnostics();
-
-      // Invariant missionnel global :
-      // toute synchronisation du lifecycle part d'un arbre fraîchement recalculé.
-      // Cela rend identiques les chemins IA, manuel, passif et BibleRuntime,
-      // sans modifier les règles de finalisation ni les completionGate existants.
-      const missionManagerPrototype = BF.Missions?.MissionManager?.prototype;
-      if (
-        missionManagerPrototype &&
-        typeof missionManagerPrototype.syncLifecycleFromTrees === "function" &&
-        !missionManagerPrototype.__bluefoxRefreshBeforeLifecycleSync
-      ) {
-        const originalSyncLifecycleFromTrees =
-          missionManagerPrototype.syncLifecycleFromTrees;
-
-        missionManagerPrototype.syncLifecycleFromTrees =
-          function syncLifecycleFromFreshTrees(...args) {
-            const rootTransitions = [];
-            const activeIds = new Set(this.activeMissionIds || []);
-            activeIds.forEach((missionId) => {
-              const tree = this.trees?.get?.(missionId);
-              if (!tree?.refresh) return;
-              const before = tree.root?.status;
-              tree.refresh();
-              const after = tree.root?.status;
-              if (before !== after) {
-                rootTransitions.push({ missionId, tree });
-              }
-            });
-
-            // Important : appelle ensuite la synchronisation déjà installée.
-            // Si BibleRuntime a posé une completionGate, elle reste donc
-            // intégralement décisionnaire de la finalisation.
-            const result = originalSyncLifecycleFromTrees.apply(this, args);
-
-            // Persiste uniquement les arbres dont la racine a réellement changé.
-            rootTransitions.forEach(({ tree }) => {
-              this.memory?.saveTree?.(tree);
-            });
-            return result;
-          };
-
-        missionManagerPrototype.__bluefoxRefreshBeforeLifecycleSync = true;
-      }
-
       if (BF.Missions?.MissionManager) {
         this.missionManager = BF.Missions.MissionManager.create({
           engine: this
@@ -1997,7 +1601,7 @@
         candidates.push({ point, pathLength });
       }
       candidates.sort((a, b) => a.pathLength - b.pathLength);
-      const result = {
+      return {
         point: candidates[0]?.point || this.character.pathPlanner.nearestClearGoal(
           anchor.position.clone().add(fromResource.normalize()
             .multiplyScalar(approachDistance)),
@@ -2007,15 +1611,6 @@
         ),
         approachDistance
       };
-      if (object?.userData && result.point) {
-        object.userData.__cachedInteractionApproach = {
-          point: result.point.clone?.() || result.point,
-          approachDistance: result.approachDistance,
-          at: performance.now(),
-          mapId: this.currentMapId
-        };
-      }
-      return result;
     }
 
 
@@ -2100,18 +1695,6 @@
       return profile.collectable || now - last > 30000;
     }
 
-    isCrashCapsuleInteraction(object) {
-      let node = object;
-      while (node) {
-        const data = node.userData || {};
-        const identity = [data.landmark, data.objectId, data.id, data.kind, data.type, node.name]
-          .filter(Boolean).join(" ").toLowerCase();
-        if (identity.includes("crash-capsule") || identity.includes("landmark-crash-capsule-001") || identity.includes("capsule")) return true;
-        node = node.parent;
-      }
-      return false;
-    }
-
     missionActionForInteraction(action) {
       const types = BF.Missions?.ActionType || {};
       return {
@@ -2125,23 +1708,10 @@
 
     targetInteraction(object, retry = false) {
       this.pendingZoneExploration = null;
-      const cachedApproach = object?.userData?.__cachedInteractionApproach;
-      const cachedFresh = Boolean(
-        !retry &&
-        cachedApproach?.point &&
-        cachedApproach.mapId === this.currentMapId &&
-        performance.now() - Number(cachedApproach.at || 0) < 1500
+      const approach = this.interactionApproachPoint(
+        object,
+        retry ? this.interactionApproachAttempts : 0
       );
-      const approach = cachedFresh
-        ? {
-            point: cachedApproach.point.clone?.() || cachedApproach.point,
-            approachDistance: cachedApproach.approachDistance
-          }
-        : this.interactionApproachPoint(
-            object,
-            retry ? this.interactionApproachAttempts : 0
-          );
-      if (object?.userData) delete object.userData.__cachedInteractionApproach;
       this.pendingInteraction = object;
       object.userData.approachDistance = approach.approachDistance;
       object.userData.interactionProfile = this.interactionProfile(object);
@@ -2188,17 +1758,6 @@
           child.castShadow = true;
           child.receiveShadow = true;
           child.frustumCulled = false;
-          child.userData.active = true;
-          child.userData.landmark = "crash-capsule";
-          child.userData.objectId = "LANDMARK-CRASH-CAPSULE-001";
-          child.userData.worldAnchor = capsule;
-          child.userData.interactionRadius = 2.8 * scale;
-          child.userData.functional = {
-            type: "LANDMARK-CRASH-CAPSULE-001",
-            interaction: { actions: ["observe"], defaultManualAction: "observe", label: "la capsule accidentée", removeFromWorld: false },
-            gameplay: { collectable: false }
-          };
-          map.interactables.push(child);
         });
         map.group.add(capsule);
         map.crashCapsule = capsule;
@@ -2750,7 +2309,6 @@
           zoneIndex: this.currentZoneIndex
         }, { passive: false });
       }
-
       this.pendingInteraction = null;
       this.interactionStartedAt = 0;
       this.interactionApproachStartedAt = 0;
@@ -2780,7 +2338,6 @@
     }
 
     updateAutonomy(now) {
-      if (effectiveAutonomyMode() === "off") return;
       if (
         this.transitioning ||
         this.pendingInteraction ||
@@ -2951,8 +2508,6 @@
     }
 
     ensureActivity(now) {
-      const autonomyMode = effectiveAutonomyMode();
-      if (autonomyMode === "off") return;
       if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
       if (this.pendingGate) {
         if (this.character.speed > 0.08) {
@@ -2984,9 +2539,7 @@
 
       this.pendingInteraction = null;
       this.character.cancelInteraction();
-      const resources = autonomyMode === "full"
-        ? this.currentMap.interactables.filter((object) => this.canInteractWith(object, now))
-        : [];
+      const resources = this.currentMap.interactables.filter((object) => this.canInteractWith(object, now));
       if (resources.length) {
         const object = resources[Math.floor(Math.random() * resources.length)];
         object.userData.requestedInteractionSource = "autonomy";
@@ -3259,10 +2812,6 @@
     loop() {
       if (this.disposed) return;
       this.frame = requestAnimationFrame(() => this.loop());
-      if (this.introPaused || BF.introRunning === true) {
-        this.clock?.getDelta?.();
-        return;
-      }
       const dt = Math.min(this.clock.getDelta(), 0.04);
       const now = performance.now();
       this.update(dt, now);
@@ -3318,8 +2867,6 @@
       global.removeEventListener("bluefox:path-planned", this.onPathPlanned);
       global.removeEventListener("bluefox:navigation-failed", this.onNavigationFailed);
       global.removeEventListener("bluefox:image-missing", this.onMissingImage);
-      global.removeEventListener("bluefox:intro-start", this.onIntroStart);
-      global.removeEventListener("bluefox:intro-end", this.onIntroEnd);
       document.removeEventListener("visibilitychange", this.onVisibilityChange);
       global.removeEventListener("bluefox:camera-mode", this.onCameraMode);
       window.clearTimeout(this.cameraClickTimer);
