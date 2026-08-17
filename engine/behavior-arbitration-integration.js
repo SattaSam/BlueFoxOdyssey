@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions || {};
-  const INTEGRATION_VERSION = "bac-knowledge-routing-r16c";
+  const INTEGRATION_VERSION = "bac-knowledge-routing-r16d";
   const PREFERENCE_DECAY_MS = 20 * 60 * 1000;
   const PREFERENCE_WINDOW_MS = 4 * 60 * 1000;
   const PREFERENCE_COMMIT_MS = 3 * 60 * 1000;
@@ -1074,7 +1074,9 @@
           id: "known-gate",
           axis: "exploration",
           baseWeight: 12,
-          available: gateUseful,
+          available:
+            gateUseful &&
+            this.canStartAutonomousGate?.() !== false,
           execute: () => {
             const gate = [...knownGates]
               .sort((a, b) => directDistance(this, a) - directDistance(this, b))[0];
@@ -1129,7 +1131,10 @@
           gateUseful
         };
       }
-      selected.execute();
+      const selectedResult = selected.execute();
+      if (selected.id !== "known-gate" && selectedResult !== false) {
+        this.noteLocalAutonomousDecision?.();
+      }
     };
     const originalEnsureActivity = engine.ensureActivity?.bind(engine);
     if (originalEnsureActivity) {

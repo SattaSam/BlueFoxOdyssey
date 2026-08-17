@@ -493,6 +493,7 @@
 
     resetRuntimeState();
     clearActive();
+    BF.resetAutonomyForNewGame?.();
 
     global.localStorage.removeItem(SLOT_KEYS.auto);
     global.localStorage.removeItem(SLOT_KEYS.backup);
@@ -514,6 +515,7 @@
   };
 
   const pauseExistingMedia = (introVideo) => {
+    try { BF.music?.stop?.(); } catch {}
     global.document.querySelectorAll("audio, video").forEach((media) => {
       if (media === introVideo) return;
       try { media.pause(); } catch {}
@@ -543,11 +545,14 @@
       if (finished) return;
       finished = true;
       try { video.pause(); } catch {}
-      removeIntroOverlay();
       try {
+        // Reste noir et gelé jusqu'au rechargement de la partie neuve.
         await startNewGame();
-      } finally {
+      } catch (error) {
+        removeIntroOverlay();
+        BF.currentEngine?.setRuntimePaused?.(false, "new-game-intro-error");
         introInProgress = false;
+        throw error;
       }
     };
 
@@ -562,6 +567,7 @@
     introOverlay = overlay;
     global.document.documentElement.classList.add("bluefox-intro-open");
 
+    BF.currentEngine?.setRuntimePaused?.(true, "new-game-intro");
     pauseExistingMedia(video);
 
     try {
