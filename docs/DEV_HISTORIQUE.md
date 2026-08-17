@@ -1,5 +1,75 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Session du 17 août 2026 — Rétablissement V5.2, sécurisation CPU / sauvegarde / population
+
+### Base finale de session
+- Commit audité : `cd4a5187e40294b3f6680243af8ae9f997c392a6`.
+- Objet principal de la session : rétablir progressivement les comportements validés de la veille et sécuriser la base avant P01→P012.
+
+### RuntimeBudget / CPU
+Angle mort confirmé :
+- les runtimes flore, faune, PNJ, phénomènes et passifs utilisaient déjà `RuntimeBudget.shouldUpdate()`;
+- `special-object-runtime.js` animait encore tous ses objets à chaque `built.update()`.
+
+Correction :
+- raccord au `RuntimeBudget` existant, sans second système de throttling ;
+- PNJ spéciaux → `npc` ;
+- animal nocturne → `fauna` ;
+- plante carnivore → `flora` ;
+- tempêtes, îlots, cristaux et drones → `phenomenon` ;
+- respawns et logique drones à 1 Hz conservés.
+
+### Sauvegarde / dirty-state
+Cause confirmée :
+- `save-ui-bridge.js` appelait `persistRuntime()` avant la capture de l'état ;
+- `persistRuntime()` appelait `BF.progression.save()` ;
+- `ProgressionRegistry.save()` mettait systématiquement `updatedAt = Date.now()` ;
+- l'autosave créait donc lui-même une différence de signature.
+
+Correction :
+- retrait uniquement de `BF.progression.save()` du pré-flush global ;
+- les mutations réelles de progression restent sauvegardées par `ProgressionRegistry` ;
+- `MissionMemory` conserve son modèle dirty/flush.
+
+### Incident de livraison `save-ui-bridge.js`
+Un premier patch a été construit à partir d'un extrait partiel du fichier et a tronqué la fin de `save-ui-bridge.js`.
+Cette erreur a été commitée dans `f838d018...`.
+
+Réparation :
+- restauration du fichier complet ;
+- réapplication de l'unique suppression nécessaire ;
+- commit réparé/audité : `cd4a5187...`.
+
+Règle désormais explicite :
+- ne jamais construire un fichier destiné au dépôt à partir d'un extrait de lecture partielle ;
+- toujours partir du fichier complet du HEAD courant ou d'un fichier complet fourni par l'utilisateur ;
+- vérifier le diff exact avant livraison.
+
+### Population / MSC
+Règle clarifiée :
+- `floating_islands` : îlot suspendu garanti ;
+- désert avec roches en lévitation : garantie ;
+- marais avec îles flottantes : garantie ;
+- autres contextes magnétiques : seulement probabilité renforcée.
+
+Les MSC coralliennes underwater bioluminescentes restent intégrées et leurs transformations locales restent inchangées.
+
+### Autres éléments récupérés / sécurisés
+- récupération progressive caméra ;
+- récupération bulles de parole ;
+- protections CPU précédentes conservées ;
+- audio adaptatif non modifié pendant cette passe.
+
+### Conclusion de session
+La majeure partie de la journée a consisté à rétablir et sécuriser une base fonctionnelle déjà atteinte la veille, avec trois gains techniques réels :
+1. suppression de l'angle mort RuntimeBudget des objets spéciaux ;
+2. autosave dirty-state réellement exploitable ;
+3. règle population/îlots clarifiée et rétablie.
+
+La base `cd4a5187...` est considérée comme point de départ pour l'intégration P01→P012.
+
+---
+
 ## Session du 15 août 2026 — Audit Bible / CUO / moteur et stratégie de patrons
 
 ### Base
@@ -39,39 +109,13 @@ Présent :
 - drones fonctionnels et PNJ existants.
 - besoin : ajouter speciesId/factionId aux types de créatures/PNJ pertinents.
 
-### MSC historiques
-Les solutions anciennes ne doivent pas être recréées.
-Parmi les scènes présentes dans l'arborescence V5 :
-- MSC-CUSTOM-ASTROLOGY
-- MSC-CUSTOM-CARRIERE
-- MSC-CUSTOM-CARRIEREDECRISTAUX
-- MSC-CUSTOM-EPAVE-1DRONE
-- MSC-CUSTOM-EPAVE-MAJEUR
-- MSC-CUSTOM-ETABLI
-- MSC-CUSTOM-FOYER-ANCIEN
-- MSC-CUSTOM-FUNA-PARENTAL
-- MSC-CUSTOM-HABITAT-RUINE
-- MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP
-- MSC-CUSTOM-MACHINE-ABANDONNEE
-- MSC-CUSTOM-NID-PROTECTEUR
-- MSC-CUSTOM-RUINE-MODULAIRE1/2/4
-- MSC-CUSTOM-SANCTUAIRE-RING
-- MSC-CUSTOM-WALL-RUIN-COLLAPSED
-- MSC-CUSTOM-WALL-RUIN-STRAIGHT
-- MSC-CUSTOM-WORKED-STONE-BLOCK
-- MSC-CUSTOM-BASE-DRONE-FONCTIONEL
-- MSC-CUSTOM-HAUTEUR
-
 ### Décision architecture missions
 - Limiter le nombre de patrons.
 - Mutualiser les variantes avec des interrupteurs.
 - Développer chaque patron en parallèle du raccord moteur associé.
 - Cible de travail : environ 8 familles de patrons au total.
-- Après validation : intégrer T01–T12.
+- Après validation : intégrer P01–P012.
 - Ensuite seulement industrialiser les 182 missions.
-
-### Ration
-`survival.rationRecipe` est déjà référencé dans le moteur ; audit requis avant création de contenu parallèle.
 
 ### Discipline documentaire
 Les documents officiels sont ceux de `docs/README.txt`.
