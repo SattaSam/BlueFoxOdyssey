@@ -37,6 +37,26 @@
     return hitbox;
   };
 
+  const makeBoxHitbox = (THREE, root, width, height, depth, kind) => {
+    const hitbox = new THREE.Mesh(
+      new THREE.BoxGeometry(width, height, depth),
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false
+      })
+    );
+    hitbox.position.y = height / 2;
+    hitbox.userData.interactable = true;
+    hitbox.userData.kind = kind;
+    hitbox.userData.active = true;
+    hitbox.userData.worldAnchor = root;
+    hitbox.userData.hitboxShape = "box";
+    hitbox.userData.hitboxSize = Object.freeze({ width, height, depth });
+    root.add(hitbox);
+    return hitbox;
+  };
+
   const crystalCluster = (THREE, palette, variant = 0) => {
     const root = new THREE.Group();
     root.name = "CrystalCluster";
@@ -540,6 +560,33 @@
     root.add(beacon);
     const hitbox = makeHitbox(THREE, root, 0.78, 1.6, "tech_relic");
     return { root: setShadows(root), hitbox, colliders: [{ offset: new THREE.Vector3(), radius: 0.58 }], kind: "tech_relic" };
+  };
+
+  // Landmark unique du site de départ. Le visuel existant sera raccordé à
+  // cette identité CUO ; ce constructeur fournit uniquement le proxy
+  // fonctionnel/hitbox nécessaire au contrat ObjectLibrary.
+  const crashCapsuleLandmark = (THREE) => {
+    const root = new THREE.Group();
+    root.name = "CrashCapsuleLandmark";
+    root.userData.cuoProxyOnly = true;
+
+    // Hitbox volontairement rectangulaire et resserrée : elle épouse le
+    // gabarit de la coque sans créer le large rayon circulaire des objets XL.
+    const hitbox = makeBoxHitbox(
+      THREE,
+      root,
+      3.8,
+      2.15,
+      2.55,
+      "crash_capsule"
+    );
+
+    return {
+      root: setShadows(root),
+      hitbox,
+      colliders: [],
+      kind: "crash_capsule"
+    };
   };
 
   const productionObject = (THREE, palette, variant, type) => {
@@ -1890,6 +1937,74 @@
       progression: { mapExpertise: 4, discovery: 1, journal: true },
       production: { decision: "validated", note: "Design technologique blanc métallisé avec lueur violette." },
       build: technologicalRelic
+    }),
+
+
+    crash_capsule: Object.freeze({
+      id: "LANDMARK-CRASH-CAPSULE-001",
+      type: "crash_capsule",
+      label: "Capsule de crash",
+      category: "landmark",
+      subtype: "crash_capsule",
+      size: "XL",
+      rarity: "unique",
+      status: "active",
+      biomes: ["crystalline"],
+      placement: Object.freeze({
+        edgeWeight: 0,
+        centerWeight: 1,
+        minSlope: 0,
+        maxSlope: 8
+      }),
+      gameplay: Object.freeze({
+        interactive: true,
+        collectable: false,
+        inspectable: true,
+        destructible: false,
+        obstacle: true,
+        discoverable: true
+      }),
+      ai: Object.freeze({
+        curiosity: 1,
+        harvestPriority: 0,
+        danger: 0
+      }),
+      interaction: {
+        actions: ["observe", "inspect", "analyze"],
+        defaultAction: "observe",
+        defaultManualAction: "observe",
+        removeFromWorld: false,
+        animation: {
+          observe: ["Ear_Right"],
+          inspect: ["Ear_Right"],
+          analyze: ["Ear_Right"]
+        }
+      },
+      knowledge: {
+        family: "technology",
+        discoverable: true,
+        uniqueByInstance: true
+      },
+      observation: {
+        events: ["OBJECT_SEEN", "OBJECT_INSPECTED", "OBJECT_ANALYZED"]
+      },
+      research: { domains: ["engineering", "survival", "technology"] },
+      situation: {
+        tags: ["landmark", "crash-site", "capsule", "technology", "starting-site"]
+      },
+      progression: { mapExpertise: 1, discovery: 1, journal: true },
+      production: {
+        decision: "validated",
+        note: "Identité CUO canonique du site de crash ; proxy visuel à raccorder à la capsule existante."
+      },
+      spawnProfile: Object.freeze({
+        spawnCost: 0,
+        maxPerZone: 1,
+        minDistance: 0,
+        tags: ["landmark", "crash-site", "capsule", "technology", "starting-site"]
+      }),
+      mapPlacement: Object.freeze({ radius: 2.05, volume: "large" }),
+      build: crashCapsuleLandmark
     }),
 
     rock: Object.freeze({
