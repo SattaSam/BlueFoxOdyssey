@@ -80,6 +80,94 @@
     return element;
   }
 
+
+  /* ------------------------------------------------------------------------ */
+  /* Tutoriel UI — façade visuelle stable, sans logique missionnelle          */
+  /* ------------------------------------------------------------------------ */
+
+  const tutorialTargetResolvers = Object.freeze({
+    missions: () => document.querySelector(".mission-tool-button"),
+    camera: () => document.querySelector(".bluefox-camera-button"),
+    settings: () =>
+      document.querySelector('.tool-rail button[aria-label="Réglages"]') ||
+      document.querySelector('.tool-rail button[aria-label="Reglages"]'),
+    planet: () => document.querySelector('.tool-rail button[aria-label="Planète"]'),
+    "mission-panel": () => document.querySelector(".mission-card")
+  });
+
+  let tutorialMessageTimer = null;
+  let tutorialHighlightedElement = null;
+
+  function resolveTutorialTarget(target) {
+    if (target instanceof Element) return target;
+    const resolver = tutorialTargetResolvers[String(target || "")];
+    return resolver?.() || null;
+  }
+
+  function hideTutorialMessage() {
+    if (tutorialMessageTimer) {
+      global.clearTimeout(tutorialMessageTimer);
+      tutorialMessageTimer = null;
+    }
+    document.querySelector(".bluefox-tutorial-message")?.remove();
+    return true;
+  }
+
+  function showTutorialMessage(text, options = {}) {
+    const message = String(text || "").trim();
+    if (!message) {
+      hideTutorialMessage();
+      return false;
+    }
+
+    hideTutorialMessage();
+
+    const panel = document.createElement("aside");
+    panel.className = "bluefox-tutorial-message";
+    panel.setAttribute("role", "status");
+    panel.setAttribute("aria-live", "polite");
+
+    const copy = createTextElement("p", "", message);
+    const close = createTextElement("button", "bluefox-tutorial-message-close", "×");
+    close.type = "button";
+    close.setAttribute("aria-label", "Fermer le message d’aide");
+    close.addEventListener("click", hideTutorialMessage);
+
+    panel.append(copy, close);
+    document.body.appendChild(panel);
+
+    const duration = Math.max(0, Number(options.duration ?? 8000) || 0);
+    if (duration > 0) {
+      tutorialMessageTimer = global.setTimeout(hideTutorialMessage, duration);
+    }
+    return true;
+  }
+
+  function clearTutorialHighlight() {
+    tutorialHighlightedElement?.classList.remove("bluefox-tutorial-highlight");
+    tutorialHighlightedElement = null;
+    return true;
+  }
+
+  function highlightTutorialTarget(target) {
+    const element = resolveTutorialTarget(target);
+    clearTutorialHighlight();
+    if (!element) return false;
+    tutorialHighlightedElement = element;
+    element.classList.add("bluefox-tutorial-highlight");
+    return true;
+  }
+
+  BF.TutorialUI = Object.freeze({
+    version: "tutorial-ui-foundation-v1",
+    targets: Object.freeze(Object.keys(tutorialTargetResolvers)),
+    showMessage: showTutorialMessage,
+    hideMessage: hideTutorialMessage,
+    highlight: highlightTutorialTarget,
+    clearHighlight: clearTutorialHighlight,
+    resolveTarget: resolveTutorialTarget
+  });
+
   function renderStep(node, index, currentAction) {
     const descendants = [];
     const collectDescendants = (candidate) => {
