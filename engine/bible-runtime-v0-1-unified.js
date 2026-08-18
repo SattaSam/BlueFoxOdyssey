@@ -11,6 +11,8 @@
   const lower = (value) => String(value ?? "").trim().toLowerCase();
   const asArray = (value) =>
     Array.isArray(value) ? value : value == null ? [] : [value];
+  const narrativeText = (value) =>
+    typeof value === "string" ? value : value?.text || "";
 
   const OBJECT_TYPE_TO_TRIGGER = Object.freeze({
     OBJECT_SEEN: "interaction.observe",
@@ -248,7 +250,7 @@
             mission.passivePriorityAxis ||
             pattern.autonomyAxis ||
             null,
-          journalIntro: mission.narrative?.revealed?.[0] || "",
+          journalIntro: narrativeText(mission.narrative?.revealed?.[0]),
           bible: {
             version: VERSION,
             pattern: mission.pattern
@@ -336,7 +338,7 @@
           mission.passivePriorityAxis ||
           pattern.autonomyAxis ||
           null,
-        journalIntro: mission.narrative?.revealed?.[0] || "",
+        journalIntro: narrativeText(mission.narrative?.revealed?.[0]),
         bible: {
           version: VERSION,
           pattern: mission.pattern
@@ -584,15 +586,21 @@
 
         if (!text) return;
 
-        BF.addJournalEntry?.({
-          id: `bible:${mission.id}:${moment}:${index}:${Date.now()}`,
-          type: "bible",
-          title: mission.title,
-          text,
-          mapId: context.mapId ?? BF.currentEngine?.currentMapId ?? null,
-          zoneId: context.zoneId ?? BF.currentEngine?.currentZoneIndex ?? null,
-          important: moment === "revealed" || moment === "completed"
-        });
+        if (item?.route === "journal") {
+          BF.addJournalEntry?.({
+            id: `bible:${mission.id}:${moment}:${index}:${Date.now()}`,
+            type: "bible",
+            title: mission.title,
+            text,
+            mapId: context.mapId ?? BF.currentEngine?.currentMapId ?? null,
+            zoneId: context.zoneId ?? BF.currentEngine?.currentZoneIndex ?? null,
+            important: moment === "revealed" || moment === "completed"
+          });
+          return;
+        }
+
+        BF.currentEngine?.callbacks?.onSpeak?.(text);
+        BF.currentEngine?.callbacks?.onAction?.(text);
       });
 
       return true;
@@ -905,15 +913,21 @@
         this.state.progressNarrative[key] = Date.now();
         this.saveState();
 
-        BF.addJournalEntry?.({
-          id: `bible:${key}`,
-          type: "bible",
-          title: mission.title,
-          text: milestone.text,
-          mapId: BF.currentEngine?.currentMapId || null,
-          zoneId: BF.currentEngine?.currentZoneIndex ?? null,
-          important: false
-        });
+        if (milestone.route === "journal") {
+          BF.addJournalEntry?.({
+            id: `bible:${key}`,
+            type: "bible",
+            title: mission.title,
+            text: milestone.text,
+            mapId: BF.currentEngine?.currentMapId || null,
+            zoneId: BF.currentEngine?.currentZoneIndex ?? null,
+            important: false
+          });
+          continue;
+        }
+
+        BF.currentEngine?.callbacks?.onSpeak?.(milestone.text);
+        BF.currentEngine?.callbacks?.onAction?.(milestone.text);
       }
     }
 

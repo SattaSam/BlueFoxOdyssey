@@ -1,4 +1,4 @@
-﻿(function (global) {
+(function (global) {
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
@@ -249,12 +249,22 @@
         return;
       }
       narrative[moment].forEach((line, index) => {
-        if (!isNonEmptyString(line)) {
+        if (isNonEmptyString(line)) return;
+        if (!isObject(line) || !isNonEmptyString(line.text)) {
           add(
             errors,
             missionId,
             `narrative.${moment}[${index}]`,
-            "doit être une chaîne non vide."
+            "doit être une chaîne non vide ou un objet {text, route?}."
+          );
+          return;
+        }
+        if (line.route != null && line.route !== "journal") {
+          add(
+            errors,
+            missionId,
+            `narrative.${moment}[${index}].route`,
+            "seule la route explicite journal est supportée."
           );
         }
       });
@@ -332,6 +342,14 @@
           missionId,
           `narrative.progress[${index}].slot`,
           "doit être une chaîne non vide."
+        );
+      }
+      if (entry.route != null && entry.route !== "journal") {
+        add(
+          errors,
+          missionId,
+          `narrative.progress[${index}].route`,
+          "seule la route explicite journal est supportée."
         );
       }
     });

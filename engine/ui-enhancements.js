@@ -1354,15 +1354,14 @@
 
   function speechBubbleDuration(text) {
     const length = String(text || "").trim().length;
-    const extraMs = length <= 45
-      ? 1500
+    const durationMs = length <= 45
+      ? 6500
       : length <= 100
-        ? 1500 + ((length - 45) / 55) * 1300
+        ? 6500 + ((length - 45) / 55) * 2500
         : length <= 190
-          ? 2800 + ((length - 100) / 90) * 1700
-          : 4500;
-    const assumedCurrentMs = 5000;
-    return Math.min(12000, Math.round(assumedCurrentMs + extraMs));
+          ? 9000 + ((length - 100) / 90) * 3000
+          : Math.min(14000, 12000 + ((length - 190) * 20));
+    return Math.round(durationMs);
   }
 
   function regulateSpeechBubbles() {
