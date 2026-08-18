@@ -441,11 +441,88 @@
     return state.energy;
   };
 
+  const normalizeSafeSiteMarker = (value) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  const safeSiteMapIds = () => {
+    const ids = new Set(["crystal"]);
+    const sites =
+      BF.currentEngine?.missionManager?.memory?.state
+        ?.siteProgression || {};
+
+    Object.values(sites).forEach((site) => {
+      if (!site?.mapId || site.persistent === false) return;
+      const marker = normalizeSafeSiteMarker([
+        site.kind,
+        site.stage,
+        site.microSceneId,
+        site.missionId
+      ].filter(Boolean).join(" "));
+      if (/(^|[^a-z])(camp|refuge|base)([^a-z]|$)/.test(marker)) {
+        ids.add(site.mapId);
+      }
+    });
+    return [...ids];
+  };
+
+  const mapTransitionDistance = (fromMapId, toMapId) => {
+    if (!fromMapId || !toMapId) return Infinity;
+    if (fromMapId === toMapId) return 0;
+
+    const visited = new Set([fromMapId]);
+    const queue = [{ mapId: fromMapId, distance: 0 }];
+    while (queue.length) {
+      const current = queue.shift();
+      const definition = BF.maps?.[current.mapId];
+      const exits = {
+        ...(definition?.exits || {}),
+        ...(definition?.runtimeExits || {})
+      };
+      for (const exit of Object.values(exits)) {
+        const targetMap = exit?.targetMap;
+        if (!targetMap || visited.has(targetMap)) continue;
+        if (targetMap === toMapId) return current.distance + 1;
+        visited.add(targetMap);
+        queue.push({
+          mapId: targetMap,
+          distance: current.distance + 1
+        });
+      }
+    }
+    return Infinity;
+  };
+
+  const nearestSafeSiteDistance = () => {
+    const currentMapId = BF.currentEngine?.currentMapId;
+    if (!currentMapId) return null;
+
+    let nearest = Infinity;
+    safeSiteMapIds().forEach((mapId) => {
+      nearest = Math.min(
+        nearest,
+        mapTransitionDistance(currentMapId, mapId)
+      );
+    });
+    return Number.isFinite(nearest) ? nearest : null;
+  };
+
+  const safetyTarget = () => {
+    if (BF.canAccessCampInventory?.()) return 100;
+
+    const distance = nearestSafeSiteDistance();
+    if (distance == null) return 92;
+    if (distance <= 0) return 96;
+    if (distance === 1) return 92;
+    if (distance === 2) return 87;
+    if (distance === 3) return 82;
+    return Math.max(62, 82 - (distance - 3) * 4);
+  };
+
   const updateSafety = () => {
-    const target =
-      BF.canAccessCampInventory?.()
-        ? 100
-        : 62;
+    const target = safetyTarget();
     const next =
       state.safety +
       (target - state.safety) * 0.08;

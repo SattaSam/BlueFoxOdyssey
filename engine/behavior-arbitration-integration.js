@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions || {};
-  const INTEGRATION_VERSION = "bac-knowledge-routing-r16d";
+  const INTEGRATION_VERSION = "bac-knowledge-routing-r16f-survival-owner";
   const PREFERENCE_DECAY_MS = 20 * 60 * 1000;
   const PREFERENCE_WINDOW_MS = 4 * 60 * 1000;
   const PREFERENCE_COMMIT_MS = 3 * 60 * 1000;
@@ -959,10 +959,65 @@
       const survival = BF.getSurvivalState?.() || {};
       const fatigue = survival.fatigue || { level: "normal", movement: 1, actionDuration: 1 };
       this.character.fatigueSpeedMultiplier = fatigue.movement || 1;
-      if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
-      if (survival.needs?.criticalRest || this.autonomyActionStreak >= this.autonomyBreakTarget) {
-        return originalAutonomy(now);
+      const survivalDecision = BAC.evaluateSurvivalDecision?.({
+        survival,
+        autonomyActionStreak: this.autonomyActionStreak,
+        autonomyBreakTarget: this.autonomyBreakTarget
+      }) || null;
+
+      if (survivalDecision) {
+        // OFF / pause runtime / fenêtre de grâce restent propriétaires dans WorldEngine.
+        if (!this.autonomyAllowed?.(now)) {
+          return originalAutonomy(now);
+        }
+
+        this.lastAutonomyAt = now;
+
+        if (
+          survivalDecision.speech === "critical-rest" &&
+          this.speechVisible &&
+          now - this.lastFatigueSpeechAt > 15000
+        ) {
+          this.callbacks.onSpeak(
+            "Je suis fatigué, j’ai besoin de récupérer avant de continuer."
+          );
+          this.lastFatigueSpeechAt = now;
+        }
+
+        if (
+          survivalDecision.speech === "micro-rest" &&
+          this.speechVisible &&
+          Math.random() < 0.8 &&
+          now - this.lastFatigueSpeechAt > 12000
+        ) {
+          const phrases = [
+            "Je prends un instant pour respirer.",
+            "Je souffle un peu, puis je reprends.",
+            "Une petite pause, puis je reprends.",
+            "Je vais ralentir un peu.",
+            "Je reprends mon souffle."
+          ];
+          this.callbacks.onSpeak(
+            phrases[Math.floor(Math.random() * phrases.length)]
+          );
+          this.lastFatigueSpeechAt = now;
+        }
+
+        this.startRoutine(
+          survivalDecision.routine,
+          now,
+          survivalDecision.duration,
+          survivalDecision.detail
+        );
+
+        if (survivalDecision.routine === "micro-rest") {
+          this.autonomyActionStreak = 0;
+          this.autonomyBreakTarget = 2 + Math.floor(Math.random() * 2);
+        }
+        return;
       }
+
+      if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
       this.lastAutonomyAt = now;
       const interactables = (this.currentMap?.interactables || [])
         .filter((object) => this.canInteractWith(object, now));

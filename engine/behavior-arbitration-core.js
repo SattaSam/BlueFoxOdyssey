@@ -563,240 +563,78 @@
     return state.missionOverlayInstalled;
   };
 
-  const installAutonomyOverlay = () => {
-    const Engine = BF.WorldEngine;
-    if (!Engine?.prototype || Engine.prototype.__bluefoxBAC1Installed) return false;
-
-    const original = Engine.prototype.updateAutonomy;
-    if (typeof original !== "function") return false;
-
-    Engine.prototype.updateAutonomy = function updateAutonomyWithBAC(now) {
-      if (
-        this.transitioning ||
-        this.pendingInteraction ||
-        this.pendingGate ||
-        this.pendingZoneExploration ||
-        this.currentRoutine ||
-        this.missionManager?.currentAction
-      ) return;
-      if (now < this.postActionRecoveryUntil) return;
-      if (now - this.lastAutonomyAt < 5000) return;
-      if (this.character.root.position.distanceTo(this.character.target) > 0.2) return;
-
-      const survival = BF.getSurvivalState?.() || {};
-      const fatigue = survival.fatigue || {
-        level: "normal",
-        movement: 1,
-        actionDuration: 1
-      };
-      this.character.fatigueSpeedMultiplier = fatigue.movement || 1;
-
-      this.lastAutonomyAt = now;
-
-      // Les besoins critiques ne sont jamais soumis au BAC.
-      if (survival.needs?.criticalRest) {
-        if (this.speechVisible && now - this.lastFatigueSpeechAt > 15000) {
-          this.callbacks.onSpeak(
-            "Je suis fatigué, j’ai besoin de récupérer avant de continuer."
-          );
-          this.lastFatigueSpeechAt = now;
-        }
-        this.startRoutine("critical-rest", now, 9000 + Math.random() * 6000, {
-          targetEnergy: 33,
-          pressureReduction: 3
-        });
-        return;
-      }
-
-      // Les pauses physiologiques existantes sont conservées.
-      if (this.autonomyActionStreak >= this.autonomyBreakTarget) {
-        if (
-          this.speechVisible &&
-          Math.random() < 0.8 &&
-          now - this.lastFatigueSpeechAt > 12000
-        ) {
-          const phrases = [
-            "Je prends un instant pour respirer.",
-            "Je souffle un peu, puis je reprends.",
-            "Une petite pause, puis je reprends.",
-            "Je vais ralentir un peu.",
-            "Je reprends mon souffle."
-          ];
-          this.callbacks.onSpeak(
-            phrases[Math.floor(Math.random() * phrases.length)]
-          );
-          this.lastFatigueSpeechAt = now;
-        }
-        this.startRoutine("micro-rest", now, 2400 + Math.random() * 2200, {
-          restGain: fatigue.level === "heavy" ? 4.2 : 3.2,
-          pressureReduction: 0.75
-        });
-        this.autonomyActionStreak = 0;
-        this.autonomyBreakTarget = 2 + Math.floor(Math.random() * 2);
-        return;
-      }
-
-      // Une mission reste prioritaire, mais elle ne peut plus empêcher les
-      // pauses physiologiques et la récupération de BlueFox.
-      if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
-
-      const interactables = this.currentMap.interactables
-        .filter((object) => this.canInteractWith(object, now));
-
-      const relationObjects = interactables.filter((object) =>
-        interactionAxis(this, object) === "relations"
-      );
-      const collectionObjects = interactables.filter((object) =>
-        interactionAxis(this, object) === "collection"
-      );
-      const researchObjects = interactables.filter((object) =>
-        interactionAxis(this, object) === "research"
-      );
-
-      const knownGates = this.currentMap.gates.filter((gate) =>
-        this.discoveredMaps.has(gate.userData.exit.targetMap)
-      );
-
-      const options = [
-        {
-          id: "survival-rest",
-          axis: "survival",
-          baseWeight: survival.needs?.rest ? 22 : 7,
-          available: true,
-          execute: () => this.startRoutine(
-            "rest",
-            now,
-            survival.needs?.rest ? 8200 : 7200,
-            {
-              restGain: survival.needs?.rest ? 18 : 12,
-              pressureReduction: 2
-            }
-          )
-        },
-        {
-          id: "survival-food",
-          axis: "survival",
-          baseWeight: survival.needs?.food ? 30 : 2,
-          available: Boolean(
-            survival.needs?.food && BF.survival?.canConsumeRation?.()
-          ),
-          execute: () => this.startRoutine("food", now, 5200)
-        },
-        {
-          id: "research-routine",
-          axis: "research",
-          baseWeight: 10,
-          available: true,
-          execute: () => this.startRoutine("research", now, 6500)
-        },
-        {
-          id: "relations-object",
-          axis: "relations",
-          baseWeight: 16,
-          available: relationObjects.length > 0,
-          execute: () => {
-            const object = relationObjects[
-              Math.floor(Math.random() * relationObjects.length)
-            ];
-            object.userData.requestedInteractionSource = "autonomy";
-            this.targetInteraction(object);
-          }
-        },
-        {
-          id: "collection-object",
-          axis: "collection",
-          baseWeight: 24,
-          available: collectionObjects.length > 0,
-          execute: () => {
-            const object = collectionObjects[
-              Math.floor(Math.random() * collectionObjects.length)
-            ];
-            object.userData.requestedInteractionSource = "autonomy";
-            this.targetInteraction(object);
-          }
-        },
-        {
-          id: "research-object",
-          axis: "research",
-          baseWeight: 18,
-          available: researchObjects.length > 0,
-          execute: () => {
-            const object = researchObjects[
-              Math.floor(Math.random() * researchObjects.length)
-            ];
-            object.userData.requestedInteractionSource = "autonomy";
-            this.targetInteraction(object);
-          }
-        },
-        {
-          id: "exploration-known-gate",
-          axis: "exploration",
-          baseWeight: 8,
-          available: knownGates.length > 0,
-          execute: () => {
-            const gate = knownGates[
-              Math.floor(Math.random() * knownGates.length)
-            ];
-            this.pendingGate = gate;
-            this.character.setTarget(gate.position);
-            this.callbacks.onStatus(
-              `BlueFox choisit de retourner vers ${
-                BF.maps[gate.userData.exit.targetMap].name
-              }.`
-            );
-          }
-        },
-        {
-          id: "exploration-patrol",
-          axis: "exploration",
-          baseWeight: 20,
-          available: true,
-          execute: () => {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 6 + Math.random() * 12;
-            const patrolTarget = new this.THREE.Vector3(
-              BF.clamp(
-                this.character.root.position.x + Math.cos(angle) * distance,
-                -25,
-                25
-              ),
-              0,
-              BF.clamp(
-                this.character.root.position.z + Math.sin(angle) * distance,
-                -25,
-                25
-              )
-            );
-            this.character.setTarget(patrolTarget);
-            this.showWorldMarker(patrolTarget);
-            this.callbacks.onStatus(
-              "BlueFox poursuit une exploration locale autonome."
-            );
-          }
-        }
-      ];
-
-      const selected = weightedPick(options);
-      if (!selected) return original.call(this, now);
-
-      if (Math.random() < 0.08) {
-        const duration = this.character.playAmbientObservation();
-        if (duration > 0) {
-          this.lastActivityAt = now;
-          this.callbacks.onStatus(
-            "BlueFox s’immobilise un instant et observe les environs."
-          );
-          return;
-        }
-      }
-
-      selected.execute();
+  // Politique Survival du BAC.
+  // Le BAC décide ; l'intégration runtime matérialise la routine.
+  const evaluateSurvivalDecision = ({
+    survival = {},
+    autonomyActionStreak = 0,
+    autonomyBreakTarget = Number.POSITIVE_INFINITY
+  } = {}) => {
+    const fatigue = survival.fatigue || {
+      level: "normal",
+      movement: 1,
+      actionDuration: 1
     };
 
-    Engine.prototype.updateAutonomy.__bluefoxBAC1 = true;
-    Engine.prototype.__bluefoxBAC1Installed = true;
-    state.installed = true;
-    return true;
+    if (survival.needs?.criticalRest) {
+      return {
+        id: "critical-rest",
+        axis: "survival",
+        routine: "critical-rest",
+        duration: 9000 + Math.random() * 6000,
+        detail: {
+          targetEnergy: 33,
+          pressureReduction: 3
+        },
+        speech: "critical-rest"
+      };
+    }
+
+    if (
+      Number(autonomyActionStreak) >= Number(autonomyBreakTarget)
+    ) {
+      return {
+        id: "micro-rest",
+        axis: "survival",
+        routine: "micro-rest",
+        duration: 2400 + Math.random() * 2200,
+        detail: {
+          restGain: fatigue.level === "heavy" ? 4.2 : 3.2,
+          pressureReduction: 0.75
+        },
+        speech: "micro-rest"
+      };
+    }
+
+    const rationAvailable =
+      Number(BF.Rations?.snapshot?.().rations) > 0;
+
+    const options = [
+      {
+        id: "survival-rest",
+        axis: "survival",
+        baseWeight: survival.needs?.rest ? 22 : 0,
+        available: Boolean(survival.needs?.rest),
+        routine: "rest",
+        duration: 8200,
+        detail: {
+          restGain: 18,
+          pressureReduction: 2
+        }
+      },
+      {
+        id: "survival-food",
+        axis: "survival",
+        baseWeight: survival.needs?.food ? 30 : 0,
+        available: Boolean(
+          survival.needs?.food && rationAvailable
+        ),
+        routine: "food",
+        duration: 5200
+      }
+    ];
+
+    return weightedPick(options);
   };
 
 
@@ -966,14 +804,15 @@
     recordPlayerSuggestion,
     evaluatePlayerSuggestion,
     weightedPick,
+    evaluateSurvivalDecision,
     observe,
     getDiagnostics: diagnostics,
     isPassive: () => false
   });
   BF.getBACDiagnostics = diagnostics;
+  state.installed = true;
 
   installMissionOverlay();
-  installAutonomyOverlay();
   installRelationOverlay();
   global.setInterval(() => {
     decayEmotions();
