@@ -133,6 +133,7 @@ Référence : **commit `cd4a5187e40294b3f6680243af8ae9f997c392a6` — 17 août 2
 | `map-registry.js`                             | \*\*PROTÉGÉ\*\*                                                  | Aucun ajout de logique objet/population/mission              |
 
 
+
 ## Sources de vérité
 
 * Objet / métadonnées : `engine/object-library.js`
@@ -187,7 +188,7 @@ Ces métadonnées sont projetées dans `userData` puis réinjectées dans les é
 
 ## Contrat population / îlots
 
-* `floating\_islands` : îlot suspendu garanti.
+* `floating\\\_islands` : îlot suspendu garanti.
 * Désert avec roches en lévitation : îlot suspendu garanti.
 * Marais avec îles flottantes : îlot suspendu garanti.
 * Autres contextes magnétiques : probabilité renforcée, sans garantie générale.
@@ -214,9 +215,9 @@ Catégories existantes réutilisées :
 
 `engine/special-object-runtime.js` ne crée aucun second système :
 
-* `npc\_translucent`, `npc\_rocky` → `npc`
-* `nocturnal\_animal` → `fauna`
-* `carnivorous\_plant` → `flora`
+* `npc\\\_translucent`, `npc\\\_rocky` → `npc`
+* `nocturnal\\\_animal` → `fauna`
+* `carnivorous\\\_plant` → `flora`
 * autres objets spéciaux animés → `phenomenon`
 
 Le second passage à 1 Hz pour respawns et drones reste logique métier et n'est pas remplacé par le RuntimeBudget.

@@ -12,6 +12,32 @@ RÈGLE ABSOLUE — BASE DE TRAVAIL
 Toujours repartir du dépôt GitHub courant / commit explicitement indiqué.
 Ne jamais repartir d’un ZIP local ancien ou d’un fichier issu d’une conversation précédente.
 
+RÈGLE ABSOLUE — PREUVE AVANT CONCLUSION TECHNIQUE
+
+Toute affirmation « absent », « régressé », « à ajouter », « à refaire » ou « propriétaire à modifier » doit être précédée d'une vérification explicite dans le HEAD.
+
+Si une fonctionnalité ou un patch antérieur est signalé comme déjà intégré/validé, commencer par rechercher son implémentation dans le HEAD et suivre son chemin d'exécution réel.
+
+Interdiction de proposer de réimplémenter une fonctionnalité avant d'avoir démontré que son implémentation actuelle est absente ou défectueuse.
+
+Un fichier qui ne semble pas utiliser une fonctionnalité ne prouve pas que celle-ci est absente : vérifier son propriétaire et ses raccords.
+
+En cas de contradiction entre le constat et l'historique validé : STOP diagnostic, résoudre la contradiction avant toute stratégie.
+
+Chaque stratégie doit distinguer : CONFIRMÉ PAR LE HEAD / CONFIRMÉ PAR HISTORIQUE VALIDÉ / NON ENCORE PROUVÉ.
+
+Aucun élément « NON ENCORE PROUVÉ » ne peut justifier une modification.
+
+CHECKPOINT AVANT STRATÉGIE
+
+Avant de proposer les fichiers à modifier, produire mentalement la chaîne complète :
+
+donnée → propriétaire → instance runtime → événement canonique → consommateur.
+
+Pour chaque rupture annoncée, identifier la ligne/le bloc du HEAD qui la démontre.
+
+Si la rupture n'est pas localisée, poursuivre l'audit ; ne pas proposer de correctif.
+
 RÈGLE ABSOLUE — DÉMARRAGE DE CHAQUE NOUVEAU CHANTIER
 
 1. Le SHA du dernier commit fourni par l'utilisateur est la source de vérité et le point de départ obligatoire.
