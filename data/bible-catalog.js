@@ -2,6 +2,40 @@
   "use strict";
   const BF = global.BlueFox3D = global.BlueFox3D || {};
 
+  const T01 = Object.freeze({
+    id: "T01",
+    title: "Reconnaître le Site du crash",
+    description: "Observer la capsule accidentée et mémoriser le point zéro.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    initialState: "active",
+    targetBinding: "definition",
+    priority: 100,
+    passivePriorityAxis: "survival",
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Observer la capsule",
+        target: 1,
+        params: Object.freeze({ objectId: "LANDMARK-CRASH-CAPSULE-001" })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La capsule a tenu juste assez longtemps pour me déposer ici. Avant de m’éloigner, je veux regarder ce qui a survécu et mémoriser cet endroit."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "study",
+          atCount: 1,
+          text: "Je garde la capsule comme premier repère. Ce n’est pas forcément ma maison, mais c’est le seul endroit que je connais déjà."
+        })
+      ]),
+      completed: Object.freeze([
+        "D’accord. Je sais où revenir. Maintenant je peux regarder ce que cette zone peut réellement m’offrir."
+      ])
+    })
+  });
+
   /*
    * Bible Catalog — BASE PROPRE.
    *
@@ -82,6 +116,7 @@
   });
 
   BF.BibleCatalog = Object.freeze([
+    T01,
     rationDiscovery
   ]);
 

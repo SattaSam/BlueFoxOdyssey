@@ -1555,6 +1555,33 @@
       };
     }
 
+    activateInitialMissions() {
+      const initialMissions = this.catalog.filter(
+        (mission) => mission?.initialState === "active"
+      );
+      if (!initialMissions.length) return true;
+      if (!this.manager()) return false;
+
+      let settled = true;
+      initialMissions.forEach((mission) => {
+        const state = this.missionLifecycle(mission.id);
+        if (state.active || state.completed) return;
+        settled = false;
+        this.activateMission(mission, {
+          type: "manual",
+          mapId: BF.currentEngine?.currentMapId || null
+        });
+      });
+
+      if (!settled) {
+        settled = initialMissions.every((mission) => {
+          const state = this.missionLifecycle(mission.id);
+          return state.active || state.completed;
+        });
+      }
+      return settled;
+    }
+
     diagnostics() {
       return {
         version: VERSION,

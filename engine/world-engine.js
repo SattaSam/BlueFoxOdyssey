@@ -375,6 +375,7 @@
             stage,
             detail
           ) || false;
+        BF.bibleRuntime?.activateInitialMissions?.();
       }
       if (this.freshNewGameStartup) {
         const now = performance.now();
@@ -1480,6 +1481,12 @@
       if (hits.length) {
         const object = hits[0].object;
         if (object.userData.active) {
+          if (
+            this.pendingInteraction === object &&
+            (this.interactionStartedAt || this.interactionApproachStartedAt)
+          ) {
+            return;
+          }
           object.userData.requestedMovementMode = movementMode;
           object.userData.requestedInteractionSource = "manual";
           this.targetInteraction(object);
@@ -1981,6 +1988,41 @@
         });
         map.group.add(capsule);
         map.crashCapsule = capsule;
+
+        const capsuleDefinition = BF.ObjectLibrary?.get?.("crash_capsule");
+        const capsuleProxy = capsuleDefinition
+          ? BF.ObjectLibrary?.create?.(
+              this.THREE,
+              "crash_capsule",
+              definition.palette,
+              0
+            )
+          : null;
+        const capsuleHitbox = capsuleProxy?.hitbox || null;
+        if (capsuleDefinition && capsuleHitbox) {
+          const instanceId = `${capsuleDefinition.id}:${definition.id}`;
+          const metadata = {
+            instanceId,
+            variant: 0,
+            catalogId: capsuleDefinition.id,
+            libraryType: capsuleDefinition.type,
+            functional: capsuleDefinition
+          };
+
+          capsuleHitbox.removeFromParent();
+          capsule.add(capsuleHitbox);
+          Object.assign(capsule.userData, metadata, {
+            objectType: capsuleDefinition.type,
+            spawnSource: "crash-site",
+            specialRuntimeRoot: true
+          });
+          Object.assign(capsuleHitbox.userData, metadata, {
+            worldAnchor: capsule,
+            interactionRadius: 1.85 * scale
+          });
+          map.interactables.push(capsuleHitbox);
+          map.crashCapsuleHitbox = capsuleHitbox;
+        }
 
         const colliderOffsets = [-2.35, 0, 2.35];
         colliderOffsets.forEach((offsetX) => {
