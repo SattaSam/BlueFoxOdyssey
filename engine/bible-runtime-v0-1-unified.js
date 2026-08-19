@@ -11,8 +11,6 @@
   const lower = (value) => String(value ?? "").trim().toLowerCase();
   const asArray = (value) =>
     Array.isArray(value) ? value : value == null ? [] : [value];
-  const narrativeText = (value) =>
-    typeof value === "string" ? value : value?.text || "";
 
   const OBJECT_TYPE_TO_TRIGGER = Object.freeze({
     OBJECT_SEEN: "interaction.observe",
@@ -59,7 +57,6 @@
         progressNarrative: {},
         effectsApplied: {},
         gatesSatisfied: {},
-        activationInventoryCredits: {},
       };
     }
 
@@ -77,7 +74,6 @@
           progressNarrative: { ...(saved?.progressNarrative || {}) },
           effectsApplied: { ...(saved?.effectsApplied || {}) },
           gatesSatisfied: { ...(saved?.gatesSatisfied || {}) },
-          activationInventoryCredits: { ...(saved?.activationInventoryCredits || {}) },
         };
       } catch {
         return this.defaultState();
@@ -252,7 +248,7 @@
             mission.passivePriorityAxis ||
             pattern.autonomyAxis ||
             null,
-          journalIntro: narrativeText(mission.narrative?.revealed?.[0]),
+          journalIntro: mission.narrative?.revealed?.[0] || "",
           bible: {
             version: VERSION,
             pattern: mission.pattern
@@ -340,7 +336,7 @@
           mission.passivePriorityAxis ||
           pattern.autonomyAxis ||
           null,
-        journalIntro: narrativeText(mission.narrative?.revealed?.[0]),
+        journalIntro: mission.narrative?.revealed?.[0] || "",
         bible: {
           version: VERSION,
           pattern: mission.pattern
@@ -576,6 +572,55 @@
       );
     }
 
+    narrativeDisplayDuration(text) {
+      const length = String(text || "").trim().length;
+      return Math.min(12000, Math.max(4500, 3000 + length * 40));
+    }
+
+    queueNarrativeLine(payload) {
+      this.narrativeQueue = this.narrativeQueue || [];
+      this.narrativeQueue.push(payload);
+      if (this.narrativeTimer) return;
+
+      const playNext = () => {
+        const next = this.narrativeQueue.shift();
+        if (!next) {
+          this.narrativeTimer = null;
+          return;
+        }
+
+        const engine = BF.currentEngine;
+        const now = performance.now();
+        const duration = this.narrativeDisplayDuration(next.text);
+        if (engine) {
+          engine.speechQuietUntil = Math.max(
+            Number(engine.speechQuietUntil) || 0,
+            now + duration
+          );
+          engine.lastSpeechAt = now;
+          engine.lastFatigueSpeechAt = now;
+          if (engine.speechVisible !== false) {
+            engine.callbacks?.onSpeak?.(next.text);
+          }
+          engine.callbacks?.onAction?.(next.text);
+        }
+
+        BF.addJournalEntry?.({
+          id: next.id,
+          type: "bible",
+          title: next.title,
+          text: next.text,
+          mapId: next.mapId,
+          zoneId: next.zoneId,
+          important: next.important
+        });
+
+        this.narrativeTimer = global.setTimeout?.(playNext, duration) || null;
+      };
+
+      playNext();
+    }
+
     emitNarrative(mission, moment, context = {}) {
       const lines = mission?.narrative?.[moment] || [];
       if (!lines.length) return false;
@@ -588,21 +633,14 @@
 
         if (!text) return;
 
-        if (item?.route === "journal") {
-          BF.addJournalEntry?.({
-            id: `bible:${mission.id}:${moment}:${index}:${Date.now()}`,
-            type: "bible",
-            title: mission.title,
-            text,
-            mapId: context.mapId ?? BF.currentEngine?.currentMapId ?? null,
-            zoneId: context.zoneId ?? BF.currentEngine?.currentZoneIndex ?? null,
-            important: moment === "revealed" || moment === "completed"
-          });
-          return;
-        }
-
-        BF.currentEngine?.callbacks?.onSpeak?.(text);
-        BF.currentEngine?.callbacks?.onAction?.(text);
+        this.queueNarrativeLine({
+          id: `bible:${mission.id}:${moment}:${index}:${Date.now()}`,
+          title: mission.title,
+          text,
+          mapId: context.mapId ?? BF.currentEngine?.currentMapId ?? null,
+          zoneId: context.zoneId ?? BF.currentEngine?.currentZoneIndex ?? null,
+          important: moment === "revealed" || moment === "completed"
+        });
       });
 
       return true;
@@ -709,7 +747,7 @@
           performance.now() + 3500
         );
 
-        this.emitRevealedOnce(mission, event);
+        this.emitNarrative(mission, "revealed", event);
         this.lastActivationAttempt = diagnostic;
 
         global.dispatchEvent?.(
@@ -885,15 +923,6 @@
       return found;
     }
 
-    emitRevealedOnce(mission, context = {}) {
-      const key = `${mission.id}:revealed`;
-      if (this.state.progressNarrative[key]) return false;
-
-      this.state.progressNarrative[key] = Date.now();
-      this.saveState();
-      return this.emitNarrative(mission, "revealed", context);
-    }
-
     emitProgressNarrative(mission, entry) {
       for (const [index, milestone] of
         (mission.narrative?.progress || []).entries()) {
@@ -924,21 +953,15 @@
         this.state.progressNarrative[key] = Date.now();
         this.saveState();
 
-        if (milestone.route === "journal") {
-          BF.addJournalEntry?.({
-            id: `bible:${key}`,
-            type: "bible",
-            title: mission.title,
-            text: milestone.text,
-            mapId: BF.currentEngine?.currentMapId || null,
-            zoneId: BF.currentEngine?.currentZoneIndex ?? null,
-            important: false
-          });
-          continue;
-        }
-
-        BF.currentEngine?.callbacks?.onSpeak?.(milestone.text);
-        BF.currentEngine?.callbacks?.onAction?.(milestone.text);
+        BF.addJournalEntry?.({
+          id: `bible:${key}`,
+          type: "bible",
+          title: mission.title,
+          text: milestone.text,
+          mapId: BF.currentEngine?.currentMapId || null,
+          zoneId: BF.currentEngine?.currentZoneIndex ?? null,
+          important: false
+        });
       }
     }
 
@@ -1495,44 +1518,6 @@
       return created;
     }
 
-    applyActivationInventoryCredits(mission) {
-      const credits = asArray(mission?.activationInventoryCredits)
-        .filter((credit) => credit?.slot && credit?.inventoryKey);
-      if (!credits.length) return false;
-
-      const key = `${mission.id}:v${mission.version || 1}`;
-      if (this.state.activationInventoryCredits[key]) return false;
-
-      const manager = this.manager();
-      const tree = manager?.trees?.get?.(mission.id);
-      if (!manager || !tree) return false;
-
-      let changed = false;
-      credits.forEach((credit) => {
-        const node = tree.find?.(`${mission.id}:${credit.slot}`);
-        if (!node || node.isComplete) return;
-        const available = Math.max(
-          0,
-          Number(BF.progression?.availableInventory?.([credit.inventoryKey])) || 0
-        );
-        const maximum = Math.max(0, Number(credit.maximum) || node.target || 0);
-        const credited = Math.min(node.target, maximum || node.target, available);
-        if (credited <= Number(node.progress || 0)) return;
-        const delta = credited - Number(node.progress || 0);
-        changed = node.increment?.(delta) === true || changed;
-      });
-
-      this.state.activationInventoryCredits[key] = Date.now();
-      this.saveState();
-      if (changed) {
-        tree.refresh?.();
-        manager.memory?.saveTree?.(tree);
-        manager.syncLifecycleFromTrees?.();
-        manager.publish?.();
-      }
-      return changed;
-    }
-
     onMissionState(state) {
       this.migrateLegacyRationUnlock();
       for (const mission of this.catalog) {
@@ -1541,11 +1526,6 @@
 
         const lifecycle =
           this.manager()?.memory?.state?.missionLifecycle?.[mission.id];
-
-        if (lifecycle?.status === "active") {
-          this.emitRevealedOnce(mission);
-          this.applyActivationInventoryCredits(mission);
-        }
 
         if (lifecycle?.status === "completed") {
           this.unlockResearchRewards(mission);

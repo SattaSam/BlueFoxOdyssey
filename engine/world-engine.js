@@ -2567,7 +2567,7 @@
         const fatigueDuration = BF.getSurvivalState?.().fatigue?.actionDuration || 1;
         this.interactionDuration = Math.max(900, duration * 1000 * fatigueDuration);
         this.callbacks.onAction(profile.actionText);
-        if (this.speechVisible && now - this.lastSpeechAt > 3200) {
+        if (this.speechVisible && now >= this.speechQuietUntil && now - this.lastSpeechAt > 3200) {
           this.callbacks.onSpeak(profile.speechText);
           this.lastSpeechAt = now;
         }
@@ -2654,7 +2654,7 @@
 
       this.lastAutonomyAt = now;
       if (survival.needs?.criticalRest) {
-        if (this.speechVisible && now - this.lastFatigueSpeechAt > 15000) {
+        if (this.speechVisible && now >= this.speechQuietUntil && now - this.lastFatigueSpeechAt > 15000) {
           this.callbacks.onSpeak("Je suis fatigué, j’ai besoin de récupérer avant de continuer.");
           this.lastFatigueSpeechAt = now;
         }
@@ -2666,7 +2666,7 @@
       }
 
       if (this.autonomyActionStreak >= this.autonomyBreakTarget) {
-        if (this.speechVisible && Math.random() < 0.45 && now - this.lastFatigueSpeechAt > 12000) {
+        if (this.speechVisible && now >= this.speechQuietUntil && Math.random() < 0.45 && now - this.lastFatigueSpeechAt > 12000) {
           const phrases = [
             "Je prends un instant pour respirer.",
             "Une petite pause, puis je reprends.",
