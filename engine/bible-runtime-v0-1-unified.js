@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions = BF.Missions || {};
-  const VERSION = "0.1-clean-base";
+  const VERSION = "0.2-map-scoped-construction";
   const STORAGE_KEY = "bluefox_bible_runtime_v0_1_unified";
 
   const clone = (value) =>
@@ -29,6 +29,9 @@
         : Object.values(BF.BibleCatalog || {});
       this.byId = new Map(this.catalog.map((mission) => [mission.id, mission]));
       this.state = this.loadState();
+      this.dynamicMissions = new Map();
+      this.activePlacement = null;
+      this.restoreConstructionInstances();
 
       // Migration de structure uniquement : l'ancien runtime utilisait une
       // seconde vérité "revealed/completed" qui pouvait empêcher une mission
@@ -62,6 +65,7 @@
         effectsApplied: {},
         gatesSatisfied: {},
         activationInventoryCredits: {},
+        constructionInstances: {},
       };
     }
 
@@ -80,6 +84,7 @@
           effectsApplied: { ...(saved?.effectsApplied || {}) },
           gatesSatisfied: { ...(saved?.gatesSatisfied || {}) },
           activationInventoryCredits: { ...(saved?.activationInventoryCredits || {}) },
+          constructionInstances: { ...(saved?.constructionInstances || {}) },
         };
       } catch {
         return this.defaultState();
@@ -96,6 +101,157 @@
       } catch {
         return false;
       }
+    }
+
+    allMissions() {
+      return [...this.catalog, ...this.dynamicMissions.values()];
+    }
+
+    constructionTemplate(kind) {
+      return BF.BibleConstructionTemplates?.[lower(kind)] || null;
+    }
+
+    constructionMissionId(kind, mapId) {
+      return `${String(kind || "").trim().toUpperCase()}@${String(mapId || "").trim()}`;
+    }
+
+    buildConstructionMission(kind, mapId, source = "player") {
+      const normalizedKind = lower(kind);
+      const targetMapId = String(mapId || "").trim();
+      const template = this.constructionTemplate(normalizedKind);
+      if (!template || !targetMapId) return null;
+      const id = this.constructionMissionId(normalizedKind, targetMapId);
+      return {
+        ...clone(template),
+        id,
+        title: template.title,
+        constructionMission: true,
+        constructionKind: normalizedKind,
+        targetMapId,
+        instanceScope: "map",
+        activationSource: source === "autonomy" ? "autonomy" : "player",
+        trigger: { type: "manual" },
+        completionGate: {
+          type: "proximity.shelter",
+          mapId: targetMapId,
+          shelterKinds: [normalizedKind],
+          radius: 9999,
+          scope: "current-map"
+        }
+      };
+    }
+
+    restoreConstructionInstances() {
+      Object.values(this.state?.constructionInstances || {}).forEach((record) => {
+        const mission = this.buildConstructionMission(
+          record?.kind,
+          record?.mapId,
+          record?.source || "player"
+        );
+        if (!mission) return;
+        this.dynamicMissions.set(mission.id, mission);
+        this.byId.set(mission.id, mission);
+      });
+    }
+
+    registerDynamicMission(mission) {
+      if (!mission?.id) return false;
+      this.dynamicMissions.set(mission.id, mission);
+      this.byId.set(mission.id, mission);
+      const compiled = this.compileMission(mission);
+      if (!compiled || typeof BF.registerMissionDefinitions !== "function") {
+        return false;
+      }
+      BF.registerMissionDefinitions([compiled]);
+      return Boolean(Missions.getDefinition?.(mission.id));
+    }
+
+    siteBucket(mapId) {
+      const memory = this.manager()?.memory;
+      const raw = memory?.state?.siteProgression?.[mapId] || null;
+      if (!raw) return { camp: null, refuge: null, base: null };
+      const sites = raw.sites && typeof raw.sites === "object"
+        ? raw.sites
+        : { [raw.kind]: raw };
+      return {
+        camp: sites.camp || null,
+        refuge: sites.refuge || null,
+        base: sites.base || null
+      };
+    }
+
+    constructionAvailability(kind, mapId = BF.currentEngine?.currentMapId) {
+      const normalizedKind = lower(kind);
+      const targetMapId = String(mapId || "");
+      const rewardId = normalizedKind === "camp"
+        ? "camp-establish-v1"
+        : normalizedKind === "refuge"
+          ? "refuge-build-v1"
+          : null;
+      const missionId = this.constructionMissionId(normalizedKind, targetMapId);
+      const lifecycle = this.missionLifecycle(missionId);
+      const sites = this.siteBucket(targetMapId);
+      const unlocked = Boolean(rewardId && this.isResearchRewardUnlocked(rewardId));
+      let allowed = unlocked && Boolean(targetMapId) && !lifecycle.active && !lifecycle.completed;
+      let reason = "Disponible sur cette map.";
+
+      if (!unlocked) {
+        allowed = false;
+        reason = "Plan non débloqué.";
+      } else if (lifecycle.active) {
+        allowed = false;
+        reason = "Construction déjà suivie dans les missions actives.";
+      } else if (normalizedKind === "camp" && (sites.camp || sites.refuge || sites.base)) {
+        allowed = false;
+        reason = "Une infrastructure est déjà implantée sur cette map.";
+      } else if (normalizedKind === "refuge" && !sites.camp) {
+        allowed = false;
+        reason = "Un camp doit d'abord être établi sur cette map.";
+      } else if (normalizedKind === "refuge" && (sites.refuge || sites.base)) {
+        allowed = false;
+        reason = "Un refuge ou une base existe déjà sur cette map.";
+      }
+
+      return {
+        kind: normalizedKind,
+        mapId: targetMapId,
+        missionId,
+        rewardId,
+        unlocked,
+        active: lifecycle.active,
+        completed: lifecycle.completed,
+        allowed,
+        reason,
+        sites
+      };
+    }
+
+    startConstruction(kind, options = {}) {
+      const targetMapId = String(options.mapId || BF.currentEngine?.currentMapId || "");
+      const source = options.source === "autonomy" ? "autonomy" : "player";
+      const availability = this.constructionAvailability(kind, targetMapId);
+      if (!availability.allowed) return false;
+      const mission = this.buildConstructionMission(kind, targetMapId, source);
+      if (!mission || !this.registerDynamicMission(mission)) return false;
+      this.state.constructionInstances[mission.id] = {
+        missionId: mission.id,
+        kind: mission.constructionKind,
+        mapId: targetMapId,
+        source,
+        createdAt: Date.now()
+      };
+      this.saveState();
+      const activated = this.activateMission(mission, {
+        type: source === "autonomy" ? "autonomy.construction" : "research.blueprint",
+        mapId: targetMapId,
+        subject: mission.constructionKind
+      });
+      if (!activated) return false;
+      this.applyActivationInventoryCredits(mission);
+      global.dispatchEvent?.(new CustomEvent("bluefox:construction-mission-started", {
+        detail: { missionId: mission.id, kind: mission.constructionKind, mapId: targetMapId, source }
+      }));
+      return mission.id;
     }
 
     validate() {
@@ -195,7 +351,7 @@
       if (mission.pattern === "SEQUENCE_ACTIONS") {
         const steps = asArray(mission.sequence)
           .filter((step) => step && typeof step === "object");
-        if (steps.length < 2) return null;
+        if (steps.length < (mission.constructionMission === true ? 1 : 2)) return null;
 
         const nodeIds = steps.map((step, index) =>
           `${mission.id}:${step.slot || `step${index + 1}`}`
@@ -249,6 +405,8 @@
           id: mission.id,
           title: mission.title,
           description: mission.description || "",
+          instanceScope: mission.instanceScope || null,
+          targetMapId: mission.targetMapId || null,
           priority: Number(mission.priority) || 0,
           passivePriorityAxis:
             mission.passivePriorityAxis ||
@@ -337,6 +495,8 @@
         id: mission.id,
         title: mission.title,
         description: mission.description || "",
+        instanceScope: mission.instanceScope || null,
+        targetMapId: mission.targetMapId || null,
         priority: Number(mission.priority) || 0,
         passivePriorityAxis:
           mission.passivePriorityAxis ||
@@ -364,7 +524,7 @@
         return { ...report, registered: 0 };
       }
 
-      const definitions = this.catalog
+      const definitions = this.allMissions()
         .map((mission) => this.compileMission(mission))
         .filter(Boolean);
 
@@ -531,10 +691,6 @@
           return;
         }
 
-        // Certains landmarks de peuplement utilisent directement le contenu
-        // d'une MicroScene sans passer par spawnMicroScene(). Leur identifiant
-        // de catalogue est conservé dans biomeLandmark ; une même MSC de ce
-        // type compte donc elle aussi comme une seule entité.
         const landmarkId = String(
           data.biomeLandmark || rootData.biomeLandmark || ""
         );
@@ -545,8 +701,6 @@
           return;
         }
 
-        // Une MSC absente du registre initial du peuplement a été ajoutée
-        // après la construction de la map : elle ne modifie jamais le compteur.
         if (data.microSceneId || rootData.microSceneId) return;
 
         const key = this.observationObjectKey(mapId, object, engine);
@@ -570,8 +724,6 @@
 
       const coverage = this.observationMemory();
       if (coverage.maps?.[mapId]?.frozen === true) {
-        // Le résolveur runtime doit tout de même être prêt après un reload,
-        // mais aucune donnée persistante n'est recalculée ni réenregistrée.
         this.buildObservationResolver(engine);
         return false;
       }
@@ -675,8 +827,6 @@
         next.mapsReached100 = [...reached100];
       }
 
-      // setFact marque MissionMemory dirty. Cette écriture n'arrive que pour
-      // une nouvelle entité réellement observée ; les doublons sortent avant.
       manager.memory.setFact(this.observationMemoryKey(), next);
 
       global.dispatchEvent?.(
@@ -1182,11 +1332,7 @@
     }
 
     onMapTransition(detail) {
-      // La transition est émise après chargement de la map courante. On fige
-      // ici son catalogue observable dès la première arrivée, y compris pour
-      // une map déjà générée/sauvegardée avant le démarrage du runtime.
-      // captureObservationMap() est dirty-only : si le snapshot existe déjà,
-      // aucune donnée persistante n'est recalculée ni réenregistrée.
+      // La transition est émise après chargement de la map courante.
       this.captureObservationMap(BF.currentEngine);
 
       const event = {
@@ -1209,6 +1355,8 @@
           type: "exploration.map_discovered"
         }, { allowActivation: !crossing.activatedMissionId });
       }
+      this.reviewConstructionReadiness();
+      this.scheduleCurrentSiteRestore(event.mapId);
     }
 
     isActivationEvent(eventId) {
@@ -1301,7 +1449,6 @@
       if (!engine?.scene) return [];
 
       const result = [];
-
       engine.scene.traverse?.((object) => {
         const id = lower(
           object?.userData?.catalogId ||
@@ -1309,39 +1456,19 @@
           object?.userData?.functional?.id ||
           object?.name
         );
-
         if (!id) return;
-
         let kind = null;
         if (id.includes("refuge")) kind = "refuge";
         else if (id.includes("base")) kind = "base";
-        else if (
-          id === "camp" ||
-          id.includes("camp_") ||
-          id.includes("_camp")
-        ) {
-          kind = "camp";
-        }
-
+        else if (id === "camp" || id.includes("camp_") || id.includes("_camp")) kind = "camp";
         if (kind) result.push({ kind, object });
       });
 
-      const site = this.manager()?.memory?.state?.siteProgression?.[
-        engine.currentMapId
-      ];
-      if (
-        Number(site?.stage) >= 1 &&
-        ["camp", "refuge", "base"].includes(site?.kind) &&
-        Number.isFinite(Number(site?.anchor?.x)) &&
-        Number.isFinite(Number(site?.anchor?.z))
-      ) {
-        result.push({
-          kind: site.kind,
-          site: true,
-          position: site.anchor
-        });
-      }
-
+      const sites = this.siteBucket(engine.currentMapId);
+      Object.values(sites).filter(Boolean).forEach((site) => {
+        if (!Number.isFinite(Number(site?.anchor?.x)) || !Number.isFinite(Number(site?.anchor?.z))) return;
+        result.push({ kind: site.kind, site: true, id: site.id, position: site.anchor });
+      });
       return result;
     }
 
@@ -1349,63 +1476,71 @@
       const gate = mission?.completionGate;
       if (!gate) return true;
       if (this.state.gatesSatisfied[mission.id]) return true;
-      if (gate.type !== "proximity.shelter") return false;
 
       const engine = BF.currentEngine;
+      const requiredMapId = gate.mapId != null ? String(gate.mapId) : null;
+      if (gate.type !== "proximity.shelter") return false;
+
       const p = engine?.character?.root?.position;
       if (!p) return false;
-
-      const allowed = new Set(
-        gate.shelterKinds || ["camp", "refuge", "base"]
-      );
+      const allowed = new Set(gate.shelterKinds || ["camp", "refuge", "base"]);
       const radius = Math.max(0.5, Number(gate.radius) || 8);
-      const requiredMapId = gate.mapId != null
-        ? String(gate.mapId)
-        : null;
-      const requiredSiteId = gate.siteId != null
-        ? String(gate.siteId)
-        : null;
-
-      if (
-        requiredMapId != null &&
-        String(engine.currentMapId || "") !== requiredMapId
-      ) {
-        return false;
-      }
+      const requiredSiteId = gate.siteId != null ? String(gate.siteId) : null;
+      if (requiredMapId != null && String(engine.currentMapId || "") !== requiredMapId) return false;
 
       const satisfied = this.shelterObjects().some((record) => {
         if (!allowed.has(record.kind)) return false;
-
         const recordSiteId = String(
           record.object?.userData?.establishedSite ||
           record.object?.userData?.siteId ||
-          record.id ||
-          ""
+          record.id || ""
         );
-        if (requiredSiteId != null && recordSiteId !== requiredSiteId) {
-          return false;
-        }
-
+        if (requiredSiteId != null && recordSiteId !== requiredSiteId) return false;
         const q = record.object?.getWorldPosition
-          ? record.object.getWorldPosition(
-              new engine.THREE.Vector3()
-            )
+          ? record.object.getWorldPosition(new engine.THREE.Vector3())
           : record.position;
-
         return q && Math.hypot(p.x - q.x, p.z - q.z) <= radius;
       });
-
       if (satisfied) {
         this.state.gatesSatisfied[mission.id] = Date.now();
         this.saveState();
       }
-
       return satisfied;
     }
 
     canFinalizeMission(missionId) {
       const mission = this.byId.get(missionId);
-      return !mission?.completionGate || this.gateSatisfied(mission);
+      if (!mission?.completionGate) return true;
+
+      const establish = this.constructionPlacementEffect(mission);
+      if (establish) {
+        const kind = lower(establish.kind);
+        const mapId = String(
+          mission.targetMapId ||
+          mission.completionGate?.mapId ||
+          ""
+        );
+        const site = mapId ? this.siteBucket(mapId)?.[kind] : null;
+        const established =
+          Boolean(site) &&
+          String(site.mapId || "") === mapId &&
+          String(site.missionId || "") === String(mission.id || "");
+
+        // Pour une construction répétable, un ancien gate/receipt ne constitue
+        // jamais une preuve de fin : le site réel de CETTE mission doit exister.
+        if (!established) {
+          delete this.state.gatesSatisfied[mission.id];
+          return false;
+        }
+
+        if (!this.state.gatesSatisfied[mission.id]) {
+          this.state.gatesSatisfied[mission.id] = Date.now();
+          this.saveState();
+        }
+        return true;
+      }
+
+      return this.gateSatisfied(mission);
     }
 
     updateCompletionGates(now = performance.now()) {
@@ -1413,7 +1548,7 @@
       this.lastGateReviewAt = now;
       const manager = this.manager();
       if (!manager) return false;
-      const waiting = this.catalog.some((mission) => {
+      const waiting = this.allMissions().some((mission) => {
         if (!mission.completionGate) return false;
         const lifecycle = manager.memory?.state?.missionLifecycle?.[mission.id];
         const tree = manager.trees?.get?.(mission.id);
@@ -1450,7 +1585,17 @@
             ) {
               const lifecycle = this.ensureLifecycle(missionId);
               lifecycle.status = "active";
+              lifecycle.completedAt = 0;
               lifecycle.waitingForBibleGate = true;
+              const mission = runtime.byId.get(missionId);
+              const kind = runtime.constructionPlacementEffect(mission)?.kind;
+              const targetMapId = String(
+                mission?.targetMapId || mission?.completionGate?.mapId || ""
+              );
+              lifecycle.waitingForBibleGateMessage =
+                kind === "refuge"
+                  ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
+                  : `Rendez-vous sur ${targetMapId} pour établir le camp.`;
 
               if (!this.activeMissionIds.includes(missionId)) {
                 this.activeMissionIds.push(missionId);
@@ -1459,12 +1604,15 @@
             }
 
             const lifecycle = this.ensureLifecycle(missionId);
+            const wasWaitingForBibleGate = lifecycle.waitingForBibleGate === true;
             if (lifecycle.status !== "completed") changed = true;
             lifecycle.status = "completed";
-            lifecycle.completedAt =
-              tree.root.completedAt || Date.now();
+            lifecycle.completedAt = wasWaitingForBibleGate
+              ? Date.now()
+              : (tree.root.completedAt || Date.now());
 
             delete lifecycle.waitingForBibleGate;
+            delete lifecycle.waitingForBibleGateMessage;
 
             this.activeMissionIds =
               this.activeMissionIds.filter((id) => id !== missionId);
@@ -1528,6 +1676,7 @@
     }
 
     applyCanonicalSitePlacement(site, engine = BF.currentEngine) {
+      if (site?.placementSource === "player") return site;
       const preset = this.sitePlacementPreset(site?.microSceneId, engine);
       if (!preset?.position) return site;
       site.anchor = clone(preset.position);
@@ -1587,7 +1736,24 @@
       return this.attachSiteRecords(records, site, engine);
     }
 
-    applyEffects(mission) {
+    storeSite(site, memory = this.manager()?.memory) {
+      if (!memory || !site?.mapId || !site?.kind) return false;
+      memory.state.siteProgression = memory.state.siteProgression || {};
+      const previous = memory.state.siteProgression[site.mapId] || null;
+      const previousSites = previous?.sites && typeof previous.sites === "object"
+        ? { ...previous.sites }
+        : previous?.kind
+          ? { [previous.kind]: previous }
+          : {};
+      previousSites[site.kind] = site;
+      memory.state.siteProgression[site.mapId] = {
+        ...site,
+        sites: previousSites
+      };
+      return true;
+    }
+
+    applyEffects(mission, options = {}) {
       const effects = mission.effects || [];
       if (!effects.length) return true;
       const memory = this.manager()?.memory;
@@ -1597,47 +1763,442 @@
         this.renderCurrentSite();
         return true;
       }
-      const consume = effects.find((effect) => effect.type === "inventory.consume");
+      const consumes = effects.filter((effect) => effect.type === "inventory.consume");
       const establish = effects.find((effect) => effect.type === "site.establish");
       if (!establish || !BF.MicroScenes?.get?.(establish.microSceneId)) return false;
-      const placement = this.resolveSitePlacement(establish);
-      if (!placement) return false;
-      if (consume) {
-        const quantity = Number(consume.quantity) || 0;
-        if ((BF.progression?.availableInventory?.([consume.inventoryKey]) || 0) < quantity) {
-          return false;
-        }
-        const removed = BF.consumeInventoryPoolOnce?.(
-          receiptId, [consume.inventoryKey], quantity
-        );
-        if (removed !== quantity) return false;
+      const targetMapId = String(mission.targetMapId || mission.completionGate?.mapId || BF.currentEngine?.currentMapId || "");
+      if (!targetMapId || targetMapId !== BF.currentEngine?.currentMapId) return false;
+
+      const activationSource =
+        mission.activationSource ||
+        this.state.constructionInstances?.[mission.id]?.source ||
+        "system";
+      const playerConstruction =
+        activationSource === "player" &&
+        Boolean(this.constructionPlacementEffect(mission));
+
+      // Une construction répétable déclenchée par le joueur ne peut jamais
+      // tomber sur resolveSitePlacement()/un preset implicite. Seul le callback
+      // Installer de la popup peut fournir le jeton de confirmation courant.
+      if (
+        playerConstruction &&
+        (
+          options.source !== "player" ||
+          options.confirmationToken !== this.activePlacement?.confirmationToken ||
+          this.activePlacement?.missionId !== mission.id ||
+          !options.placement?.anchor
+        )
+      ) {
+        return false;
       }
-      const mapId = BF.currentEngine?.currentMapId;
+
+      const placement = options.placement || this.resolveSitePlacement(establish);
+      if (!placement?.anchor) return false;
+
+      for (const consume of consumes) {
+        const quantity = Math.max(0, Number(consume.quantity) || 0);
+        if ((BF.progression?.availableInventory?.([consume.inventoryKey]) || 0) < quantity) return false;
+      }
+
       const site = {
-        id: `${mapId}:${establish.kind}:primary`,
+        id: `${targetMapId}:${establish.kind}:primary`,
         stage: Math.max(1, Number(establish.stage) || 1),
         kind: establish.kind,
-        mapId,
+        mapId: targetMapId,
         missionId: mission.id,
         microSceneId: establish.microSceneId,
         anchor: clone(placement.anchor),
-        rotation: placement.rotation.slice(),
+        rotation: Array.isArray(placement.rotation) ? placement.rotation.slice() : [0, 0, 0],
+        placementSource: options.source || mission.activationSource || "system",
         interactionRadius: 8,
         establishedAt: Date.now()
       };
-      memory.state.siteProgression[mapId] = site;
+
+      // Le spawn est tenté avant la consommation : un échec graphique ne doit
+      // jamais détruire des ressources ni valider la mission.
+      if (!this.renderSite(site)) return false;
+
+      for (const [index, consume] of consumes.entries()) {
+        const quantity = Math.max(0, Number(consume.quantity) || 0);
+        if (!quantity) continue;
+        const removed = BF.consumeInventoryPoolOnce?.(
+          `${receiptId}:consume:${index}`,
+          [consume.inventoryKey],
+          quantity
+        );
+        if (removed !== quantity) return false;
+      }
+
+      this.storeSite(site, memory);
       memory.recordEffectReceipt?.(receiptId, { missionId: mission.id, siteId: site.id });
       memory.save?.();
-      this.renderSite(site);
+      this.state.gatesSatisfied[mission.id] = Date.now();
+      this.state.effectsApplied[mission.id] = Date.now();
+      this.saveState();
       return true;
     }
 
     renderCurrentSite(engine = BF.currentEngine) {
       const mapId = engine?.currentMapId;
-      const site = engine?.missionManager?.memory?.state?.siteProgression?.[mapId];
-      if (!site) return false;
-      this.applyCanonicalSitePlacement(site, engine);
-      return this.renderSite(site, engine);
+      if (!mapId) return false;
+      const sites = this.siteBucket(mapId);
+      let rendered = false;
+      Object.values(sites).filter(Boolean).forEach((site) => {
+        this.applyCanonicalSitePlacement(site, engine);
+        rendered = this.renderSite(site, engine) || rendered;
+      });
+      return rendered;
+    }
+
+    scheduleCurrentSiteRestore(mapId = BF.currentEngine?.currentMapId) {
+      const expectedMapId = mapId != null ? String(mapId) : "";
+      const delays = [0, 80, 220, 500, 900, 1600, 2800];
+      delays.forEach((delay) => {
+        global.setTimeout?.(() => {
+          const engine = BF.currentEngine;
+          const currentMapId = String(engine?.currentMapId || "");
+          if (!currentMapId) return;
+          if (expectedMapId && currentMapId !== expectedMapId) return;
+          if (!engine?.currentMap?.group || !BF.ObjectSpawner) return;
+          if (!this.siteBucket(currentMapId).camp &&
+              !this.siteBucket(currentMapId).refuge &&
+              !this.siteBucket(currentMapId).base) return;
+          this.renderCurrentSite(engine);
+        }, delay);
+      });
+      return true;
+    }
+
+    constructionPlacementEffect(mission) {
+      return asArray(mission?.effects).find((effect) => effect?.type === "site.establish") || null;
+    }
+
+    autonomousPlacement(mission) {
+      const engine = BF.currentEngine;
+      const effect = this.constructionPlacementEffect(mission);
+      if (!engine?.character?.root || !effect) return null;
+      const kind = lower(effect.kind);
+
+      if (kind === "refuge") {
+        const camp = this.siteBucket(mission.targetMapId).camp;
+        if (!camp?.anchor) return null;
+        const campPreset = this.sitePlacementPreset("MSC-CUSTOM-CAMP", engine);
+        const refugePreset = this.sitePlacementPreset(effect.microSceneId, engine);
+        const campYaw = Number(camp.rotation?.[1]) || 0;
+        let dx = 6;
+        let dz = 2;
+        if (campPreset?.position && refugePreset?.position) {
+          dx = Number(refugePreset.position.x) - Number(campPreset.position.x);
+          dz = Number(refugePreset.position.z) - Number(campPreset.position.z);
+        }
+        const baseDistance = Math.max(5, Math.hypot(dx, dz));
+        const baseAngle = Math.atan2(dz, dx) + campYaw;
+        for (const angleOffset of [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]) {
+          const angle = baseAngle + angleOffset;
+          const placement = {
+            anchor: {
+              x: Number(camp.anchor.x) + Math.cos(angle) * baseDistance,
+              y: Number(camp.anchor.y) || 0,
+              z: Number(camp.anchor.z) + Math.sin(angle) * baseDistance
+            },
+            rotation: [0, campYaw + angleOffset + Math.PI / 6, 0]
+          };
+          if (this.sitePlacementValid(mission, placement, engine)) return placement;
+        }
+        return null;
+      }
+
+      const p = engine.character.root.position;
+      const baseAngle = ((String(mission.id).length * 47) % 360) * Math.PI / 180;
+      for (const radius of [7, 10, 13]) {
+        for (let index = 0; index < 8; index += 1) {
+          const angle = baseAngle + index * Math.PI / 4;
+          const placement = {
+            anchor: {
+              x: p.x + Math.cos(angle) * radius,
+              y: 0,
+              z: p.z + Math.sin(angle) * radius
+            },
+            rotation: [0, angle + Math.PI, 0]
+          };
+          if (this.sitePlacementValid(mission, placement, engine)) return placement;
+        }
+      }
+      return null;
+    }
+
+
+    cleanupPlacement() {
+      const placement = this.activePlacement;
+      if (!placement) return false;
+      const { canvas, previewRoot, handlers, clonedMaterials } = placement;
+      Object.entries(handlers || {}).forEach(([type, handler]) => {
+        const target = type === "keydown" ? global : canvas;
+        target?.removeEventListener?.(type, handler, true);
+      });
+      previewRoot?.parent?.remove?.(previewRoot);
+      (clonedMaterials || []).forEach((material) => material?.dispose?.());
+      this.activePlacement = null;
+      global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-ended"));
+      return true;
+    }
+
+    sitePlacementValid(mission, placement, engine = BF.currentEngine) {
+      const effect = this.constructionPlacementEffect(mission);
+      const anchor = placement?.anchor;
+      if (!engine?.currentMap || !effect || !anchor) return false;
+      const scene = BF.MicroScenes?.get?.(effect.microSceneId);
+      const radius = Math.max(2, Number(scene?.radius) || 4);
+      const bounds = Number(engine.currentMap.bounds);
+      if (
+        Number.isFinite(bounds) &&
+        (
+          Math.abs(Number(anchor.x) || 0) > bounds - radius ||
+          Math.abs(Number(anchor.z) || 0) > bounds - radius
+        )
+      ) {
+        return false;
+      }
+      return !(engine.currentMap.colliders || []).some((collider) => {
+        const q = collider?.position;
+        if (!q) return false;
+        return Math.hypot(
+          (Number(anchor.x) || 0) - Number(q.x || 0),
+          (Number(anchor.z) || 0) - Number(q.z || 0)
+        ) < radius + Math.max(0, Number(collider.radius) || 0) + 0.6;
+      });
+    }
+
+    beginSitePlacement(mission) {
+      if (this.activePlacement?.missionId === mission?.id) return true;
+      if (this.activePlacement) this.cleanupPlacement();
+      const engine = BF.currentEngine;
+      const effect = this.constructionPlacementEffect(mission);
+      const canvas = engine?.renderer?.domElement;
+      if (!engine?.THREE || !engine?.raycaster || !engine?.groundPlane || !canvas || !effect) return false;
+      if (String(engine.currentMapId) !== String(mission.targetMapId || mission.completionGate?.mapId || engine.currentMapId)) return false;
+
+      const previewRoot = new engine.THREE.Group();
+      previewRoot.name = `BlueFoxSitePreview:${mission.id}`;
+      engine.currentMap?.group?.add(previewRoot);
+      const spawner = new BF.ObjectSpawner({
+        THREE: engine.THREE,
+        scene: previewRoot,
+        palette: BF.maps?.[engine.currentMapId]?.palette
+      });
+      const records = spawner.spawnMicroScene(effect.microSceneId, {
+        origin: { x: 0, y: 0, z: 0 },
+        rotation: [0, 0, 0],
+        scene: previewRoot,
+        force: true,
+        source: `preview:${mission.id}`
+      });
+      if (!records?.length) {
+        previewRoot.parent?.remove(previewRoot);
+        return false;
+      }
+      // Le preview conserve les matériaux réels de la MSC afin que le joueur
+      // juge précisément son apparence et sa rotation avant installation.
+      const clonedMaterials = [];
+      const setPreviewOpacity = () => {};
+
+      const confirmationToken = Symbol(`site-placement:${mission.id}`);
+      let yaw = 0;
+      let candidate = null;
+      let finalizing = false;
+      const movePreview = (event) => {
+        if (finalizing) return;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        engine.pointer.set(
+          ((event.clientX - rect.left) / rect.width) * 2 - 1,
+          -((event.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        engine.raycaster.setFromCamera(engine.pointer, engine.camera);
+        const point = new engine.THREE.Vector3();
+        if (!engine.raycaster.ray.intersectPlane(engine.groundPlane, point)) return;
+        candidate = { x: point.x, y: 0, z: point.z };
+        previewRoot.position.set(candidate.x, 0, candidate.z);
+        previewRoot.rotation.set(0, yaw, 0);
+        previewRoot.userData.validPlacement = this.sitePlacementValid(
+          mission,
+          { anchor: candidate, rotation: [0, yaw, 0] },
+          engine
+        );
+      };
+      const pointerup = (event) => {
+        // Le clic gauche reste intégralement au déplacement de BlueFox.
+        // Le clic droit confirme uniquement la position de la MSC.
+        if (event.button !== 2 || finalizing) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!candidate) return;
+        const placement = { anchor: { ...candidate }, rotation: [0, yaw, 0] };
+        if (!this.sitePlacementValid(mission, placement, engine)) {
+          engine.callbacks?.onStatus?.(
+            "Emplacement invalide : choisissez une zone libre à l'intérieur du plateau."
+          );
+          return;
+        }
+        finalizing = true;
+        const label = effect.kind === "refuge" ? "refuge" : "camp";
+        const cancel = () => {
+          finalizing = false;
+          engine.callbacks?.onStatus?.(
+            `Placement du ${label} repris. Choisissez un autre emplacement ou Échap pour annuler.`
+          );
+        };
+        const rotate = (nextYaw) => {
+          yaw = Number(nextYaw) || 0;
+          previewRoot.rotation.set(0, yaw, 0);
+        };
+        const install = () => {
+          const finalPlacement = {
+            anchor: { ...candidate },
+            rotation: [0, yaw, 0]
+          };
+          if (!this.sitePlacementValid(mission, finalPlacement, engine)) {
+            finalizing = false;
+            engine.callbacks?.onStatus?.("Emplacement devenu invalide.");
+            return false;
+          }
+          if (!this.applyEffects(mission, {
+            placement: finalPlacement,
+            source: "player",
+            confirmationToken
+          })) {
+            finalizing = false;
+            engine.callbacks?.onStatus?.(
+              "Construction impossible à cet emplacement ou ressources insuffisantes."
+            );
+            return false;
+          }
+          this.cleanupPlacement();
+          this.manager()?.syncLifecycleFromTrees?.();
+          this.manager()?.publish?.();
+          global.dispatchEvent?.(new CustomEvent("bluefox:site-established", {
+            detail: { missionId: mission.id, mapId: engine.currentMapId, kind: effect.kind }
+          }));
+          return true;
+        };
+        global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-finalize-request", {
+          detail: {
+            missionId: mission.id,
+            mapId: engine.currentMapId,
+            kind: effect.kind,
+            yaw,
+            onRotate: rotate,
+            onCancel: cancel,
+            onInstall: install
+          }
+        }));
+      };
+      const contextmenu = (event) => {
+        if (!this.activePlacement || finalizing) return;
+        event.preventDefault();
+      };
+      const keydown = (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-finalize-close", {
+          detail: { missionId: mission.id }
+        }));
+        this.cleanupPlacement();
+        engine.callbacks?.onStatus?.("Placement annulé. La mission reste active.");
+      };
+      const handlers = { pointermove: movePreview, pointerup, contextmenu, keydown };
+      Object.entries(handlers).forEach(([type, handler]) => {
+        const target = type === "keydown" ? global : canvas;
+        target.addEventListener(type, handler, {
+          capture: true,
+          passive: type === "pointermove"
+        });
+      });
+      this.activePlacement = {
+        missionId: mission.id,
+        canvas,
+        previewRoot,
+        handlers,
+        clonedMaterials,
+        confirmationToken
+      };
+      engine.callbacks?.onStatus?.(
+        "Placement : déplacez la structure avec la souris. Clic gauche : déplacement de BlueFox. Clic droit : confirmer la position. Molette : caméra. Échap : annuler."
+      );
+      global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-started", {
+        detail: { missionId: mission.id, mapId: engine.currentMapId, kind: effect.kind }
+      }));
+      return true;
+    }
+
+    handleConstructionReady(mission) {
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(mission?.id);
+      const lifecycle = manager?.memory?.state?.missionLifecycle?.[mission?.id];
+      if (!mission?.completionGate || !this.constructionPlacementEffect(mission)) return false;
+      if (lifecycle?.status !== "active" || !tree?.root?.isComplete) return false;
+      const targetMapId = String(mission.targetMapId || mission.completionGate.mapId || "");
+      if (!targetMapId) return false;
+      if (String(BF.currentEngine?.currentMapId || "") !== targetMapId) {
+        const messageKey = `${mission.id}:waiting-target-map`;
+        if (!this.state.progressNarrative[messageKey]) {
+          const kind = this.constructionPlacementEffect(mission)?.kind;
+          BF.currentEngine?.callbacks?.onStatus?.(
+            kind === "refuge"
+              ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
+              : `Rendez-vous sur ${targetMapId} pour établir le camp.`
+          );
+          this.state.progressNarrative[messageKey] = Date.now();
+          this.saveState();
+        }
+        return false;
+      }
+      if (this.gateSatisfied(mission)) {
+        manager.syncLifecycleFromTrees?.();
+        return true;
+      }
+      const source = mission.activationSource || this.state.constructionInstances?.[mission.id]?.source || "player";
+      if (source === "autonomy") {
+        const placement = this.autonomousPlacement(mission);
+        if (
+          !placement ||
+          !this.sitePlacementValid(mission, placement, BF.currentEngine) ||
+          !this.applyEffects(mission, { placement, source: "autonomy" })
+        ) return false;
+        manager.syncLifecycleFromTrees?.();
+        manager.publish?.();
+        return true;
+      }
+
+      // En mode joueur, la mission reste simplement "prête à positionner".
+      // L'ouverture du preview est une action UI explicite afin d'éviter toute
+      // reprise automatique après reload ou publication MissionManager.
+      return true;
+    }
+
+    resumeConstructionPlacement(missionId) {
+      const mission = this.byId.get(String(missionId || ""));
+      if (!mission || mission.activationSource === "autonomy") return false;
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(mission.id);
+      const lifecycle = manager?.memory?.state?.missionLifecycle?.[mission.id];
+      const targetMapId = String(
+        mission.targetMapId || mission.completionGate?.mapId || ""
+      );
+      if (
+        lifecycle?.status !== "active" ||
+        !tree?.root?.isComplete ||
+        !targetMapId ||
+        String(BF.currentEngine?.currentMapId || "") !== targetMapId ||
+        this.gateSatisfied(mission)
+      ) {
+        return false;
+      }
+      return this.beginSitePlacement(mission);
+    }
+
+    reviewConstructionReadiness() {
+      return this.allMissions().some((mission) => this.handleConstructionReady(mission));
     }
 
 
@@ -1758,7 +2319,7 @@
     canCraftResearchReward(id, count = 1, options = {}) {
       const reward = this.researchRewardById(id);
       const requested = Math.max(1, Math.floor(Number(count) || 1));
-      if (!reward || !["research.recipe", "research.blueprint"].includes(reward.type)) {
+      if (!reward || reward.type !== "research.recipe") {
         return false;
       }
       if (!options.ignoreUnlock && !this.isResearchRewardUnlocked(reward.id)) {
@@ -1888,12 +2449,6 @@
     }
 
     onMissionState(state) {
-      // MissionManager publie son premier état depuis son constructeur, avant
-      // que WorldEngine ait terminé l’affectation de this.missionManager.
-      // Une microtask unique reporte donc le snapshot au premier instant où
-      // la map chargée ET MissionMemory sont simultanément disponibles.
-      // captureObservationMap() reste dirty-only et ne réécrit jamais une map
-      // dont le catalogue observable a déjà été figé.
       if (!this.observationCaptureQueued) {
         this.observationCaptureQueued = true;
         const schedule = global.queueMicrotask || ((callback) => Promise.resolve().then(callback));
@@ -1904,34 +2459,53 @@
       }
 
       this.migrateLegacyRationUnlock();
-      for (const mission of this.catalog) {
+      for (const mission of this.allMissions()) {
         const entry = this.findMissionEntry(state, mission.id);
         if (entry) this.emitProgressNarrative(mission, entry);
 
+        const manager = this.manager();
         const lifecycle =
-          this.manager()?.memory?.state?.missionLifecycle?.[mission.id];
+          manager?.memory?.state?.missionLifecycle?.[mission.id];
+
+        if (
+          lifecycle?.status === "completed" &&
+          Boolean(this.constructionPlacementEffect(mission)) &&
+          !this.gateSatisfied(mission)
+        ) {
+          lifecycle.status = "active";
+          lifecycle.completedAt = 0;
+          lifecycle.waitingForBibleGate = true;
+          if (!manager.activeMissionIds.includes(mission.id)) {
+            manager.activeMissionIds.push(mission.id);
+          }
+          manager.memory?.save?.();
+          this.handleConstructionReady(mission);
+          continue;
+        }
 
         if (lifecycle?.status === "active") {
           this.emitRevealedOnce(mission);
           this.applyActivationInventoryCredits(mission);
+          this.handleConstructionReady(mission);
         }
 
-        if (lifecycle?.status === "completed") {
-          this.unlockResearchRewards(mission);
-        }
+        if (lifecycle?.status !== "completed") continue;
 
-        if (
-          lifecycle?.status === "completed" &&
-          !this.state.effectsApplied[mission.id]
-        ) {
-          if (this.applyEffects(mission)) {
+        let effectsReady = Boolean(this.state.effectsApplied[mission.id]);
+        if (!effectsReady) {
+          effectsReady = this.applyEffects(mission);
+          if (effectsReady) {
             this.state.effectsApplied[mission.id] = Date.now();
             this.saveState();
           }
-          this.emitCompletedOnce(mission);
         }
+        if (!effectsReady) continue;
+
+        this.unlockResearchRewards(mission);
+        this.emitCompletedOnce(mission);
       }
     }
+
 
     emitCompletedOnce(mission) {
       const key = `${mission.id}:completed`;
@@ -2027,9 +2601,10 @@
         missionLifecycleSource: "MissionManager/MissionMemory",
         strictContract: this.validate().ok,
         catalogCount: this.catalog.length,
-        registeredDefinitions: this.catalog.filter((mission) =>
+        registeredDefinitions: this.allMissions().filter((mission) =>
           Missions.getDefinition?.(mission.id)
         ).length,
+        constructionInstances: clone(this.state.constructionInstances),
         triggerCounts: clone(this.state.triggerCounts),
         lifecycle: Object.fromEntries(
           this.catalog.map((mission) => [
@@ -2049,6 +2624,10 @@
       this.installCompletionGate();
       this.connect();
       this.migrateLegacyRationUnlock();
+      // Le chargement initial de Crystal ne garantit pas l'émission d'une
+      // transition après que WorldEngine et ObjectSpawner soient prêts.
+      // On arme donc une restauration bornée, sans boucle permanente.
+      this.scheduleCurrentSiteRestore();
       this.started = true;
 
       console.info(
@@ -2098,7 +2677,14 @@
     canCraft: (id, count, options) =>
       runtime.canCraftResearchReward(id, count, options),
     craft: (id, count, options) =>
-      runtime.craftResearchReward(id, count, options)
+      runtime.craftResearchReward(id, count, options),
+    constructionState: (kind, mapId) =>
+      runtime.constructionAvailability(kind, mapId),
+    startConstruction: (kind, options) =>
+      runtime.startConstruction(kind, options),
+    resumePlacement: (missionId) =>
+      runtime.resumeConstructionPlacement(missionId),
+    cancelPlacement: () => runtime.cleanupPlacement()
   });
   BF.getResearchEntries = (options) =>
     runtime.researchEntries(options);

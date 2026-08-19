@@ -1350,6 +1350,106 @@
     }
   }
 
+  function ensureResearchEnhancementStyles() {
+    if (document.getElementById("bluefox-research-enhancement-styles")) return;
+    const style = document.createElement("style");
+    style.id = "bluefox-research-enhancement-styles";
+    style.textContent = `
+      .bluefox-research-runtime { margin: 18px 0; padding: 16px; border: 1px solid rgba(92,220,255,.28); border-radius: 14px; background: rgba(4,22,38,.76); }
+      .bluefox-research-runtime > span { display:block; margin-bottom:10px; color:#77dff7; font-size:10px; font-weight:800; letter-spacing:.12em; }
+      .bluefox-research-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+      .bluefox-research-card { display:flex; flex-direction:column; gap:7px; min-height:145px; padding:12px; border:1px solid rgba(124,226,255,.2); border-radius:11px; background:rgba(4,18,32,.72); }
+      .bluefox-research-card h3 { margin:0; font-size:14px; }
+      .bluefox-research-card p { margin:0; color:rgba(225,242,246,.78); font-size:11px; line-height:1.35; }
+      .bluefox-research-card small { color:rgba(180,220,228,.7); font-size:10px; }
+      .bluefox-research-card button { margin-top:auto; padding:8px 10px; border:1px solid rgba(96,224,255,.45); border-radius:999px; color:#eafcff; background:rgba(12,64,82,.82); cursor:pointer; }
+      .bluefox-research-card button:disabled { opacity:.42; cursor:not-allowed; filter:grayscale(.4); }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function enhanceResearch(panel) {
+    if (!panel?.textContent?.includes("Laboratoire de BlueFox")) return;
+    const research = global.BlueFox3D?.Research;
+    if (!research?.list) return;
+    const mapId = currentMapId(panel);
+    const entries = research.list({ unlockedOnly: true });
+    const constructionEntries = entries.filter((entry) => entry.type === "research.blueprint");
+    const states = constructionEntries.map((entry) => [
+      entry.id,
+      research.constructionState?.(entry.constructionKind, mapId) || null
+    ]);
+    const signature = JSON.stringify({
+      mapId,
+      entries: entries.map((entry) => entry.id),
+      states: states.map(([id, state]) => [id, state?.allowed, state?.active, state?.completed, state?.reason])
+    });
+    let section = panel.querySelector(".bluefox-research-runtime");
+    if (!section) {
+      section = document.createElement("section");
+      section.className = "bluefox-research-runtime";
+      const host = panel.querySelector(".research-layout") || panel.querySelector(".panel-content") || panel;
+      host.appendChild(section);
+    }
+    if (section.dataset.signature === signature) return;
+    section.dataset.signature = signature;
+    section.replaceChildren();
+    ensureResearchEnhancementStyles();
+
+    const heading = document.createElement("span");
+    heading.textContent = "PLANS ET RECETTES DÉBLOQUÉS";
+    const grid = document.createElement("div");
+    grid.className = "bluefox-research-grid";
+    section.append(heading, grid);
+
+    entries.forEach((entry) => {
+      const card = document.createElement("article");
+      card.className = "bluefox-research-card";
+      const title = document.createElement("h3");
+      title.textContent = entry.label || entry.id;
+      const description = document.createElement("p");
+      description.textContent = entry.description || "";
+      const status = document.createElement("small");
+      const button = document.createElement("button");
+      button.type = "button";
+
+      if (entry.type === "research.blueprint") {
+        const state = research.constructionState?.(entry.constructionKind, mapId);
+        status.textContent = state?.reason || "État indisponible.";
+        button.textContent = entry.label || "Lancer le projet";
+        button.disabled = state?.allowed !== true;
+        button.addEventListener("click", () => {
+          const missionId = research.startConstruction?.(
+            entry.constructionKind,
+            { mapId, source: "player" }
+          );
+          if (!missionId) return;
+          panel.querySelector(".drawer-close")?.click();
+          scheduleScan();
+        });
+      } else {
+        const requirements = (entry.requirements || [])
+          .map((item) => `${item.quantity || 0} ${item.inventoryKey || item.resource || "ressource"}`)
+          .join(" · ");
+        status.textContent = requirements || "Recette disponible.";
+        button.textContent = "Fabriquer";
+        button.disabled = research.canCraft?.(entry.id, 1) !== true;
+        button.addEventListener("click", () => {
+          research.craft?.(entry.id, 1, { source: "research-menu" });
+          scheduleScan();
+        });
+      }
+      card.append(title, description, status, button);
+      grid.appendChild(card);
+    });
+
+    if (!entries.length) {
+      const empty = document.createElement("p");
+      empty.textContent = "Aucun plan ou recette débloqué pour le moment.";
+      section.appendChild(empty);
+    }
+  }
+
   const speechBubbleTimers = new WeakMap();
 
   function speechBubbleDuration(text) {
@@ -1386,6 +1486,72 @@
     });
   }
 
+  function enhanceConstructionMissionAction(card) {
+    const BF = global.BlueFox3D;
+    const engine = BF?.currentEngine;
+    const manager = engine?.missionManager;
+    if (!manager || !card) return;
+
+    const titleText = card.querySelector("h3, h2, strong")?.textContent?.trim() || "";
+    const activeMissions = BF?.getMissionState?.()?.missions || [];
+    const mission = activeMissions.find((entry) => {
+      const id = entry.missionId || entry.id || "";
+      if (!/^(CAMP|REFUGE)@/.test(id)) return false;
+      return entry.title === titleText || card.textContent?.includes(entry.title || "");
+    });
+
+    let button = card.querySelector(".construction-placement-action");
+    if (!mission) {
+      button?.remove();
+      return;
+    }
+
+    const missionId = mission.missionId || mission.id;
+    const tree = manager.trees?.get?.(missionId);
+    const lifecycle = manager.memory?.state?.missionLifecycle?.[missionId];
+    const targetMapId = String(
+      tree?.targetMapId ||
+      BF?.bibleRuntime?.byId?.get?.(missionId)?.targetMapId ||
+      missionId.split("@")[1] ||
+      ""
+    );
+    const ready =
+      lifecycle?.status === "active" &&
+      tree?.root?.isComplete === true &&
+      targetMapId &&
+      String(engine.currentMapId || "") === targetMapId &&
+      !BF?.bibleRuntime?.gateSatisfied?.(
+        BF?.bibleRuntime?.byId?.get?.(missionId)
+      );
+
+    if (!ready) {
+      button?.remove();
+      return;
+    }
+
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "construction-placement-action";
+      button.style.cssText =
+        "margin-top:8px;padding:8px 12px;border-radius:999px;border:1px solid rgba(96,224,255,.5);background:rgba(12,72,92,.92);color:#fff;cursor:pointer";
+      card.appendChild(button);
+    }
+
+    const kind = missionId.startsWith("REFUGE@") ? "refuge" : "camp";
+    button.textContent = kind === "refuge"
+      ? "Positionner le refuge"
+      : "Positionner le camp";
+    button.onclick = () => {
+      const ok = BF?.Research?.resumePlacement?.(missionId);
+      if (!ok) {
+        engine.callbacks?.onStatus?.(
+          "Le placement ne peut pas être ouvert pour le moment."
+        );
+      }
+    };
+  }
+
   function scan() {
     regulateSpeechBubbles();
     const activeMap = global.BlueFox3D?.currentEngine?.currentMapId;
@@ -1407,10 +1573,14 @@
         global.dispatchEvent(new CustomEvent("bluefox:return-base"));
       }, true);
     });
-    document.querySelectorAll(".mission-card").forEach(enhanceMission);
+    document.querySelectorAll(".mission-card").forEach((card) => {
+      enhanceMission(card);
+      enhanceConstructionMissionAction(card);
+    });
     document.querySelectorAll(".full-screen-panel").forEach((panel) => {
       if (panel.querySelector(".planet-layout")) enhancePlanet(panel);
       if (panel.querySelector(".journal-layout")) enhanceJournal(panel);
+      if (panel.textContent?.includes("Laboratoire de BlueFox")) enhanceResearch(panel);
     });
   }
 
@@ -1434,6 +1604,118 @@
   global.addEventListener("bluefox:image-catalog", scheduleScan);
   global.addEventListener("bluefox:discovery-changed", scheduleScan);
   global.addEventListener("bluefox:zone-discovery-changed", scheduleScan);
+  global.addEventListener("bluefox:research-unlocked", scheduleScan);
+  global.addEventListener("bluefox:construction-mission-started", scheduleScan);
+  global.addEventListener("bluefox:site-established", scheduleScan);
+  global.addEventListener("bluefox:mission-state", scheduleScan);
   window.setInterval(scheduleScan, 350);
   scan();
+
+  function closeSitePlacementFinalize(missionId = null, notifyCancel = false) {
+    const overlay = document.getElementById("bluefox-site-placement-finalize");
+    if (!overlay) return false;
+    if (missionId && overlay.dataset.missionId !== String(missionId)) return false;
+    const cancel = overlay.__bluefoxCancel;
+    overlay.remove();
+    if (notifyCancel) cancel?.();
+    return true;
+  }
+
+  function openSitePlacementFinalize(detail = {}) {
+    closeSitePlacementFinalize(null, true);
+    const missionId = String(detail.missionId || "");
+    if (!missionId || typeof detail.onInstall !== "function") return false;
+
+    const overlay = document.createElement("div");
+    overlay.id = "bluefox-site-placement-finalize";
+    overlay.dataset.missionId = missionId;
+    overlay.style.cssText = [
+      "position:fixed","inset:0","z-index:100000",
+      "display:flex","align-items:flex-start","justify-content:center",
+      "padding-top:18px","box-sizing:border-box",
+      "background:transparent","pointer-events:none"
+    ].join(";");
+
+    const panel = document.createElement("div");
+    panel.style.cssText = [
+      "width:min(360px,calc(100vw - 32px))","padding:16px",
+      "border:1px solid rgba(100,225,255,.48)","border-radius:14px",
+      "background:rgba(4,22,38,.96)","box-shadow:0 18px 55px rgba(0,0,0,.48)",
+      "color:#eafcff","font:12px/1.4 system-ui,sans-serif","pointer-events:auto"
+    ].join(";");
+
+    const title = document.createElement("strong");
+    title.textContent = detail.kind === "refuge"
+      ? "Positionnement du refuge"
+      : "Positionnement du camp";
+    title.style.cssText = "display:block;font-size:15px;margin-bottom:10px";
+
+    const text = document.createElement("div");
+    text.textContent =
+      "Réglez la rotation. La structure et les ressources ne seront verrouillées qu'après validation.";
+    text.style.cssText = "opacity:.82;margin-bottom:12px";
+
+    const value = document.createElement("div");
+    value.style.cssText = "text-align:center;margin:4px 0 8px;font-weight:700";
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "-180";
+    slider.max = "180";
+    slider.step = "5";
+    const initialDegrees = Math.round((Number(detail.yaw) || 0) * 180 / Math.PI);
+    slider.value = String(Math.max(-180, Math.min(180, initialDegrees)));
+    slider.style.cssText = "width:100%;margin:0 0 14px";
+
+    const updateRotation = () => {
+      const degrees = Number(slider.value) || 0;
+      value.textContent = `Rotation : ${degrees}°`;
+      detail.onRotate?.(degrees * Math.PI / 180);
+    };
+    slider.addEventListener("input", updateRotation);
+    updateRotation();
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end";
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Annuler";
+    cancel.style.cssText =
+      "padding:8px 13px;border-radius:999px;border:1px solid rgba(220,235,240,.35);background:rgba(20,38,48,.9);color:#eafcff;cursor:pointer";
+
+    const install = document.createElement("button");
+    install.type = "button";
+    install.textContent = detail.kind === "refuge" ? "Installer le refuge" : "Installer le camp";
+    install.style.cssText =
+      "padding:8px 13px;border-radius:999px;border:1px solid rgba(96,224,255,.55);background:rgba(12,82,104,.95);color:#fff;cursor:pointer";
+
+    overlay.__bluefoxCancel = detail.onCancel;
+    cancel.addEventListener("click", () => {
+      closeSitePlacementFinalize(missionId, true);
+    });
+    install.addEventListener("click", () => {
+      install.disabled = true;
+      const ok = detail.onInstall();
+      if (ok === true) closeSitePlacementFinalize(missionId, false);
+      else install.disabled = false;
+    });
+
+    actions.append(cancel, install);
+    panel.append(title, text, value, slider, actions);
+    overlay.append(panel);
+    document.body.append(overlay);
+    return true;
+  }
+
+  global.addEventListener("bluefox:site-placement-finalize-request", (event) => {
+    openSitePlacementFinalize(event.detail || {});
+  });
+  global.addEventListener("bluefox:site-placement-finalize-close", (event) => {
+    closeSitePlacementFinalize(event.detail?.missionId || null, false);
+  });
+  global.addEventListener("bluefox:site-placement-ended", () => {
+    closeSitePlacementFinalize(null, false);
+  });
+
 })(window);

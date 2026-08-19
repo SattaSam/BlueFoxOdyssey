@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions || {};
-  const INTEGRATION_VERSION = "bac-knowledge-routing-r16f-survival-owner";
+  const INTEGRATION_VERSION = "bac-knowledge-routing-r16g-shelter-opportunity";
   const PREFERENCE_DECAY_MS = 20 * 60 * 1000;
   const PREFERENCE_WINDOW_MS = 4 * 60 * 1000;
   const PREFERENCE_COMMIT_MS = 3 * 60 * 1000;
@@ -12,6 +12,11 @@
   const TARGET_CANDIDATES = 6;
   const MISSION_GUIDANCE_DEFAULT_MS = 4 * 60 * 1000;
   const MISSION_PRIORITY_WEIGHTS = Object.freeze([100, 45, 20]);
+  const SHELTER_MIN_MAP_DISTANCE = 10;
+  // Valeurs alignées sur survival-ai-bridge : interactionCost.travel = 1.2
+  // et seuil d'énergie du profil de fatigue normal = 50.
+  const SHELTER_TRAVEL_ENERGY_COST = 1.2;
+  const SHELTER_NORMAL_ENERGY_FLOOR = 50;
   const preferenceMemory = new Map();
   let lastTargetDecision = null;
   let lastResearchRoutineSourceAt = 0;
@@ -472,6 +477,56 @@
     let roll = Math.random() * total;
     return valid.find((option) => ((roll -= Number(option.weight || option.baseWeight)) <= 0)) || valid[valid.length - 1];
   };
+  const autonomousShelterOpportunity = (engine, survival = {}) => {
+    const runtime = BF.bibleRuntime;
+    if (!runtime || !engine?.findKnownRoute || !engine?.currentMapId) return null;
+    const currentMapId = String(engine.currentMapId);
+    const campState = runtime.constructionAvailability?.("camp", currentMapId);
+    const refugeState = runtime.constructionAvailability?.("refuge", currentMapId);
+    const kind = refugeState?.allowed ? "refuge" : campState?.allowed ? "camp" : null;
+    if (!kind) return null;
+
+    const siteProgression = engine.missionManager?.memory?.state?.siteProgression || {};
+    let nearest = Infinity;
+    Object.entries(siteProgression).forEach(([mapId, raw]) => {
+      if (String(mapId) === currentMapId) return;
+      const sites = raw?.sites && typeof raw.sites === "object" ? raw.sites : { [raw?.kind]: raw };
+      if (!Object.values(sites).some((site) => ["camp", "refuge", "base"].includes(site?.kind))) return;
+      const route = engine.findKnownRoute(currentMapId, mapId);
+      if (!Array.isArray(route) || !route.length) return;
+      nearest = Math.min(nearest, Math.max(0, route.length - 1));
+    });
+    if (!Number.isFinite(nearest) || nearest < SHELTER_MIN_MAP_DISTANCE) return null;
+
+    const energy = Number(survival.energy);
+    if (!Number.isFinite(energy)) return null;
+    const estimatedReturnFatigue = nearest * SHELTER_TRAVEL_ENERGY_COST;
+    const projectedReturnEnergy = energy - estimatedReturnFatigue;
+    if (projectedReturnEnergy >= SHELTER_NORMAL_ENERGY_FLOOR) return null;
+
+    const localResources = Object.values(engine.currentMap?.interactables || []).filter((object) =>
+      object?.userData?.active && isCollectableDefinition(objectDefinition(object))
+    ).length;
+    const resourceBoost = Math.min(16, localResources * 0.5);
+    const distanceBoost = Math.min(
+      18,
+      Math.max(0, nearest - SHELTER_MIN_MAP_DISTANCE) * 2
+    );
+    const fatigueBoost = Math.min(
+      18,
+      Math.max(0, SHELTER_NORMAL_ENERGY_FLOOR - projectedReturnEnergy)
+    );
+    return {
+      kind,
+      mapId: currentMapId,
+      nearestSiteDistance: nearest,
+      estimatedReturnFatigue,
+      projectedReturnEnergy,
+      resourceCount: localResources,
+      weight: 7 + distanceBoost + fatigueBoost + resourceBoost
+    };
+  };
+
   const targetPosition = (object) =>
     object?.userData?.worldAnchor?.position || object?.position || null;
 
@@ -1070,6 +1125,7 @@
           !exploration.next
         ) &&
         !hasFreshLocalInterest;
+      const shelterOpportunity = autonomousShelterOpportunity(this, survival);
 
       const options = [
         {
@@ -1081,6 +1137,26 @@
             restGain: 18,
             pressureReduction: 2
           })
+        },
+        {
+          id: "establish-local-shelter",
+          axis: "survival",
+          baseWeight: shelterOpportunity?.weight || 0,
+          available: Boolean(shelterOpportunity),
+          execute: () => {
+            if (!shelterOpportunity) return false;
+            const missionId = BF.Research?.startConstruction?.(
+              shelterOpportunity.kind,
+              { mapId: shelterOpportunity.mapId, source: "autonomy" }
+            );
+            if (!missionId) return false;
+            this.callbacks?.onStatus?.(
+              shelterOpportunity.kind === "refuge"
+                ? "BlueFox estime qu'un refuge local devient utile."
+                : "BlueFox estime qu'un camp local devient utile."
+            );
+            return true;
+          }
         },
         {
           id: "research-routine",
@@ -1261,6 +1337,7 @@
         autonomyUnderlyingHook: engine?.__autonomyBeforeRationAI?.name || "",
         rationAutonomyDecision: engine?.__lastRationAutonomyDecision || null, targetPreference: (() => { const e = preferredEntry(); return e ? { kind:e.kind, count:e.count, strength:Number(e.strength.toFixed(2)), ageMs:Date.now()-e.lastAt, lastAxis:e.lastAxis } : null; })(),
         lastTargetDecision,
+        shelterOpportunity: autonomousShelterOpportunity(engine, BF.getSurvivalState?.() || {}),
         preferenceCommitment: (() => {
           const e = preferredEntry();
           if (!e) return null;

@@ -175,6 +175,17 @@
         dismissOnProgress: false
       })
     ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.blueprint",
+        id: "camp-establish-v1",
+        category: "construction",
+        constructionKind: "camp",
+        label: "Établir un camp",
+        description: "Installer un camp sur une map qui ne possède encore aucune infrastructure locale.",
+        requiresShelter: false
+      })
+    ]),
     narrative: Object.freeze({
       revealed: Object.freeze([
         "Ce bois est assez régulier. Je pourrais le transformer en planches et monter quelque chose de simple près de la capsule. Dix unités devraient suffire pour commencer."
@@ -247,6 +258,43 @@
         params: Object.freeze({
           kind: "camp"
         })
+      })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["refuge"]),
+      radius: 9999,
+      scope: "current-map"
+    }),
+    effects: Object.freeze([
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKey: "fiber",
+        quantity: 100
+      }),
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKey: "wood",
+        quantity: 100
+      }),
+      Object.freeze({
+        type: "site.establish",
+        kind: "refuge",
+        microSceneId: "MSC-CUSTOM-CAMP-BASE",
+        stage: 2,
+        placement: Object.freeze({ mode: "near-camp" })
+      })
+    ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.blueprint",
+        id: "refuge-build-v1",
+        category: "construction",
+        constructionKind: "refuge",
+        label: "Construire un refuge",
+        description: "Construire un refuge sur une map où un camp a déjà été établi.",
+        requiresShelter: false
       })
     ])
   });
@@ -382,6 +430,77 @@
         requiresShelter: true
       })
     ])
+  });
+
+  BF.BibleConstructionTemplates = Object.freeze({
+    camp: Object.freeze({
+      title: "Établir un camp",
+      description: "Réunir dix bois puis revenir sur la map choisie pour installer un camp.",
+      pattern: "SEQUENCE_ACTIONS",
+      priority: 58,
+      passivePriorityAxis: "survival",
+      sequence: Object.freeze([
+        Object.freeze({
+          slot: "collectWood",
+          title: "Réunir 10 bois",
+          action: "collect",
+          target: 10,
+          params: Object.freeze({ kind: "wood" })
+        })
+      ]),
+      activationInventoryCredits: Object.freeze([
+        Object.freeze({ slot: "collectWood", inventoryKey: "wood", maximum: 10 })
+      ]),
+      effects: Object.freeze([
+        Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 10 }),
+        Object.freeze({
+          type: "site.establish",
+          kind: "camp",
+          microSceneId: "MSC-CUSTOM-CAMP",
+          stage: 1,
+          placement: Object.freeze({ mode: "near-bluefox" })
+        })
+      ])
+    }),
+    refuge: Object.freeze({
+      title: "Construire un refuge",
+      description: "Réunir cent bois et cent fibres puis revenir sur la map choisie pour construire un refuge.",
+      pattern: "SEQUENCE_ACTIONS",
+      priority: 56,
+      passivePriorityAxis: "survival",
+      sequence: Object.freeze([
+        Object.freeze({
+          slot: "fibers",
+          title: "Réunir 100 plantes fibreuses",
+          action: "collect",
+          target: 100,
+          params: Object.freeze({ kind: "fiber" })
+        }),
+        Object.freeze({
+          slot: "wood",
+          title: "Réunir 100 bois",
+          action: "collect",
+          target: 100,
+          requires: Object.freeze([]),
+          params: Object.freeze({ kind: "wood" })
+        })
+      ]),
+      activationInventoryCredits: Object.freeze([
+        Object.freeze({ slot: "fibers", inventoryKey: "fiber", maximum: 100 }),
+        Object.freeze({ slot: "wood", inventoryKey: "wood", maximum: 100 })
+      ]),
+      effects: Object.freeze([
+        Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 100 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 100 }),
+        Object.freeze({
+          type: "site.establish",
+          kind: "refuge",
+          microSceneId: "MSC-CUSTOM-CAMP-BASE",
+          stage: 2,
+          placement: Object.freeze({ mode: "near-camp" })
+        })
+      ])
+    })
   });
 
   BF.BibleCatalog = Object.freeze([
