@@ -60,7 +60,8 @@
   const tutorialLandmarks = Object.freeze([
     Object.freeze(["bush", -19, 4, 0, 0.523599]),
     Object.freeze(["bush", 18, 4, 2, -0.785398]),
-    Object.freeze(["tree_fallen", -15, -18, 1, 1.047198])
+    Object.freeze(["tree_fallen", -15, -18, 1, 1.047198]),
+    Object.freeze(["fiber", 12, 8, 0, 0.261799])
   ]);
 
   const tutorialPopulationBudget = Object.freeze({

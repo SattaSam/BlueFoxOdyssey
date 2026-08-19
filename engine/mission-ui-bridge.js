@@ -294,6 +294,13 @@
     });
   }
 
+  function consumeTutorialGuidanceWhenReady(state) {
+    if (BF.startupPresentationActive === true) return false;
+    if (Date.now() < Number(BF.startupGuidanceReleaseAt || 0)) return false;
+    consumeTutorialGuidance(state);
+    return true;
+  }
+
   function renderStep(node, index, currentAction) {
     const descendants = [];
     const collectDescendants = (candidate) => {
@@ -699,16 +706,26 @@
 
   global.addEventListener("bluefox:mission-state", (event) => {
     latestState = event.detail;
-    consumeTutorialGuidance(latestState);
+    consumeTutorialGuidanceWhenReady(latestState);
     render(latestState);
     renderMissionBrowser(latestState);
+  });
+
+
+  global.addEventListener("bluefox:intro-presentation", (event) => {
+    if (event.detail?.active === true) {
+      BF.TutorialUI?.hideMessage?.();
+      BF.TutorialUI?.clearHighlight?.();
+      return;
+    }
+    if (latestState) consumeTutorialGuidanceWhenReady(latestState);
   });
 
   const refresh = () => {
     const current = BF.getMissionState?.() || BF.missionState || latestState;
     if (!current) return;
     latestState = current;
-    consumeTutorialGuidance(current);
+    consumeTutorialGuidanceWhenReady(current);
     const panel = document.querySelector(".m0-mission-panel");
     if (!panel?.isConnected) lastSignature = "";
     render(current);

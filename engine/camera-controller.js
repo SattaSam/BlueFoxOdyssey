@@ -32,6 +32,7 @@
       this.lastHealthCheck = performance.now();
       this.recoveryCount = 0;
       this.userInteracting = false;
+      this.cinematic = null;
 
       // Mode 1 : la caméra reste attachée à BlueFox.
       // followBehind=true  -> état 1.A, elle pivote avec BlueFox.
@@ -179,6 +180,137 @@
 
       localStorage.setItem("bluefox_camera_mode_v1", this.mode);
       this.emitMode();
+    }
+
+    beginCinematicOrbit(options = {}) {
+      const center = options.center;
+      if (!center || !Number.isFinite(center.x) || !Number.isFinite(center.z)) {
+        return false;
+      }
+      const durationMs = Math.max(500, Number(options.durationMs) || 6800);
+      this.cinematic = {
+        phase: "orbit",
+        startedAt: performance.now(),
+        durationMs,
+        center: new this.THREE.Vector3(
+          Number(center.x) || 0,
+          Number(center.y) || 0,
+          Number(center.z) || 0
+        ),
+        radius: Math.max(4.5, Number(options.radius) || 11.2),
+        height: Number.isFinite(Number(options.height)) ? Number(options.height) : 7.2,
+        targetHeight: Number.isFinite(Number(options.targetHeight))
+          ? Number(options.targetHeight)
+          : 1.15,
+        startAngle: Number.isFinite(Number(options.startAngle))
+          ? Number(options.startAngle)
+          : -Math.PI + 0.22,
+        arc: Number.isFinite(Number(options.arc)) ? Number(options.arc) : Math.PI
+      };
+      this.userInteracting = false;
+      this.controls.enabled = false;
+      this.previousCharacterPosition.copy(this.character.root.position);
+      this.updateCinematic(performance.now());
+      return true;
+    }
+
+    beginCinematicReturn(durationMs = 2200) {
+      if (!this.cinematic) return false;
+      this.cinematic = {
+        phase: "return",
+        startedAt: performance.now(),
+        durationMs: Math.max(500, Number(durationMs) || 2200),
+        startCamera: this.camera.position.clone(),
+        startTarget: this.controls.target.clone()
+      };
+      this.controls.enabled = false;
+      this.previousCharacterPosition.copy(this.character.root.position);
+      return true;
+    }
+
+    isCinematicActive() {
+      return Boolean(this.cinematic);
+    }
+
+    cinematicPhase() {
+      return this.cinematic?.phase || null;
+    }
+
+    updateCinematic(now) {
+      const state = this.cinematic;
+      if (!state) return false;
+      const progress = Math.max(
+        0,
+        Math.min(1, (now - state.startedAt) / Math.max(1, state.durationMs))
+      );
+      const eased = progress * progress * (3 - 2 * progress);
+
+      if (state.phase === "orbit") {
+        const angle = state.startAngle + state.arc * eased;
+        this.camera.position.set(
+          state.center.x + Math.sin(angle) * state.radius,
+          state.center.y + state.height,
+          state.center.z + Math.cos(angle) * state.radius
+        );
+        this.controls.target.set(
+          state.center.x,
+          state.center.y + state.targetHeight,
+          state.center.z
+        );
+        this.camera.lookAt(this.controls.target);
+        return progress >= 1;
+      }
+
+      if (state.phase === "return") {
+        const position = this.character.root.position;
+        const heading = Number.isFinite(this.character.heading)
+          ? this.character.heading
+          : 0;
+        this.followTarget.set(
+          position.x,
+          position.y + this.DEFAULT_TARGET_HEIGHT,
+          position.z
+        );
+        this.desiredCamera.set(
+          position.x - Math.sin(heading) * this.DEFAULT_HORIZONTAL_DISTANCE,
+          position.y + this.DEFAULT_CAMERA_HEIGHT,
+          position.z - Math.cos(heading) * this.DEFAULT_HORIZONTAL_DISTANCE
+        );
+        this.camera.position.lerpVectors(
+          state.startCamera,
+          this.desiredCamera,
+          eased
+        );
+        this.controls.target.lerpVectors(
+          state.startTarget,
+          this.followTarget,
+          eased
+        );
+        this.camera.lookAt(this.controls.target);
+        if (progress >= 1) {
+          this.finishCinematic();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    finishCinematic() {
+      if (!this.cinematic) return false;
+      this.cinematic = null;
+      this.controls.enabled = true;
+      this.mode = this.MODE_ANCHORED;
+      this.controls.maxDistance = this.ANCHORED_MAX_DISTANCE;
+      this.followBehind = true;
+      this.resettingToDefault = false;
+      this.userInteracting = false;
+      this.previousCharacterPosition.copy(this.character.root.position);
+      this.lastSafeCameraPosition.copy(this.camera.position);
+      this.lastSafeTarget.copy(this.controls.target);
+      this.lastUserInput = performance.now();
+      localStorage.setItem("bluefox_camera_mode_v1", this.mode);
+      this.emitMode();
+      return true;
     }
 
     toggleFreeFollow() {
@@ -361,6 +493,11 @@
     update(dt) {
       const position = this.character.root.position;
       const now = performance.now();
+      if (this.cinematic) {
+        this.updateCinematic(now);
+        this.previousCharacterPosition.copy(position);
+        return;
+      }
       this.ensureHealthy(now);
 
       const characterDelta = position.clone().sub(this.previousCharacterPosition);

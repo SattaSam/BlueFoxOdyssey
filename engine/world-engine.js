@@ -98,11 +98,27 @@
       );
       this.freshNewGameStartup =
         freshNewGameAt > 0 && Date.now() - freshNewGameAt < 120000;
+      this.startupNewGameAt = freshNewGameAt;
+      const startupCinematicDoneAt = Number(
+        localStorage.getItem("bluefox_startup_cinematic_done_v1") || 0
+      );
+      this.shouldPlayStartupCinematic =
+        this.freshNewGameStartup && startupCinematicDoneAt !== freshNewGameAt;
+      this.startupCinematic = null;
+      this.startupFadeElement = null;
+      this.startupUiRevealTimer = 0;
       if (this.freshNewGameStartup) {
-        const quietUntil = performance.now() + this.autonomyQuietDelayMs();
+        const quietUntil = performance.now() + (
+          this.shouldPlayStartupCinematic
+            ? 12000
+            : this.autonomyQuietDelayMs()
+        );
         this.autonomyGraceUntil = quietUntil;
         this.speechQuietUntil = quietUntil;
         this.startupQuietUntil = quietUntil;
+      }
+      if (this.shouldPlayStartupCinematic) {
+        this.prepareStartupPresentation();
       }
 
       this.onMissingImage = (event) => {
@@ -126,6 +142,259 @@
 
     autonomyQuietDelayMs() {
       return 2000 + Math.floor(Math.random() * 2001);
+    }
+
+    ensureStartupPresentationStyle() {
+      if (document.getElementById("bluefox-startup-presentation-style")) return;
+      const style = document.createElement("style");
+      style.id = "bluefox-startup-presentation-style";
+      style.textContent = `
+        body.bluefox-startup-cinematic .game-shell > :not(.world-3d):not(#bluefox-speech),
+        body.bluefox-startup-cinematic .bluefox-camera-button,
+        body.bluefox-startup-cinematic .bluefox-speech-button,
+        body.bluefox-startup-cinematic .mission-browser,
+        body.bluefox-startup-cinematic .bluefox-tutorial-message,
+        body.bluefox-startup-cinematic .bluefox-click-marker {
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+        body.bluefox-startup-cinematic #bluefox-speech {
+          visibility: visible !important;
+          pointer-events: none !important;
+          z-index: 95 !important;
+        }
+        .bluefox-startup-fade {
+          position: fixed;
+          inset: 0;
+          z-index: 90;
+          background: #000;
+          opacity: 1;
+          pointer-events: none;
+          transition: opacity .9s ease;
+        }
+        .bluefox-startup-fade.revealed {
+          opacity: 0;
+        }
+        body.bluefox-startup-ui-reveal .game-shell > :not(.world-3d):not(#bluefox-speech),
+        body.bluefox-startup-ui-reveal .bluefox-camera-button,
+        body.bluefox-startup-ui-reveal .bluefox-speech-button {
+          animation: bluefoxStartupUiReveal .45s ease both;
+        }
+        @keyframes bluefoxStartupUiReveal {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    prepareStartupPresentation() {
+      this.ensureStartupPresentationStyle();
+      BF.startupPresentationActive = true;
+      BF.startupGuidanceReleaseAt = 0;
+      if (!this.startupPresentationOriginalOnSpeak) {
+        this.startupPresentationOriginalOnSpeak = this.callbacks.onSpeak;
+        this.startupPresentationDeferredSpeech = null;
+        this.callbacks.onSpeak = (text) => {
+          this.startupPresentationDeferredSpeech = text;
+        };
+      }
+      document.body.classList.add("bluefox-startup-cinematic");
+      if (!this.startupFadeElement) {
+        this.startupFadeElement = document.createElement("div");
+        this.startupFadeElement.className = "bluefox-startup-fade";
+        this.startupFadeElement.setAttribute("aria-hidden", "true");
+        document.body.appendChild(this.startupFadeElement);
+      }
+      global.dispatchEvent(new CustomEvent("bluefox:intro-presentation", {
+        detail: { active: true }
+      }));
+    }
+
+    startStartupCinematic() {
+      if (!this.shouldPlayStartupCinematic || this.startupCinematic) return false;
+      const crashSite = BF.maps?.crystal?.crashSite;
+      if (
+        this.currentMapId !== "crystal" ||
+        !crashSite?.capsuleAnchor ||
+        !this.cameraController ||
+        !this.character?.root
+      ) {
+        this.finishStartupCinematic();
+        return false;
+      }
+
+      const now = performance.now();
+      const anchor = new this.THREE.Vector3(
+        Number(crashSite.capsuleAnchor.x) || 0,
+        0,
+        Number(crashSite.capsuleAnchor.z) || 0
+      );
+      this.startupCinematic = {
+        startedAt: now,
+        orbitEndsAt: now + 6800,
+        hardEndsAt: now + 11200,
+        returnStarted: false,
+        nextMovement: 0,
+        firstSpeechShown: false,
+        secondSpeechShown: false,
+        anchor,
+        movementPlan: [
+          { at: 0, x: 2.4, z: 5 },
+          { at: 2600, x: -0.8, z: 5 },
+          { at: 4800, x: 0.8, z: 5 }
+        ]
+      };
+
+      this.startupQuietUntil = Math.max(this.startupQuietUntil, now + 11200);
+      this.autonomyGraceUntil = Math.max(this.autonomyGraceUntil, now + 11200);
+      this.speechQuietUntil = Math.max(this.speechQuietUntil, now + 11200);
+      this.cameraController.beginCinematicOrbit({
+        center: anchor,
+        durationMs: 6800,
+        radius: 13.4,
+        height: 7.2,
+        targetHeight: 1.15,
+        startAngle: -Math.PI + 0.22 - Math.PI / 4,
+        arc: Math.PI
+      });
+      const first = this.startupCinematic.movementPlan[0];
+      this.character.setTarget(
+        new this.THREE.Vector3(first.x, 0, first.z),
+        "walk"
+      );
+      this.startupCinematic.nextMovement = 1;
+
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        this.startupFadeElement?.classList.add("revealed");
+      }));
+      return true;
+    }
+
+    updateStartupCinematic(now) {
+      const state = this.startupCinematic;
+      if (!state) return false;
+      const elapsed = now - state.startedAt;
+
+      while (
+        state.nextMovement < state.movementPlan.length &&
+        elapsed >= state.movementPlan[state.nextMovement].at
+      ) {
+        const next = state.movementPlan[state.nextMovement];
+        this.character.setTarget(
+          new this.THREE.Vector3(next.x, 0, next.z),
+          "walk"
+        );
+        state.nextMovement += 1;
+      }
+
+      if (!state.firstSpeechShown && elapsed >= 1800) {
+        state.firstSpeechShown = true;
+        this.startupPresentationOriginalOnSpeak?.("Quelle catastrophe…");
+        this.lastSpeechAt = now;
+      }
+      if (!state.secondSpeechShown && elapsed >= 5700) {
+        state.secondSpeechShown = true;
+        this.startupPresentationOriginalOnSpeak?.("Ma capsule est complètement hors d’usage.");
+        this.lastSpeechAt = now;
+      }
+
+      if (!state.returnStarted && now >= state.orbitEndsAt) {
+        state.returnStarted = true;
+        this.character.stop();
+        this.character.facePoint(state.anchor);
+        this.cameraController.beginCinematicReturn(2200);
+      }
+
+      if (
+        state.returnStarted &&
+        !this.cameraController.isCinematicActive?.()
+      ) {
+        this.finishStartupCinematic();
+        return false;
+      }
+
+      if (now >= state.hardEndsAt) {
+        this.cameraController.finishCinematic?.();
+        this.finishStartupCinematic();
+        return false;
+      }
+      return true;
+    }
+
+    finishStartupCinematic() {
+      const state = this.startupCinematic;
+      if (state?.anchor && this.character?.root) {
+        this.character.stop();
+        this.character.facePoint(state.anchor);
+      }
+      this.cameraController?.finishCinematic?.();
+      this.startupCinematic = null;
+      this.shouldPlayStartupCinematic = false;
+      if (this.startupNewGameAt > 0) {
+        localStorage.setItem(
+          "bluefox_startup_cinematic_done_v1",
+          String(this.startupNewGameAt)
+        );
+      }
+      BF.startupPresentationActive = false;
+      BF.startupGuidanceReleaseAt = Date.now() + 1800;
+      const originalOnSpeak = this.startupPresentationOriginalOnSpeak;
+      const deferredSpeech = this.startupPresentationDeferredSpeech;
+      window.clearTimeout(this.startupSpeechReleaseTimer);
+      this.startupSpeechReleaseTimer = window.setTimeout(() => {
+        if (originalOnSpeak) this.callbacks.onSpeak = originalOnSpeak;
+        this.startupPresentationOriginalOnSpeak = null;
+        this.startupPresentationDeferredSpeech = null;
+        if (deferredSpeech && this.speechVisible !== false) {
+          originalOnSpeak?.(deferredSpeech);
+          const speechNow = performance.now();
+          this.lastSpeechAt = speechNow;
+          this.lastFatigueSpeechAt = speechNow;
+        }
+      }, 1800);
+      this.startupFadeElement?.remove();
+      this.startupFadeElement = null;
+      document.body.classList.remove("bluefox-startup-cinematic");
+      document.body.classList.add("bluefox-startup-ui-reveal");
+      window.clearTimeout(this.startupUiRevealTimer);
+      this.startupUiRevealTimer = window.setTimeout(() => {
+        document.body.classList.remove("bluefox-startup-ui-reveal");
+      }, 500);
+      global.dispatchEvent(new CustomEvent("bluefox:intro-presentation", {
+        detail: { active: false }
+      }));
+      const now = performance.now();
+      this.startupQuietUntil = now + 900;
+      this.beginAutonomyGrace("startup-cinematic-complete", now);
+      this.lastActivityAt = now;
+      this.lastAutonomyAt = now;
+      this.savePosition();
+      return true;
+    }
+
+    clearStartupPresentation() {
+      this.cameraController?.finishCinematic?.();
+      this.startupCinematic = null;
+      BF.startupPresentationActive = false;
+      BF.startupGuidanceReleaseAt = 0;
+      window.clearTimeout(this.startupSpeechReleaseTimer);
+      if (this.startupPresentationOriginalOnSpeak) {
+        this.callbacks.onSpeak = this.startupPresentationOriginalOnSpeak;
+      }
+      this.startupPresentationOriginalOnSpeak = null;
+      this.startupPresentationDeferredSpeech = null;
+      this.startupFadeElement?.remove();
+      this.startupFadeElement = null;
+      window.clearTimeout(this.startupUiRevealTimer);
+      document.body.classList.remove(
+        "bluefox-startup-cinematic",
+        "bluefox-startup-ui-reveal"
+      );
+      global.dispatchEvent(new CustomEvent("bluefox:intro-presentation", {
+        detail: { active: false }
+      }));
     }
 
     readAutonomyMode() {
@@ -379,13 +648,18 @@
       }
       if (this.freshNewGameStartup) {
         const now = performance.now();
-        const quietUntil = now + this.autonomyQuietDelayMs();
+        const quietUntil = now + (
+          this.shouldPlayStartupCinematic
+            ? 12000
+            : this.autonomyQuietDelayMs()
+        );
         this.autonomyGraceUntil = Math.max(this.autonomyGraceUntil, quietUntil);
         this.speechQuietUntil = Math.max(this.speechQuietUntil, quietUntil);
         this.startupQuietUntil = Math.max(this.startupQuietUntil, quietUntil);
         this.lastAutonomyAt = now;
         this.lastActivityAt = now;
       }
+      if (this.shouldPlayStartupCinematic) this.startStartupCinematic();
       this.loop();
       return this;
     }
@@ -701,6 +975,13 @@
         }
       } catch {
         localStorage.removeItem("bluefox_world_position_v2");
+      }
+      if (this.freshNewGameStartup) {
+        return {
+          map: "crystal",
+          x: this.shouldPlayStartupCinematic ? -1.3 : 0.8,
+          z: 5
+        };
       }
       return { map: "crystal", x: 0, z: 5 };
     }
@@ -3043,6 +3324,7 @@
           "Le passage a été interrompu proprement. BlueFox reprend son activité."
         );
       }
+      this.updateStartupCinematic(now);
       const fatigue = BF.getSurvivalState?.().fatigue;
       this.character.fatigueSpeedMultiplier = fatigue?.movement || 1;
       this.character.update(dt);
@@ -3118,7 +3400,7 @@
           `translate(-50%, -100%) rotate(${Math.PI - this.character.heading}rad)`;
       }
       this.updateSpeechBubble();
-      if (now - this.lastSavedAt > 3000) {
+      if (!this.startupCinematic && now - this.lastSavedAt > 3000) {
         this.savePosition();
         this.lastSavedAt = now;
       }
@@ -3187,6 +3469,7 @@
     }
 
     dispose() {
+      this.clearStartupPresentation();
       this.disposed = true;
       cancelAnimationFrame(this.frame);
       this.resizeObserver?.disconnect();
