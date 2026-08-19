@@ -1,11 +1,11 @@
 # BLUEFOX ODYSSEY — MASTER
 
 ## État de référence
-Dernière mise à jour : 2026-08-17
+Dernière mise à jour : 2026-08-19
 
 ### Version de travail
-- Base GitHub de référence : commit `cd4a5187e40294b3f6680243af8ae9f997c392a6`.
-- Ce commit restaure le bridge de sauvegarde complet après la troncature accidentelle du commit précédent et conserve les correctifs CPU / population / sauvegarde validés.
+- Base GitHub de référence : commit `35685c793ecb110bc928e9af0b5b3fecd1658e0b`.
+- Cette base cumule les travaux validés récents : stabilisation fatigue/BAC, fondations UI tutoriel, routage Bible vers bulles/journal/50 actions, intégration P01→P04, timer de bulles V5.3 et restauration des garanties missionnelles perdues lors du patch timer.
 - Base PC historique : V16.20.
 - Version mobile/APK précédente : V16.14, considérée obsolète.
 - Développement mobile à reprendre depuis la base PC stable courante.
@@ -40,28 +40,25 @@ Fichiers principaux :
 - Les trois MSC coralliennes sous-marines bioluminescentes restent intégrées.
 - Les rochers blanchis restent exclus de tout contexte non glace/banquise/neige/toundra.
 - Les scènes déjà créées et les associations mission↔MSC déjà décidées doivent être réutilisées avant toute création nouvelle.
-- Règle îlots suspendus :
-  - garantie sur `floating_islands` ;
-  - garantie sur les déserts à roches en lévitation ;
-  - garantie sur les marais à îles flottantes ;
-  - probabilité renforcée seulement sur les autres contextes magnétiques.
+- Règle îlots suspendus : garantie sur `floating_islands`, les déserts à roches en lévitation et les marais à îles flottantes ; probabilité renforcée seulement sur les autres contextes magnétiques.
 
 ## Performance / RuntimeBudget
 - `engine/runtime-budget.js` reste l'unique système de throttling adaptatif.
 - Flore, faune, PNJ, phénomènes et objets passifs l'utilisent déjà.
-- `engine/special-object-runtime.js` est désormais raccordé au même budget :
-  - PNJ spéciaux → `npc`
-  - animal nocturne → `fauna`
-  - plante carnivore → `flora`
-  - tempêtes, îlots, cristaux et drones → `phenomenon`
+- `engine/special-object-runtime.js` est raccordé au même budget.
 - La logique métier à 1 Hz (respawns / drones) reste indépendante de l'animation frame par frame.
+
+## BAC / fatigue
+- La politique de survie/fatigue appartient au BAC ; l'intégration runtime matérialise les routines décidées.
+- Les besoins critiques et micro-pauses sont arbitrés sans recréer un second `updateAutonomy` concurrent.
+- Les pauses physiologiques doivent rester possibles même lorsqu'une mission est prioritaire.
+- Le correctif stabilisé du 18 août 2026 est la référence comportementale courante pour ce domaine.
 
 ## Sauvegarde
 - `MissionMemory` conserve son modèle dirty/flush.
 - `save-ui-bridge.js` ne force plus `BF.progression.save()` avant la capture d'état.
 - Le mécanisme de signature d'autosave peut ainsi réellement ignorer un état inchangé.
 - `ProgressionRegistry` continue de sauvegarder ses vraies mutations à leur source.
-- Incident du 17 août : un patch préparé depuis un extrait partiel avait tronqué `save-ui-bridge.js`.
 - Règle renforcée : tout fichier modifié doit être construit depuis le fichier complet du HEAD courant ou depuis un fichier complet fourni par l'utilisateur ; jamais depuis un extrait de lecture partielle.
 
 ## Système de missions et progression
@@ -71,6 +68,21 @@ Fichiers principaux :
 - Mission principale et missions secondaires coexistent ; les secondaires progressent passivement.
 - `MissionMemory` reste la mémoire persistante des lifecycles, faits, historiques, effets et sites.
 - Le registre central de progression reste autoritaire pour les quantités d'inventaire.
+
+### Tranche tutorielle validée P01→P04
+- P01 `Reconnaître le Site du crash` : observation de la capsule, guidage UI initial et narration.
+- P02 `Prélever les premiers échantillons` : plante, bois et minerai distingués par les métadonnées CUO ; le bois ne compte pas comme plante.
+- P03 `Établir le premier Camp` : étude du bois, objectif 10 bois, crédit de l'inventaire déjà présent à l'activation, consommation de 10 bois et établissement de `MSC-CUSTOM-CAMP`.
+- P04 `Comprendre qu’un projet peut progresser en parallèle` : objectif unique de collecte d'une ressource utile au Refuge ; progression parallèle avec `GAME-shelter`.
+- `GAME-shelter` est visible/active en parallèle après P03 sous le titre `Construire un refuge`.
+- Le fan-out d'une collecte vers plusieurs missions actives reste un comportement moteur générique.
+
+### UI tutorielle validée sur P01→P04
+- Les prescriptions tutoriel sont portées par les fiches missionnelles et consommées par `mission-ui-bridge.js`.
+- La façade `BF.TutorialUI` reste visuelle uniquement : messages, fermeture, résolution de cible et surbrillance non destructive.
+- Les aides P01→P04 utilisent une durée de 14 s lorsque spécifiée.
+- L'aide caméra de P03 apparaît après 90 s d'activité de la mission et surligne la cible `camera`.
+- Le message de missions parallèles apparaît lorsque T04 et `GAME-shelter` sont actives simultanément.
 
 ## Principe officiel Bible → moteur
 La Bible documentaire reste la source narrative humaine et souveraine.
@@ -93,6 +105,12 @@ Moteur du jeu
 
 Le patron porte la mécanique commune. La fiche ne contient que les paramètres propres à une mission.
 
+### Narration Bible
+- Une narration Bible ordinaire est émise par le runtime vers la bulle BlueFox et l'historique d'actions via les callbacks existants.
+- Une route explicite `route: "journal"` est réservée à une entrée de journal dédiée.
+- Les `thought — mission_revealed` doivent être émis une seule fois au passage réel de la mission à l'état actif, y compris lorsqu'elle sort d'une attente de prérequis.
+- Les bulles narratives Bible passent par une file d'attente dédiée avec une durée calculée selon la longueur du texte ; `speechQuietUntil` empêche une parole ordinaire de les écraser avant leur fin.
+
 ### Stratégie de patrons
 L'objectif n'est pas de créer un patron par mission, mais un nombre réduit de familles génériques couvrant un maximum de cas avec des interrupteurs.
 
@@ -107,32 +125,21 @@ Interrupteurs de référence :
 - `contextRole = triggerContext | objectiveSubject | scenarioSupport`
 - effets / délai / prérequis
 
-Les trois patrons de preuve actuels restent la base :
-1. découvrir / comprendre ;
-2. accumuler / atteindre un seuil ;
-3. préparer → produire / débloquer.
+Les trois familles historiques restent le socle : découvrir/comprendre ; accumuler/atteindre un seuil ; préparer→produire/débloquer. `SEQUENCE_ACTIONS` est également utilisé pour les séquences tutoriel comme P03 et `GAME-shelter`.
 
-Ils doivent être complétés par quelques familles supplémentaires seulement lorsque les besoins documentaires l'exigent.
+## CUO → missions
+- Le CUO reste source de vérité de l'objet ; aucun catalogue parallèle n'est créé dans le raccord missionnel.
+- `object-m0-bridge.js` peut comparer les critères missionnels aux métadonnées disponibles : `objectId`, `cuoType`, `kind`, `family`, `subject`, `category`, tags et exclusions associées.
+- Cette capacité permet les distinctions génériques plante/bois/minéral et prépare les futures fiches sans règle codée en dur par mission.
 
-## Audit Bible / CUO / moteur
-Conclusion : le moteur générique est largement suffisant ; les principaux manques sont des raccords ciblés.
+## Audit Bible / CUO / moteur — raccords encore ouverts
+Déjà disponibles : triggers interaction/exploration/progression ; `instanceId`, `mapId`, `zoneId`, `factionId` dans les événements ; `targetBinding` au contrat ; mission instanciable par map ; `uniqueOnly` ; persistance des faits/historiques ; spawn MSC via `site.establish` ; fan-out multi-missions ; métadonnées CUO riches.
 
-Déjà disponibles :
-- triggers interaction/exploration/progression ;
-- `instanceId`, `mapId`, `zoneId`, `factionId` dans les événements ;
-- `targetBinding` au contrat ;
-- mission instanciable par map ;
-- `uniqueOnly` sur les triggers ;
-- persistance des faits/historiques ;
-- infrastructure de spawn MSC via `site.establish` ;
-- fan-out multi-missions ;
-- métadonnées CUO riches et propagées au runtime.
-
-Raccords à compléter :
+Raccords à compléter seulement lorsqu'une mission future les exige :
 - faire suivre réellement `targetBinding=instance` jusqu'à ActionBridge ;
 - ajouter `distinctBy` sur les objectifs actifs ;
 - agréger plusieurs maps/biomes/instances dans une mission globale ;
-- généraliser le spawn MSC missionnel ;
+- généraliser le spawn MSC missionnel si nécessaire ;
 - durée/proximité/délai ;
 - cycle excursion→retour ;
 - effets génériques de branche, réputation et faits.
@@ -144,20 +151,19 @@ Raccords à compléter :
 - Ne pas recréer les PNJ : enrichir leur identité fonctionnelle.
 
 ## Ration
-La brique `survival.rationRecipe` existe déjà dans le moteur et doit être retrouvée/auditée avant toute nouvelle création de recette ou de patron dédié.
+La brique de ration existante doit être auditée/raccordée avant toute création parallèle. La fiche `BIBLE-TUTORIAL-RATION-DISCOVERY` reste présente mais ne remplace pas le chantier de validation complet de la mécanique ration.
 
 ## Tutoriel
-Après les patrons/raccords génériques :
-- implanter P01 à P012 comme lot de validation ;
-- séquence dirigée au départ, autonomie progressive ensuite ;
-- valider sauvegarde/reprise à chaque étape.
-
-Le tutoriel est le banc de validation avant industrialisation des 182 missions.
+- P01→P04 : intégrées et validées en jeu.
+- Prochaine tranche : P05→P012.
+- Séquence dirigée au départ, autonomie progressive ensuite.
+- Sauvegarde/reprise à valider à chaque étape.
+- Le tutoriel reste le banc de validation avant industrialisation des 182 missions.
 
 ## Direction actuelle
 Priorité immédiate :
-1. intégration contrôlée de P01 à P012 sur la base `cd4a5187…` ;
-2. raccords missionnels génériques nécessaires révélés par ce lot ;
-3. factions/réputation + ration ;
-4. industrialisation progressive des 182 missions ;
-5. finitions gameplay, audio, performances et packaging.
+1. intégrer P05→P012 sur la base `35685c79…` en conservant les comportements P01→P04 ;
+2. n'ajouter que les raccords missionnels génériques réellement exigés par cette tranche ;
+3. poursuivre factions/réputation + ration ;
+4. industrialiser progressivement les 182 missions ;
+5. finaliser gameplay, audio, performances et packaging.
