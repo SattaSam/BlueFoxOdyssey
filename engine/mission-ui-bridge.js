@@ -136,7 +136,7 @@
     panel.append(copy, close);
     document.body.appendChild(panel);
 
-    const duration = Math.max(0, Number(options.duration ?? 8000) || 0);
+    const duration = Math.max(0, Number(options.duration ?? 14000) || 0);
     if (duration > 0) {
       tutorialMessageTimer = global.setTimeout(hideTutorialMessage, duration);
     }
@@ -167,6 +167,132 @@
     clearHighlight: clearTutorialHighlight,
     resolveTarget: resolveTutorialTarget
   });
+
+  /* ------------------------------------------------------------------------ */
+  /* Consommation des prescriptions UI portées par les fiches Bible           */
+  /* ------------------------------------------------------------------------ */
+
+  const tutorialGuidanceShown = new Set();
+  const tutorialGuidanceTimers = new Map();
+  const tutorialMissionActiveSince = new Map();
+
+  function activeMissionIds(state) {
+    const ids = new Set(
+      Array.isArray(state?.activeMissionIds) ? state.activeMissionIds : []
+    );
+    (state?.missions || [])
+      .filter((mission) => mission.lifecycleStatus === "active")
+      .forEach((mission) => ids.add(mission.missionId));
+    (state?.catalog || [])
+      .filter((mission) => mission.status === "active")
+      .forEach((mission) => ids.add(mission.missionId));
+    return ids;
+  }
+
+  function missionProgress(state, missionId) {
+    return Number(
+      (state?.missions || []).find((mission) => mission.missionId === missionId)?.progress || 0
+    );
+  }
+
+  function guidanceConditionMet(guidance, missionId, state) {
+    const activeIds = activeMissionIds(state);
+    const when = String(guidance?.when || "active");
+
+    if (when === "missions-active") {
+      const required = Array.isArray(guidance.missionsAll)
+        ? guidance.missionsAll
+        : [missionId];
+      return required.every((id) => activeIds.has(id));
+    }
+
+    if (!activeIds.has(missionId)) return false;
+    if (when === "active-idle") return !state?.currentAction;
+    return true;
+  }
+
+  function cancelTutorialGuidance(key, clearVisuals = false) {
+    const timer = tutorialGuidanceTimers.get(key);
+    if (timer) global.clearTimeout(timer);
+    tutorialGuidanceTimers.delete(key);
+    if (clearVisuals) {
+      BF.TutorialUI?.hideMessage?.();
+      BF.TutorialUI?.clearHighlight?.();
+    }
+  }
+
+  function showGuidanceOnce(missionId, guidance, state) {
+    const key = `${missionId}:${guidance.id || guidance.message || "guidance"}`;
+    if (tutorialGuidanceShown.has(key)) return false;
+    if (!guidanceConditionMet(guidance, missionId, state)) return false;
+
+    tutorialGuidanceShown.add(key);
+    tutorialGuidanceTimers.delete(key);
+    BF.TutorialUI?.showMessage?.(guidance.message, {
+      duration: guidance.duration
+    });
+    if (guidance.highlight) BF.TutorialUI?.highlight?.(guidance.highlight);
+
+    const duration = Math.max(0, Number(guidance.duration ?? 14000) || 0);
+    if (guidance.highlight && duration > 0) {
+      const clearKey = `${key}:clear`;
+      cancelTutorialGuidance(clearKey);
+      tutorialGuidanceTimers.set(
+        clearKey,
+        global.setTimeout(() => {
+          tutorialGuidanceTimers.delete(clearKey);
+          BF.TutorialUI?.clearHighlight?.();
+        }, duration)
+      );
+    }
+    return true;
+  }
+
+  function consumeTutorialGuidance(state) {
+    if (!state) return;
+
+    const now = Date.now();
+    const activeIds = activeMissionIds(state);
+    activeIds.forEach((missionId) => {
+      if (!tutorialMissionActiveSince.has(missionId)) {
+        tutorialMissionActiveSince.set(missionId, now);
+      }
+    });
+    [...tutorialMissionActiveSince.keys()].forEach((missionId) => {
+      if (!activeIds.has(missionId)) tutorialMissionActiveSince.delete(missionId);
+    });
+
+    (BF.BibleCatalog || []).forEach((definition) => {
+      const missionId = definition?.id;
+      if (!missionId || !Array.isArray(definition.uiGuidance)) return;
+
+      definition.uiGuidance.forEach((guidance) => {
+        const key = `${missionId}:${guidance.id || guidance.message || "guidance"}`;
+        if (tutorialGuidanceShown.has(key)) return;
+
+        if (
+          guidance.dismissOnProgress === true &&
+          missionProgress(state, missionId) > 0
+        ) {
+          cancelTutorialGuidance(key, true);
+          tutorialGuidanceShown.add(key);
+          return;
+        }
+
+        if (!guidanceConditionMet(guidance, missionId, state)) {
+          cancelTutorialGuidance(key);
+          return;
+        }
+
+        const delayMs = Math.max(0, Number(guidance.delayMs) || 0);
+        if (delayMs > 0) {
+          const activeSince = tutorialMissionActiveSince.get(missionId);
+          if (!activeSince || now - activeSince < delayMs) return;
+        }
+        showGuidanceOnce(missionId, guidance, state);
+      });
+    });
+  }
 
   function renderStep(node, index, currentAction) {
     const descendants = [];
@@ -573,6 +699,7 @@
 
   global.addEventListener("bluefox:mission-state", (event) => {
     latestState = event.detail;
+    consumeTutorialGuidance(latestState);
     render(latestState);
     renderMissionBrowser(latestState);
   });
@@ -581,6 +708,7 @@
     const current = BF.getMissionState?.() || BF.missionState || latestState;
     if (!current) return;
     latestState = current;
+    consumeTutorialGuidance(current);
     const panel = document.querySelector(".m0-mission-panel");
     if (!panel?.isConnected) lastSignature = "";
     render(current);

@@ -59,6 +59,7 @@
         progressNarrative: {},
         effectsApplied: {},
         gatesSatisfied: {},
+        activationInventoryCredits: {},
       };
     }
 
@@ -76,6 +77,7 @@
           progressNarrative: { ...(saved?.progressNarrative || {}) },
           effectsApplied: { ...(saved?.effectsApplied || {}) },
           gatesSatisfied: { ...(saved?.gatesSatisfied || {}) },
+          activationInventoryCredits: { ...(saved?.activationInventoryCredits || {}) },
         };
       } catch {
         return this.defaultState();
@@ -707,7 +709,7 @@
           performance.now() + 3500
         );
 
-        this.emitNarrative(mission, "revealed", event);
+        this.emitRevealedOnce(mission, event);
         this.lastActivationAttempt = diagnostic;
 
         global.dispatchEvent?.(
@@ -881,6 +883,15 @@
         if (node.id === `${missionId}:${slot}`) found = node;
       });
       return found;
+    }
+
+    emitRevealedOnce(mission, context = {}) {
+      const key = `${mission.id}:revealed`;
+      if (this.state.progressNarrative[key]) return false;
+
+      this.state.progressNarrative[key] = Date.now();
+      this.saveState();
+      return this.emitNarrative(mission, "revealed", context);
     }
 
     emitProgressNarrative(mission, entry) {
@@ -1484,6 +1495,44 @@
       return created;
     }
 
+    applyActivationInventoryCredits(mission) {
+      const credits = asArray(mission?.activationInventoryCredits)
+        .filter((credit) => credit?.slot && credit?.inventoryKey);
+      if (!credits.length) return false;
+
+      const key = `${mission.id}:v${mission.version || 1}`;
+      if (this.state.activationInventoryCredits[key]) return false;
+
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(mission.id);
+      if (!manager || !tree) return false;
+
+      let changed = false;
+      credits.forEach((credit) => {
+        const node = tree.find?.(`${mission.id}:${credit.slot}`);
+        if (!node || node.isComplete) return;
+        const available = Math.max(
+          0,
+          Number(BF.progression?.availableInventory?.([credit.inventoryKey])) || 0
+        );
+        const maximum = Math.max(0, Number(credit.maximum) || node.target || 0);
+        const credited = Math.min(node.target, maximum || node.target, available);
+        if (credited <= Number(node.progress || 0)) return;
+        const delta = credited - Number(node.progress || 0);
+        changed = node.increment?.(delta) === true || changed;
+      });
+
+      this.state.activationInventoryCredits[key] = Date.now();
+      this.saveState();
+      if (changed) {
+        tree.refresh?.();
+        manager.memory?.saveTree?.(tree);
+        manager.syncLifecycleFromTrees?.();
+        manager.publish?.();
+      }
+      return changed;
+    }
+
     onMissionState(state) {
       this.migrateLegacyRationUnlock();
       for (const mission of this.catalog) {
@@ -1492,6 +1541,11 @@
 
         const lifecycle =
           this.manager()?.memory?.state?.missionLifecycle?.[mission.id];
+
+        if (lifecycle?.status === "active") {
+          this.emitRevealedOnce(mission);
+          this.applyActivationInventoryCredits(mission);
+        }
 
         if (lifecycle?.status === "completed") {
           this.unlockResearchRewards(mission);

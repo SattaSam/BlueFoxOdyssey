@@ -197,6 +197,85 @@
     return "observe";
   };
 
+  const lower = (value) => String(value ?? "").trim().toLowerCase();
+  const asArray = (value) => Array.isArray(value) ? value : value == null ? [] : [value];
+
+  const metadataMatchesMissionCriteria = (metadata, params = {}, options = {}) => {
+    const tags = new Set(asArray(metadata.tags).map(lower).filter(Boolean));
+    const exact = {
+      objectId: metadata.objectId,
+      cuoType: metadata.cuoType,
+      kind: metadata.kind,
+      family: metadata.family,
+      subject: metadata.subject,
+      category: metadata.category
+    };
+
+    for (const [key, actual] of Object.entries(exact)) {
+      if (options.skipSubject && key === "subject") continue;
+      if (params[key] != null && lower(params[key]) !== lower(actual)) return false;
+    }
+
+    const tagsAny = asArray(params.tagsAny).map(lower).filter(Boolean);
+    if (tagsAny.length && !tagsAny.some((tag) => tags.has(tag))) return false;
+    const tagsAll = asArray(params.tagsAll).map(lower).filter(Boolean);
+    if (tagsAll.length && !tagsAll.every((tag) => tags.has(tag))) return false;
+
+    const exclusions = {
+      excludeObjectIds: metadata.objectId,
+      excludeCuoTypes: metadata.cuoType,
+      excludeKinds: metadata.kind,
+      excludeFamilies: metadata.family,
+      excludeSubjects: metadata.subject,
+      excludeCategories: metadata.category
+    };
+    for (const [key, actual] of Object.entries(exclusions)) {
+      if (asArray(params[key]).map(lower).includes(lower(actual))) return false;
+    }
+    const excludedTags = asArray(params.excludeTagsAny).map(lower).filter(Boolean);
+    if (excludedTags.some((tag) => tags.has(tag))) return false;
+    return true;
+  };
+
+  const eventMissionMetadata = (event) => {
+    const detail = event?.detail || {};
+    const definition =
+      BF.ObjectLibrary?.getById?.(event?.objectId) ||
+      BF.ObjectLibrary?.get?.(detail.cuoType) ||
+      null;
+    return {
+      objectId: event?.objectId || definition?.id,
+      cuoType: detail.cuoType || definition?.type,
+      kind:
+        detail.kind ||
+        event?.inventoryKey ||
+        definition?.resource?.inventoryKey ||
+        definition?.type ||
+        event?.family,
+      family:
+        event?.family ||
+        definition?.resource?.family ||
+        event?.knowledgeFamily ||
+        definition?.knowledge?.family ||
+        definition?.category,
+      subject:
+        detail.subject ||
+        definition?.semantic?.subject ||
+        event?.knowledgeFamily ||
+        definition?.knowledge?.family ||
+        event?.category ||
+        definition?.category ||
+        event?.family,
+      category: event?.category || definition?.category,
+      tags: [
+        ...(event?.tags || []),
+        ...(detail.tags || []),
+        ...(definition?.spawn?.tags || []),
+        ...(definition?.situation?.tags || [])
+      ]
+    };
+  };
+
   const eventMatchesNode = (event, node) => {
     if (node.params?.catalogManaged) return false;
     const type = Missions.normalizeActionType(node.type);
@@ -209,8 +288,7 @@
       if (![Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(type)) {
         return false;
       }
-      const kind = detail.kind || event.inventoryKey || event.family;
-      return !node.params.kind || node.params.kind === kind;
+      return metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {});
     }
     if (![BF.ObjectEvents?.types.OBJECT_INSPECTED, BF.ObjectEvents?.types.PHENOMENON_OBSERVED, BF.ObjectEvents?.types.OBJECT_ANALYZED].includes(event.type)) return false;
     if (!isStudyAction(type)) return false;
@@ -226,6 +304,9 @@
       requestedVerb &&
       requestedVerb !== narrativeStudyVerb(type)
     ) return false;
+    if (!metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}, { skipSubject: true })) {
+      return false;
+    }
     const subject = String(node.params.subject || "").toLowerCase();
     if (!subject) return true;
     if (subject === "structure") return detail.kind === "structure" || tags.has("ruin") || tags.has("landmark");
@@ -359,6 +440,16 @@
     ...(definition?.situation?.tags || [])
   ].map((value) => String(value || "").toLowerCase()));
 
+  const definitionMissionMetadata = (definition) => ({
+    objectId: definition?.id,
+    cuoType: definition?.type,
+    kind: definition?.resource?.inventoryKey || definition?.type,
+    family: definition?.resource?.family || definition?.knowledge?.family || definition?.category,
+    subject: definition?.semantic?.subject || definition?.knowledge?.family || definition?.category || definition?.type,
+    category: definition?.category,
+    tags: [...objectTags(definition)]
+  });
+
   const matchesStudySubject = (definition, subject) => {
     const expected = String(subject || "").trim().toLowerCase();
     if (!expected) return true;
@@ -462,6 +553,7 @@
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return false;
         return definition &&
           canStudy(definition) &&
+          metadataMatchesMissionCriteria(definitionMissionMetadata(definition), action.params || {}, { skipSubject: true }) &&
           matchesStudySubject(definition, action.params?.subject) &&
           matchesBoundTarget(engine, action.missionId, resolved);
       })
@@ -489,6 +581,7 @@
       const tree = manager.trees.get(missionId);
       for (const node of tree.availableLeaves()) {
         if (!isStudyAction(node.type)) continue;
+        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
         if (!matchesBoundTarget(engine, missionId, resolved)) continue;
         const distinctValue = distinctValueFromResolved(node, resolved);
@@ -743,8 +836,15 @@
       const incomingRequested = String(
         object.userData.requestedInteraction || ""
       ).toLowerCase();
+      const manualResolvedAction = source === "manual"
+        ? (incomingRequested || resolveManualAction(resolved))
+        : incomingRequested;
+      const manualAcquisition = source === "manual" &&
+        ["collect", "extract"].includes(manualResolvedAction);
       const directive =
-        source === "mission" ? null : activeStudyDirective(this, resolved);
+        source === "mission" || manualAcquisition
+          ? null
+          : activeStudyDirective(this, resolved);
 
       // Une mission reste souveraine : elle n'ouvre jamais une chaîne implicite.
       // Hors mission, une intention d'acquisition est conservée jusqu'à
