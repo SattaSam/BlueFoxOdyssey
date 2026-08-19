@@ -40,6 +40,10 @@
 
       this.unsubscribeObjectEvents = null;
       this.activationEventIds = new Set();
+      // Cache strictement runtime : reconstruit une seule fois pour chaque
+      // instance de map chargée. La mémoire persistante reste dans MissionMemory.
+      this.observationResolvers = new WeakMap();
+      this.observationCaptureQueued = false;
       this.started = false;
       this.lastGateReviewAt = 0;
       this.lastActivationAttempt = null;
@@ -377,6 +381,314 @@
 
     manager() {
       return BF.currentEngine?.missionManager || null;
+    }
+
+    observationMemoryKey() {
+      return "observationCoverage:v1";
+    }
+
+    observationMemory() {
+      const memory = this.manager()?.memory;
+      const current = memory?.getFact?.(this.observationMemoryKey(), null);
+      return current && typeof current === "object"
+        ? current
+        : {
+            version: 1,
+            maps: {},
+            mapsReached50: [],
+            mapsReached100: []
+          };
+    }
+
+    observationPoint(object, engine = BF.currentEngine) {
+      const anchor = object?.userData?.worldAnchor || object;
+      if (!anchor) return { x: 0, y: 0, z: 0 };
+      if (anchor.getWorldPosition && engine?.THREE?.Vector3) {
+        const point = anchor.getWorldPosition(new engine.THREE.Vector3());
+        return {
+          x: Number(point.x) || 0,
+          y: Number(point.y) || 0,
+          z: Number(point.z) || 0
+        };
+      }
+      const point = anchor.position || object?.position || {};
+      return {
+        x: Number(point.x) || 0,
+        y: Number(point.y) || 0,
+        z: Number(point.z) || 0
+      };
+    }
+
+    observationCoordinate(value) {
+      return (Math.round((Number(value) || 0) * 1000) / 1000)
+        .toFixed(3);
+    }
+
+    observationObjectKey(mapId, object, engine = BF.currentEngine) {
+      const anchor = object?.userData?.worldAnchor || object;
+      const data = object?.userData || {};
+      const rootData = anchor?.userData || {};
+      const definition =
+        data.functional ||
+        rootData.functional ||
+        BF.ObjectLibrary?.getById?.(data.catalogId || rootData.catalogId) ||
+        BF.ObjectLibrary?.get?.(data.libraryType || rootData.libraryType) ||
+        null;
+      const catalogId = String(
+        data.catalogId ||
+        rootData.catalogId ||
+        definition?.id ||
+        data.libraryType ||
+        rootData.libraryType ||
+        "object"
+      );
+      const variant = Number(
+        data.variant ?? rootData.variant ?? 0
+      ) || 0;
+      const point = this.observationPoint(object, engine);
+      return `${mapId}:obj:${catalogId}:${variant}:` +
+        `${this.observationCoordinate(point.x)}:` +
+        `${this.observationCoordinate(point.y)}:` +
+        `${this.observationCoordinate(point.z)}`;
+    }
+
+    observationMicroSceneKey(mapId, entry, engine = BF.currentEngine) {
+      const records = Array.isArray(entry?.records) ? entry.records : [];
+      const anchor = entry?.instanceRoot || records[0]?.root || null;
+      const point = anchor
+        ? this.observationPoint(anchor, engine)
+        : { x: 0, y: 0, z: 0 };
+      return `${mapId}:msc:${String(entry?.id || "unknown")}:` +
+        `${this.observationCoordinate(point.x)}:` +
+        `${this.observationCoordinate(point.y)}:` +
+        `${this.observationCoordinate(point.z)}`;
+    }
+
+    isObservationCandidate(object) {
+      // Le dénominateur représente le peuplement initial, pas seulement les
+      // objets encore actifs au premier événement d'étude. Un objet déjà
+      // collecté reste donc comptable s'il faisait partie des interactables.
+      if (!object) return false;
+      const anchor = object.userData?.worldAnchor || object;
+      const data = object.userData || {};
+      const rootData = anchor?.userData || {};
+      const definition =
+        data.functional ||
+        rootData.functional ||
+        BF.ObjectLibrary?.getById?.(data.catalogId || rootData.catalogId) ||
+        BF.ObjectLibrary?.get?.(data.libraryType || rootData.libraryType) ||
+        null;
+      const actions = new Set(
+        asArray(
+          definition?.interaction?.actions ||
+          data.interaction?.actions ||
+          rootData.interaction?.actions
+        ).map(lower)
+      );
+      return ["observe", "inspect", "analyze"].some((action) =>
+        actions.has(action)
+      );
+    }
+
+    buildObservationResolver(engine = BF.currentEngine) {
+      const map = engine?.currentMap;
+      const mapId = engine?.currentMapId;
+      if (!map || !mapId) return null;
+
+      const cached = this.observationResolvers.get(map);
+      if (cached?.mapId === mapId) return cached;
+
+      const byInstance = new Map();
+      const observable = new Set();
+      const initialMscInstances = Array.isArray(map.group?.userData?.microScenes)
+        ? map.group.userData.microScenes
+        : [];
+      const initialMscMembers = new Map();
+
+      initialMscInstances.forEach((entry) => {
+        const key = this.observationMicroSceneKey(mapId, entry, engine);
+        (entry.records || []).forEach((record) => {
+          if (record?.instanceId) {
+            initialMscMembers.set(String(record.instanceId), key);
+          }
+        });
+      });
+
+      (map.interactables || []).forEach((object) => {
+        if (!this.isObservationCandidate(object)) return;
+        const anchor = object.userData?.worldAnchor || object;
+        const data = object.userData || {};
+        const rootData = anchor?.userData || {};
+        const instanceId = String(
+          data.instanceId || rootData.instanceId || ""
+        );
+        if (!instanceId) return;
+
+        const initialMscKey = initialMscMembers.get(instanceId);
+        if (initialMscKey) {
+          byInstance.set(instanceId, initialMscKey);
+          observable.add(initialMscKey);
+          return;
+        }
+
+        // Certains landmarks de peuplement utilisent directement le contenu
+        // d'une MicroScene sans passer par spawnMicroScene(). Leur identifiant
+        // de catalogue est conservé dans biomeLandmark ; une même MSC de ce
+        // type compte donc elle aussi comme une seule entité.
+        const landmarkId = String(
+          data.biomeLandmark || rootData.biomeLandmark || ""
+        );
+        if (landmarkId && BF.MicroScenes?.get?.(landmarkId)) {
+          const landmarkKey = `${mapId}:msc:${landmarkId}:landmark`;
+          byInstance.set(instanceId, landmarkKey);
+          observable.add(landmarkKey);
+          return;
+        }
+
+        // Une MSC absente du registre initial du peuplement a été ajoutée
+        // après la construction de la map : elle ne modifie jamais le compteur.
+        if (data.microSceneId || rootData.microSceneId) return;
+
+        const key = this.observationObjectKey(mapId, object, engine);
+        byInstance.set(instanceId, key);
+        observable.add(key);
+      });
+
+      const resolver = {
+        mapId,
+        byInstance,
+        observable: [...observable]
+      };
+      this.observationResolvers.set(map, resolver);
+      return resolver;
+    }
+
+    captureObservationMap(engine = BF.currentEngine) {
+      const manager = this.manager();
+      const mapId = engine?.currentMapId;
+      if (!manager?.memory || !mapId) return false;
+
+      const coverage = this.observationMemory();
+      if (coverage.maps?.[mapId]?.frozen === true) {
+        // Le résolveur runtime doit tout de même être prêt après un reload,
+        // mais aucune donnée persistante n'est recalculée ni réenregistrée.
+        this.buildObservationResolver(engine);
+        return false;
+      }
+
+      const resolver = this.buildObservationResolver(engine);
+      if (!resolver) return false;
+      const next = clone(coverage);
+      next.maps = next.maps || {};
+      next.mapsReached50 = asArray(next.mapsReached50);
+      next.mapsReached100 = asArray(next.mapsReached100);
+      next.maps[mapId] = {
+        mapId,
+        observableEntityIds: [...resolver.observable],
+        observedEntityIds: [],
+        frozen: true,
+        frozenAt: Date.now(),
+        seed: BF.maps?.[mapId]?.seed ?? null
+      };
+      manager.memory.setFact(this.observationMemoryKey(), next);
+
+      global.dispatchEvent?.(
+        new CustomEvent("bluefox:observation-coverage-changed", {
+          detail: this.observationCoverage(mapId, next)
+        })
+      );
+      return true;
+    }
+
+    observationCoverage(mapId = BF.currentEngine?.currentMapId, source = null) {
+      const coverage = source || this.observationMemory();
+      const entry = coverage.maps?.[mapId] || null;
+      const total = entry?.observableEntityIds?.length || 0;
+      const observed = entry?.observedEntityIds?.length || 0;
+      const percent = total > 0
+        ? Math.min(100, (observed / total) * 100)
+        : 0;
+      return {
+        mapId: mapId || null,
+        observed,
+        total,
+        percent,
+        reached50: asArray(coverage.mapsReached50).includes(mapId),
+        reached100: asArray(coverage.mapsReached100).includes(mapId),
+        frozen: entry?.frozen === true
+      };
+    }
+
+    observationTotals(source = null) {
+      const coverage = source || this.observationMemory();
+      return {
+        mapsObserved50Count: new Set(asArray(coverage.mapsReached50)).size,
+        mapsObserved100Count: new Set(asArray(coverage.mapsReached100)).size
+      };
+    }
+
+    recordObservation(rawEvent) {
+      if (![
+        "OBJECT_SEEN",
+        "OBJECT_INSPECTED",
+        "OBJECT_ANALYZED",
+        "PHENOMENON_OBSERVED"
+      ].includes(rawEvent?.type)) {
+        return false;
+      }
+
+      const engine = BF.currentEngine;
+      const manager = this.manager();
+      const mapId = rawEvent?.mapId || engine?.currentMapId;
+      if (!engine?.currentMap || !manager?.memory || !mapId) return false;
+      if (String(engine.currentMapId || "") !== String(mapId)) return false;
+
+      this.captureObservationMap(engine);
+      const resolver = this.buildObservationResolver(engine);
+      const instanceId = String(rawEvent?.instanceId || "");
+      const entityId = instanceId
+        ? resolver?.byInstance?.get(instanceId)
+        : null;
+      if (!entityId) return false;
+
+      const coverage = this.observationMemory();
+      const mapCoverage = coverage.maps?.[mapId];
+      if (!mapCoverage?.frozen) return false;
+      if (!mapCoverage.observableEntityIds?.includes(entityId)) return false;
+      if (mapCoverage.observedEntityIds?.includes(entityId)) return false;
+
+      const next = clone(coverage);
+      const entry = next.maps[mapId];
+      entry.observedEntityIds = asArray(entry.observedEntityIds);
+      entry.observedEntityIds.push(entityId);
+
+      const observed = entry.observedEntityIds.length;
+      const total = entry.observableEntityIds.length;
+      if (total > 0 && observed * 2 >= total) {
+        const reached50 = new Set(asArray(next.mapsReached50));
+        reached50.add(mapId);
+        next.mapsReached50 = [...reached50];
+      }
+      if (total > 0 && observed >= total) {
+        const reached100 = new Set(asArray(next.mapsReached100));
+        reached100.add(mapId);
+        next.mapsReached100 = [...reached100];
+      }
+
+      // setFact marque MissionMemory dirty. Cette écriture n'arrive que pour
+      // une nouvelle entité réellement observée ; les doublons sortent avant.
+      manager.memory.setFact(this.observationMemoryKey(), next);
+
+      global.dispatchEvent?.(
+        new CustomEvent("bluefox:observation-coverage-changed", {
+          detail: {
+            ...this.observationCoverage(mapId, next),
+            ...this.observationTotals(next),
+            entityId
+          }
+        })
+      );
+      return true;
     }
 
     missionLifecycle(missionId) {
@@ -822,6 +1134,7 @@
     onObjectEvent(rawEvent) {
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
+      this.recordObservation(rawEvent);
       const activeBefore = new Set(
         this.catalog
           .filter((mission) => this.missionLifecycle(mission.id).active)
@@ -869,6 +1182,13 @@
     }
 
     onMapTransition(detail) {
+      // La transition est émise après chargement de la map courante. On fige
+      // ici son catalogue observable dès la première arrivée, y compris pour
+      // une map déjà générée/sauvegardée avant le démarrage du runtime.
+      // captureObservationMap() est dirty-only : si le snapshot existe déjà,
+      // aucune donnée persistante n'est recalculée ni réenregistrée.
+      this.captureObservationMap(BF.currentEngine);
+
       const event = {
         fromMapId: detail.fromMapId || null,
         toMapId: detail.toMapId || detail.mapId || null,
@@ -1568,6 +1888,21 @@
     }
 
     onMissionState(state) {
+      // MissionManager publie son premier état depuis son constructeur, avant
+      // que WorldEngine ait terminé l’affectation de this.missionManager.
+      // Une microtask unique reporte donc le snapshot au premier instant où
+      // la map chargée ET MissionMemory sont simultanément disponibles.
+      // captureObservationMap() reste dirty-only et ne réécrit jamais une map
+      // dont le catalogue observable a déjà été figé.
+      if (!this.observationCaptureQueued) {
+        this.observationCaptureQueued = true;
+        const schedule = global.queueMicrotask || ((callback) => Promise.resolve().then(callback));
+        schedule(() => {
+          this.observationCaptureQueued = false;
+          this.captureObservationMap(BF.currentEngine);
+        });
+      }
+
       this.migrateLegacyRationUnlock();
       for (const mission of this.catalog) {
         const entry = this.findMissionEntry(state, mission.id);
@@ -1748,6 +2083,12 @@
     runtime.activationDiagnostics(id);
   BF.getLastBibleActivationAttempt = () =>
     clone(runtime.lastActivationAttempt);
+  BF.captureObservationMap = (engine) =>
+    runtime.captureObservationMap(engine || BF.currentEngine);
+  BF.getObservationCoverage = (mapId) =>
+    runtime.observationCoverage(mapId);
+  BF.getObservationCoverageTotals = () =>
+    runtime.observationTotals();
 
 
   BF.Research = Object.freeze({
