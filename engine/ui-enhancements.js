@@ -554,9 +554,42 @@
         line-height: 1.35;
       }
       .journal-temporal-meta .journal-feeling-block {
-        grid-column: 1 / -1;
+        grid-column: span 1;
         width: 100%;
         box-sizing: border-box;
+      }
+      .journal-temporal-meta .journal-current-thoughts {
+        grid-column: span 1;
+        width: 100%;
+        min-height: 132px;
+        box-sizing: border-box;
+        padding: 11px 13px;
+        border: 1px solid rgba(92,220,255,.22);
+        border-radius: 10px;
+        background: rgba(4,22,38,.38);
+        overflow-y: auto;
+        scrollbar-width: thin;
+      }
+      .journal-current-thoughts .journal-narrative-eyebrow {
+        display: block;
+        margin-bottom: 8px;
+        color: #64e6ff;
+        font-size: 10.5px;
+        font-weight: 800;
+        letter-spacing: .11em;
+      }
+      .journal-current-thoughts .journal-narrative-entry {
+        margin: 0 0 7px;
+        color: rgba(224,240,244,.86);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .journal-current-thoughts .journal-narrative-entry:last-child {
+        margin-bottom: 0;
+      }
+      .journal-current-thoughts .journal-narrative-empty {
+        color: rgba(190,211,218,.62);
+        font-style: italic;
       }
       .journal-temporal-meta .journal-feeling-block > b {
         display: block;
@@ -659,10 +692,21 @@
         overflow: visible;
         text-overflow: clip;
       }
+      .journal-current-thoughts {
+        grid-column: 1 / -1;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        padding: 11px 13px !important;
+      }
+      .journal-current-thoughts .journal-narrative-eyebrow {
+        margin-bottom: 7px;
+      }
+      .journal-current-thoughts .journal-narrative-entry {
+        margin-bottom: 5px;
+      }
       .living-notes.journal-narrative-notes {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 11px;
+        display: block;
         min-height: 0;
         margin-bottom: 10px;
       }
@@ -698,13 +742,488 @@
         color: rgba(190,211,218,.62);
         font-style: italic;
       }
+      .journal-evolution-card {
+        grid-column: 1 / -1;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      .journal-evolution-theme {
+        margin: 0 0 8px;
+        border: 1px solid rgba(100,225,255,.17);
+        border-radius: 9px;
+        background: rgba(4,22,38,.38);
+      }
+      .journal-evolution-theme:last-child {
+        margin-bottom: 0;
+      }
+      .journal-evolution-theme summary {
+        padding: 8px 9px;
+        cursor: pointer;
+        color: #edfaff;
+        font-size: 12px;
+        font-weight: 800;
+        list-style: none;
+      }
+      .journal-evolution-theme summary::-webkit-details-marker {
+        display: none;
+      }
+      .journal-evolution-theme summary::before {
+        content: "▸";
+        display: inline-block;
+        width: 14px;
+        color: #64e6ff;
+      }
+      .journal-evolution-theme[open] summary::before {
+        content: "▾";
+      }
+      .journal-evolution-copy {
+        margin: 0;
+        padding: 0 9px 10px 23px;
+        color: rgba(224,240,244,.86);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .journal-current-state-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 11px;
+        grid-column: 1 / -1;
+      }
+      .journal-current-state-row > * {
+        min-width: 0;
+      }
       @media (max-width: 900px) {
-        .living-notes.journal-narrative-notes {
+        .journal-current-state-row {
           grid-template-columns: 1fr;
         }
       }
     `;
     document.head.appendChild(style);
+  }
+
+
+  const JOURNAL_EVOLUTION_AXIS_LABELS = Object.freeze({
+    exploration: "Exploration",
+    collection: "Collecte",
+    research: "Recherche",
+    relations: "Relations",
+    survival: "Survie"
+  });
+
+  const JOURNAL_EVOLUTION_EVENT_AXES = Object.freeze({
+    OBJECT_SEEN: "exploration",
+    PHENOMENON_OBSERVED: "exploration",
+    OBJECT_INSPECTED: "research",
+    OBJECT_ANALYZED: "research",
+    KNOWLEDGE_ACQUIRED: "research",
+    RESOURCE_COLLECTED: "collection",
+    RESOURCE_EXTRACTED: "collection"
+  });
+
+  const JOURNAL_EVOLUTION_THEME_FIELDS = Object.freeze([
+    "theme",
+    "narrativeTheme",
+    "domain",
+    "category"
+  ]);
+
+  const journalEvolutionThemeId = (value) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+
+  const journalEvolutionLabel = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+    const id = journalEvolutionThemeId(raw);
+    return JOURNAL_EVOLUTION_AXIS_LABELS[id] ||
+      raw.replace(/[-_]+/g, " ")
+        .replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase("fr"));
+  };
+
+  const journalEvolutionMissionDefinitions = () => {
+    const BF = global.BlueFox3D;
+    const runtime = BF?.bibleRuntime;
+    const result = new Map();
+
+    const add = (mission) => {
+      if (!mission?.id) return;
+      result.set(String(mission.id), mission);
+    };
+
+    if (runtime?.allMissions) {
+      runtime.allMissions().forEach(add);
+    } else {
+      runtime?.catalog?.forEach?.(add);
+      runtime?.dynamicMissions?.forEach?.(add);
+    }
+
+    return result;
+  };
+
+  const journalEvolutionMissionTheme = (mission) => {
+    if (!mission) return null;
+    for (const field of JOURNAL_EVOLUTION_THEME_FIELDS) {
+      if (mission[field]) {
+        return {
+          id: journalEvolutionThemeId(mission[field]),
+          label: journalEvolutionLabel(mission[field])
+        };
+      }
+    }
+    const axis = mission.passivePriorityAxis || mission.priorityAxis || null;
+    if (!axis) return null;
+    return {
+      id: journalEvolutionThemeId(axis),
+      label: journalEvolutionLabel(axis)
+    };
+  };
+
+  const journalEvolutionEventTheme = (event, missions) => {
+    if (!event) return null;
+
+    for (const field of JOURNAL_EVOLUTION_THEME_FIELDS) {
+      const value = event[field] ?? event.detail?.[field];
+      if (value) {
+        return {
+          id: journalEvolutionThemeId(value),
+          label: journalEvolutionLabel(value)
+        };
+      }
+    }
+
+    const missionId =
+      event.missionId ||
+      event.detail?.missionId ||
+      event.bibleMissionId ||
+      event.detail?.bibleMissionId ||
+      null;
+    const missionTheme = journalEvolutionMissionTheme(
+      missionId ? missions.get(String(missionId)) : null
+    );
+    if (missionTheme) return missionTheme;
+
+    const type = String(event.type || "").toUpperCase();
+    const axis = JOURNAL_EVOLUTION_EVENT_AXES[type] || null;
+    return axis
+      ? { id: axis, label: JOURNAL_EVOLUTION_AXIS_LABELS[axis] }
+      : null;
+  };
+
+  const journalEvolutionEventWeight = (event, missions) => {
+    const missionId =
+      event?.missionId ||
+      event?.detail?.missionId ||
+      event?.bibleMissionId ||
+      event?.detail?.bibleMissionId ||
+      null;
+    const mission = missionId ? missions.get(String(missionId)) : null;
+    const priority = Number(mission?.priority);
+    if (Number.isFinite(priority) && priority > 0) {
+      return Math.max(1, Math.min(4, priority / 30));
+    }
+    const type = String(event?.type || "").toUpperCase();
+    if (type === "KNOWLEDGE_ACQUIRED") return 2.2;
+    if (type === "OBJECT_ANALYZED") return 1.7;
+    if (type === "OBJECT_INSPECTED" || type === "PHENOMENON_OBSERVED") return 1.3;
+    return 1;
+  };
+
+  const journalEvolutionEventTime = (event) => {
+    const value = Number(event?.at ?? event?.timestamp ?? event?.time);
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  const journalEvolutionSubjectLabel = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+
+    const normalized = raw
+      .replace(/^offline-/i, "")
+      .replace(/^doc-/i, "")
+      .replace(/^bio-/i, "")
+      .replace(/^res-/i, "")
+      .replace(/-(?:m|s)-?\d+$/i, "")
+      .replace(/-\d+$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim();
+
+    const aliases = {
+      observation: "mes observations",
+      resource: "les ressources étudiées",
+      wood: "le bois",
+      crystal: "les cristaux",
+      bush: "les buissons",
+      adap: "les plantes adaptatives"
+    };
+
+    const words = normalized.split(/\s+/).filter(Boolean);
+    const meaningful = words.filter((word) => ![
+      "offline", "doc", "bio", "res", "resource", "resources", "m", "s"
+    ].includes(word.toLowerCase()));
+    const aliasKey = meaningful.at(-1)?.toLowerCase() || normalized.toLowerCase();
+    if (aliases[aliasKey]) return aliases[aliasKey];
+
+    const label = meaningful.join(" ") || normalized;
+    if (!label || /^(?:observation|resource)$/i.test(label)) {
+      return aliases[label.toLowerCase()] || "";
+    }
+    return label
+      .toLocaleLowerCase("fr")
+      .replace(/\b\p{L}/u, (letter) => letter.toLocaleUpperCase("fr"));
+  };
+
+  function buildJournalEvolutionThemes() {
+    const BF = global.BlueFox3D;
+    const progression = BF?.getProgressionState?.();
+    const history = Array.isArray(progression?.history)
+      ? progression.history
+      : [];
+    if (!history.length) return [];
+
+    const missions = journalEvolutionMissionDefinitions();
+    const grouped = new Map();
+
+    history.forEach((event) => {
+      const theme = journalEvolutionEventTheme(event, missions);
+      if (!theme?.id) return;
+
+      const bucket = grouped.get(theme.id) || {
+        id: theme.id,
+        label: theme.label || journalEvolutionLabel(theme.id),
+        events: [],
+        score: 0,
+        subjects: new Map(),
+        missionIds: new Set(),
+        firstAt: 0,
+        lastAt: 0
+      };
+
+      const weight = journalEvolutionEventWeight(event, missions);
+      const at = journalEvolutionEventTime(event);
+      bucket.events.push(event);
+      bucket.score += weight;
+      if (at) {
+        bucket.firstAt = bucket.firstAt ? Math.min(bucket.firstAt, at) : at;
+        bucket.lastAt = Math.max(bucket.lastAt, at);
+      }
+
+      const subject =
+        event.subject ||
+        event.objectId ||
+        event.family ||
+        event.detail?.subject ||
+        event.detail?.kind ||
+        null;
+      if (subject) {
+        const key = String(subject);
+        bucket.subjects.set(
+          key,
+          (bucket.subjects.get(key) || 0) + weight
+        );
+      }
+
+      const missionId =
+        event.missionId ||
+        event.detail?.missionId ||
+        event.bibleMissionId ||
+        event.detail?.bibleMissionId ||
+        null;
+      if (missionId) bucket.missionIds.add(String(missionId));
+
+      grouped.set(theme.id, bucket);
+    });
+
+    const bac =
+      BF?.getBACDiagnostics?.() ||
+      BF?.BAC?.getDiagnostics?.() ||
+      null;
+    const priorities = bac?.profile?.priorities || bac?.priorities || {};
+
+    return [...grouped.values()]
+      .filter((bucket) => bucket.events.length >= 2 || bucket.score >= 2)
+      .map((bucket) => {
+        const eventCounts = bucket.events.reduce((counts, event) => {
+          const type = String(event?.type || "").toUpperCase();
+          if (type) counts[type] = (counts[type] || 0) + 1;
+          return counts;
+        }, {});
+        const topSubjects = [...bucket.subjects.entries()]
+          .sort((left, right) => right[1] - left[1])
+          .slice(0, 3)
+          .map(([subject]) => journalEvolutionSubjectLabel(subject))
+          .filter(Boolean);
+        const axisPriority = Number(priorities?.[bucket.id]);
+        const text = journalEvolutionNarrative(
+          bucket,
+          eventCounts,
+          topSubjects,
+          Number.isFinite(axisPriority) ? axisPriority : null
+        );
+        return {
+          id: bucket.id,
+          label: bucket.label,
+          score: bucket.score,
+          lastAt: bucket.lastAt,
+          text,
+          signature: [
+            bucket.events.length,
+            Math.round(bucket.score * 10),
+            bucket.firstAt,
+            bucket.lastAt,
+            topSubjects.join(","),
+            text
+          ].join(":")
+        };
+      })
+      .filter((theme) => theme.text)
+      .sort((left, right) =>
+        right.score - left.score ||
+        right.lastAt - left.lastAt ||
+        left.label.localeCompare(right.label, "fr")
+      );
+  }
+
+  function journalEvolutionNarrative(bucket, counts, subjects, playerPriority) {
+    const total = bucket.events.length;
+    const observed =
+      (counts.OBJECT_SEEN || 0) +
+      (counts.PHENOMENON_OBSERVED || 0);
+    const studied =
+      (counts.OBJECT_INSPECTED || 0) +
+      (counts.OBJECT_ANALYZED || 0) +
+      (counts.KNOWLEDGE_ACQUIRED || 0);
+    const collected =
+      (counts.RESOURCE_COLLECTED || 0) +
+      (counts.RESOURCE_EXTRACTED || 0);
+    const focus = subjects.length ? subjects.join(", ") : "";
+    const intensity = playerPriority == null
+      ? 0
+      : playerPriority >= 75
+        ? 2
+        : playerPriority >= 60
+          ? 1
+          : 0;
+    const variantSeed = Math.abs(
+      [...String(bucket.id || "")].reduce(
+        (sum, character) => sum + character.charCodeAt(0),
+        total + Math.round(bucket.score * 10)
+      )
+    );
+    const pick = (variants, offset = 0) =>
+      variants[(variantSeed + offset) % variants.length];
+
+    const sentences = [];
+    if (bucket.id === "exploration") {
+      sentences.push(pick(total < 6 ? [
+        "Je commence à distinguer ce qui mérite vraiment mon attention dans les territoires que je parcours.",
+        "Chaque nouveau terrain m'oblige encore à ralentir, regarder, comparer. Peu à peu, certains signes deviennent familiers.",
+        "Je n'explore déjà plus tout à fait comme au premier jour : mon regard accroche plus vite les détails utiles."
+      ] : [
+        "Au fil des territoires parcourus, mes premières impressions se transforment en repères plus solides.",
+        "À force d'avancer, le monde me paraît moins opaque. Je commence à reconnaître ses rythmes avant même de les analyser.",
+        "Les paysages cessent peu à peu d'être une succession d'inconnues : certains motifs me reviennent, presque instinctivement."
+      ]));
+      if (observed >= 4) {
+        sentences.push(pick([
+          "Mes observations répétées m'aident désormais à reconnaître plus vite les phénomènes et les éléments déjà familiers.",
+          "Je remarque que mes yeux cherchent d'eux-mêmes ce que j'ai déjà appris à repérer.",
+          "Ce que j'observais autrefois avec hésitation devient maintenant un ensemble de signes que je lis beaucoup plus vite."
+        ], 3));
+      }
+    } else if (bucket.id === "collection") {
+      sentences.push(pick(collected < 8 ? [
+        "Mes premières récoltes m'apprennent surtout quelles ressources sont réellement utiles sur le terrain.",
+        "Je commence à faire la différence entre ce qui attire simplement mon attention et ce qui mérite vraiment d'être emporté.",
+        "Chaque collecte m'apprend encore quelque chose sur ce dont j'ai réellement besoin pour continuer."
+      ] : [
+        "La collecte est devenue une activité que je maîtrise bien mieux qu'à mon arrivée, autant dans le choix des ressources que dans leur usage.",
+        "Je ne ramasse plus au hasard. Avec l'expérience, mes choix deviennent plus sûrs, plus rapides, presque naturels.",
+        "Les ressources ne sont plus de simples objets à prendre : je commence à les replacer dans une logique de préparation et de survie."
+      ]));
+    } else if (bucket.id === "research") {
+      sentences.push(pick(studied < 5 ? [
+        "Je rassemble encore mes premières références, mais certaines observations commencent déjà à se répondre.",
+        "Quelques détails isolés commencent à se relier entre eux. C'est encore fragile, mais je sens qu'un motif apparaît.",
+        "Je manque encore de recul, pourtant certaines découvertes cessent déjà d'être indépendantes les unes des autres."
+      ] : [
+        "Ce qui n'était au départ qu'une série d'observations isolées commence à former un ensemble de connaissances plus cohérent.",
+        "Mes notes finissent par se rejoindre. Plus j'analyse, plus certaines questions anciennes trouvent enfin un contexte.",
+        "Je commence à comprendre que mes découvertes forment un réseau plutôt qu'une simple accumulation de faits."
+      ]));
+      if ((counts.OBJECT_ANALYZED || 0) >= 3 || (counts.KNOWLEDGE_ACQUIRED || 0) >= 1) {
+        sentences.push(pick([
+          "Mes analyses ne servent plus seulement à identifier ce que je vois : elles m'aident progressivement à comprendre des relations que je ne percevais pas au début.",
+          "Je ne cherche plus seulement à nommer les choses. J'essaie de comprendre pourquoi elles sont là, et ce qu'elles racontent ensemble.",
+          "Certaines réponses font naître de nouvelles questions, mais elles ont au moins cessé d'être entièrement étrangères."
+        ], 5));
+      }
+    } else if (bucket.id === "relations") {
+      sentences.push(pick([
+        "Mes rencontres commencent à former une histoire plutôt qu'une succession de contacts isolés.",
+        "Je me surprends à attendre certaines réactions, à reconnaître des attitudes, parfois même à espérer une réponse familière.",
+        "Les êtres que je croise ne sont plus seulement des présences sur mon chemin. Certains commencent à compter différemment."
+      ]));
+    } else if (bucket.id === "survival") {
+      sentences.push(pick([
+        "Ma manière de survivre s'est peu à peu structurée : je ne réagis plus seulement aux urgences, j'anticipe davantage ce dont j'aurai besoin.",
+        "Je sens que mes réflexes changent. Je prépare davantage avant d'avoir faim, froid ou besoin de repos.",
+        "Au début je répondais surtout à l'urgence. Maintenant, j'essaie de garder une longueur d'avance sur mes besoins."
+      ]));
+    } else {
+      sentences.push(pick([
+        `Avec le temps, mes expériences liées à ${bucket.label.toLocaleLowerCase("fr")} commencent à former une évolution identifiable.`,
+        `Je remarque que ${bucket.label.toLocaleLowerCase("fr")} prend progressivement une place plus nette dans ce que j'apprends et dans la manière dont j'agis.`,
+        `Ce thème revient assez souvent pour que je commence à sentir une véritable continuité dans mon expérience de ${bucket.label.toLocaleLowerCase("fr")}.`
+      ]));
+    }
+
+    if (focus) {
+      sentences.push(pick(subjects.length === 1 ? [
+        `Je reviens souvent sur ${focus}, qui devient progressivement un repère plus familier.`,
+        `${focus} revient régulièrement dans mon parcours ; je commence à ne plus l'aborder comme quelque chose d'entièrement nouveau.`,
+        `Je remarque que ${focus} occupe une place particulière dans ce que j'ai appris jusqu'ici.`
+      ] : [
+        `Je reviens souvent sur ${focus}; ces éléments deviennent progressivement des repères plus familiers.`,
+        `${focus} reviennent assez souvent pour former maintenant un ensemble de repères que je reconnais de mieux en mieux.`,
+        `Parmi tout ce que j'ai croisé, ${focus} sont devenus des références récurrentes dans mon expérience.`
+      ], 7));
+    }
+
+    if (bucket.missionIds.size >= 2) {
+      sentences.push(pick([
+        "Plusieurs missions différentes ont contribué à cette évolution, ce qui me donne une vision moins ponctuelle de ce domaine.",
+        "Ce n'est plus lié à une seule mission : plusieurs expériences différentes commencent à se renforcer les unes les autres.",
+        "Cette évolution traverse maintenant plusieurs objectifs, et je sens qu'elle dépasse le simple contexte d'une mission."
+      ], 11));
+    }
+
+    if (playerPriority != null) {
+      if (intensity === 2 && bucket.score >= 6) {
+        sentences.push(pick([
+          "Et là, je le sens vraiment : cette direction me tire vers elle. Plus j'y consacre d'attention, plus j'ai envie d'aller au bout de ce qu'elle peut m'apprendre.",
+          "Cette orientation résonne fortement avec la place que tu lui donnes. Elle n'est plus seulement importante : elle commence à devenir quelque chose que j'attends, presque avec impatience.",
+          "Je crois que cette priorité est en train de me marquer. Quand une occasion se présente dans ce domaine, ma curiosité monte immédiatement et j'ai du mal à simplement passer à autre chose."
+        ], 13));
+      } else if (intensity === 1 && bucket.score >= 6) {
+        sentences.push(pick([
+          "Cette orientation correspond aussi à l'importance que tu lui accordes, et je sens qu'elle prend une place durable dans mes choix.",
+          "Je remarque que l'attention que tu portes à ce domaine renforce aussi la mienne ; j'y reviens plus volontiers.",
+          "Cette priorité commence à influencer ma façon de regarder les occasions qui se présentent."
+        ], 13));
+      } else if (playerPriority >= 65 && bucket.score < 4) {
+        sentences.push(
+          "Tu sembles vouloir m'orienter davantage dans cette direction, mais mon expérience réelle y reste encore limitée."
+        );
+      } else if (playerPriority <= 35 && bucket.score >= 8) {
+        sentences.push(
+          "Même si tu n'en fais pas une priorité forte, le terrain m'a conduit à développer beaucoup d'expérience dans ce domaine."
+        );
+      }
+    }
+
+    return sentences.join(" ");
   }
 
   function renderJournalNarrativeNotes(report) {
@@ -718,16 +1237,27 @@
     const daily = entries
       .filter((entry) => Number(entry.at) >= dayStart.getTime())
       .slice(0, 8);
+    const evolutionThemes = buildJournalEvolutionThemes();
     const signature = daily
       .map((entry) => `${entry.id}:${entry.at}`)
-      .join("|");
-    if (host.dataset.journalNarrativeSignature === signature) return;
+      .join("|") + "||" + evolutionThemes
+        .map((theme) => `${theme.id}:${theme.signature}`)
+        .join("|");
+    const meta = report.querySelector(".journal-temporal-meta");
+    const thoughtsPresent = Boolean(
+      meta?.querySelector(".journal-current-state-row .journal-current-thoughts")
+    );
+    if (
+      host.dataset.journalNarrativeSignature === signature &&
+      thoughtsPresent
+    ) return;
     host.dataset.journalNarrativeSignature = signature;
     host.classList.add("journal-narrative-notes");
     host.replaceChildren();
 
-    const makeCard = (label, items, emptyText) => {
+    const makeCard = (label, items, emptyText, className = "") => {
       const article = document.createElement("article");
+      if (className) article.className = className;
       const eyebrow = document.createElement("span");
       eyebrow.className = "journal-narrative-eyebrow";
       eyebrow.textContent = label;
@@ -755,18 +1285,79 @@
       return article;
     };
 
-    host.append(
-      makeCard(
-        "PENSÉES DU JOUR",
-        daily,
-        "Aucune pensée missionnelle dédiée au Journal aujourd’hui."
-      ),
-      makeCard(
-        "SYNTHÈSE DES ÉVOLUTIONS",
-        [],
-        "Aucune synthèse narrative consolidée pour le moment."
-      )
-    );
+    const makeEvolutionCard = (themes) => {
+      const article = document.createElement("article");
+      article.className = "journal-evolution-card";
+      const eyebrow = document.createElement("span");
+      eyebrow.className = "journal-narrative-eyebrow";
+      eyebrow.textContent = "SYNTHÈSE DES ÉVOLUTIONS";
+      article.appendChild(eyebrow);
+
+      if (!themes.length) {
+        const empty = document.createElement("p");
+        empty.className = "journal-narrative-entry journal-narrative-empty";
+        empty.textContent =
+          "Aucune synthèse narrative consolidée pour le moment.";
+        article.appendChild(empty);
+        return article;
+      }
+
+      let savedThemeState = {};
+      try {
+        savedThemeState = JSON.parse(
+          localStorage.getItem("bluefox_journal_evolution_theme_state_v1") || "{}"
+        );
+      } catch {
+        savedThemeState = {};
+      }
+
+      themes.forEach((theme) => {
+        const details = document.createElement("details");
+        details.className = "journal-evolution-theme";
+        const storedOpen = savedThemeState?.[theme.id];
+        details.open = storedOpen === true;
+        const summary = document.createElement("summary");
+        summary.textContent = theme.label;
+        const paragraph = document.createElement("p");
+        paragraph.className = "journal-evolution-copy";
+        paragraph.textContent = theme.text;
+        details.append(summary, paragraph);
+        details.addEventListener("toggle", () => {
+          let state = {};
+          try {
+            state = JSON.parse(
+              localStorage.getItem("bluefox_journal_evolution_theme_state_v1") || "{}"
+            );
+          } catch {
+            state = {};
+          }
+          state[theme.id] = details.open;
+          localStorage.setItem(
+            "bluefox_journal_evolution_theme_state_v1",
+            JSON.stringify(state)
+          );
+        });
+        article.appendChild(details);
+      });
+      return article;
+    };
+
+    if (meta) {
+      const stateRow = meta.querySelector(".journal-current-state-row");
+      if (stateRow) {
+        const thoughts = stateRow.querySelector(".journal-current-thoughts");
+        const replacement = makeCard(
+          "PENSÉES DU JOUR",
+          daily,
+          "Aucune pensée missionnelle dédiée au Journal aujourd’hui.",
+          "journal-current-thoughts"
+        );
+        if (thoughts) thoughts.replaceWith(replacement);
+        else stateRow.appendChild(replacement);
+      }
+    }
+
+    host.append(makeEvolutionCard(evolutionThemes));
   }
 
   function enhanceJournal(panel) {
@@ -798,28 +1389,35 @@
       global.BlueFox3D?.maps?.[mapId]?.name ||
       mapData[mapId]?.name ||
       "Zone inconnue";
-    renderJournalNarrativeNotes(report);
     const signature = `${Math.floor(totalMinutes)}:${emotion.label}:${trust.key}:${Math.round(trust.trust)}:${mapId}:${mapName}`;
-    if (meta.dataset.signature === signature) return;
-    meta.dataset.signature = signature;
-    meta.innerHTML = `
+    if (meta.dataset.signature !== signature) {
+      meta.dataset.signature = signature;
+      meta.innerHTML = `
       <div><span>ZONE ACTUELLE</span><b>${mapName}</b></div>
       <div><span>DATE PLANÉTAIRE</span><b>${fictionalDate(totalMinutes)}</b></div>
       <div><span>DEPUIS L’ARRIVÉE</span><b>${elapsedPlanetTime(totalMinutes)}</b></div>
-      <div class="journal-feeling-block">
-        <span>RESSENTI DE BLUEFOX</span><b>${emotion.label}</b>
-        <div class="journal-trust-row">
-          <div class="journal-trust-gauge" role="img" aria-label="Influence perçue : ${trust.title} · ${trust.trust.toFixed(1)} sur 100">
-            <span class="journal-trust-gauge__arc"></span>
-            <span class="journal-trust-gauge__needle" style="--trust-angle:${trust.needleAngle.toFixed(2)}deg"></span>
-            <span class="journal-trust-gauge__hub"></span>
-            <span class="journal-trust-gauge__minus" aria-hidden="true">−100</span>
-            <span class="journal-trust-gauge__zero" aria-hidden="true">0</span>
-            <span class="journal-trust-gauge__plus" aria-hidden="true">+100</span>
+      <div class="journal-current-state-row">
+        <div class="journal-feeling-block">
+          <span>RESSENTI DE BLUEFOX</span><b>${emotion.label}</b>
+          <div class="journal-trust-row">
+            <div class="journal-trust-gauge" role="img" aria-label="Influence perçue : ${trust.title} · ${trust.trust.toFixed(1)} sur 100">
+              <span class="journal-trust-gauge__arc"></span>
+              <span class="journal-trust-gauge__needle" style="--trust-angle:${trust.needleAngle.toFixed(2)}deg"></span>
+              <span class="journal-trust-gauge__hub"></span>
+              <span class="journal-trust-gauge__minus" aria-hidden="true">−100</span>
+              <span class="journal-trust-gauge__zero" aria-hidden="true">0</span>
+              <span class="journal-trust-gauge__plus" aria-hidden="true">+100</span>
+            </div>
+            <div class="journal-trust-copy"><em>${trust.text}</em></div>
           </div>
-          <div class="journal-trust-copy"><em>${trust.text}</em></div>
         </div>
+        <article class="journal-current-thoughts">
+          <span class="journal-narrative-eyebrow">PENSÉES DU JOUR</span>
+          <p class="journal-narrative-entry journal-narrative-empty">Aucune pensée missionnelle dédiée au Journal aujourd’hui.</p>
+        </article>
       </div>`;
+    }
+    renderJournalNarrativeNotes(report);
   }
 
   function setPlanetDetail(panel, direction) {
