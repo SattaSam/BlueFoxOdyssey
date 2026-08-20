@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions = BF.Missions || {};
-  const VERSION = "explore-scope-v1";
+  const VERSION = "explore-scope-v2-surface-absolute";
 
   const normalize = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -49,9 +49,12 @@
     if (metric === "surfacePercent" || Number.isFinite(threshold)) {
       const value = Number(detail.surfacePercent);
       if (!Number.isFinite(value)) return false;
-      const required = Number.isFinite(threshold) ? threshold : Number(node.target);
-      if (value < required) return false;
-      const delta = Math.max(0, node.target - node.progress);
+      const required = Math.max(1, Number.isFinite(threshold) ? threshold : Number(node.target));
+      const absolute = Math.min(
+        Number(node.target) || required,
+        Math.max(0, Math.round(value))
+      );
+      const delta = absolute - Number(node.progress || 0);
       return delta > 0 ? node.increment(delta) : false;
     }
 
@@ -125,10 +128,24 @@
     });
   };
 
+  const onMissionState = () => {
+    const mapId = BF.currentEngine?.currentMapId;
+    if (!mapId) return;
+    const exploration = BF.getMapExplorationState?.(mapId);
+    if (!exploration) return;
+    progressActiveExploration({
+      mapId,
+      zoneId: null,
+      surfacePercent: Number(exploration.surfacePercent) || 0,
+      amount: 0
+    });
+  };
+
   const install = () => {
     if (BF.__exploreScopeBridgeVersion === VERSION) return true;
     global.addEventListener?.("bluefox:map-exploration-changed", onExplorationChanged);
     global.addEventListener?.("bluefox:map-transition-completed", onMapTransition);
+    global.addEventListener?.("bluefox:mission-state", onMissionState);
     BF.__exploreScopeBridgeVersion = VERSION;
     return true;
   };

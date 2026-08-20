@@ -353,6 +353,291 @@
     })
   });
 
+
+  const T05 = Object.freeze({
+    id: "T05",
+    title: "Explorer réellement la map de départ",
+    description: "Explorer réellement le Site du crash jusqu’à connaître au moins 60 % de sa surface.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T04",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T04"]),
+    priority: 90,
+    passivePriorityAxis: "exploration",
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Explorer 60 % du Site du crash",
+        target: 60,
+        params: Object.freeze({
+          scope: "map",
+          mapId: "crystal",
+          metric: "surfacePercent",
+          threshold: 60
+        })
+      })
+    }),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "exploration-surface-help",
+        when: "active-idle",
+        delayMs: 12000,
+        message: "Explore réellement le terrain : éloigne-toi du Site du crash et découvre au moins 60 % de la map.",
+        duration: 14000,
+        dismissOnProgress: true
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Le camp me donne un point de retour. Maintenant je veux cesser de tourner autour de la capsule et comprendre vraiment cette zone."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "explore",
+          at: 0.5,
+          text: "Le terrain devient une carte plutôt qu’une collection d’objets isolés."
+        })
+      ]),
+      completed: Object.freeze([
+        "J’en connais assez pour me déplacer ici sans tout redécouvrir à chaque sortie."
+      ])
+    })
+  });
+
+  const T06 = Object.freeze({
+    id: "T06",
+    title: "Analyser avant de décider",
+    description: "Analyser trois familles différentes : une plante, un minerai et une relique de type stèle ou arche.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T05",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T05"]),
+    priority: 88,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "flora",
+        title: "Analyser une plante",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "flora",
+          excludeObjectIds: Object.freeze(["DOC-RES-WOOD-M-001"])
+        })
+      }),
+      Object.freeze({
+        slot: "mineral",
+        title: "Analyser un minerai",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "mineral"
+        })
+      }),
+      Object.freeze({
+        slot: "relic",
+        title: "Analyser une relique, une stèle ou une arche",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          tagsAny: Object.freeze(["ruin", "arch", "stele"]),
+          excludeObjectIds: Object.freeze(["LANDMARK-CRASH-CAPSULE-001"]),
+          excludeKinds: Object.freeze(["debris"])
+        })
+      })
+    ]),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "analysis-families-help",
+        when: "active-idle",
+        delayMs: 10000,
+        message: "Analyse trois familles différentes : une plante, un minerai et une relique — stèle ou arche.",
+        duration: 14000,
+        dismissOnProgress: false
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ramasser et cartographier ne suffisent pas. Je veux vérifier que je sais aussi transformer une observation en connaissance."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          at: 0.34,
+          text: "Chaque analyse réduit un peu la part de hasard."
+        })
+      ]),
+      completed: Object.freeze([
+        "Très bien. Pour la suite, essaie de me donner une direction plutôt qu’un trajet pas à pas."
+      ])
+    })
+  });
+
+  const T07 = Object.freeze({
+    id: "T07",
+    title: "Suggérer une direction et découvrir une nouvelle map",
+    description: "Choisir une direction, laisser BlueFox franchir seul un passage puis analyser la scène de reconnaissance garantie sur la map voisine.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T06",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T06"]),
+    priority: 86,
+    passivePriorityAxis: "exploration",
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Étudier la scène de reconnaissance",
+        target: 1,
+        params: Object.freeze({})
+      })
+    }),
+    navigation: Object.freeze({
+      controlsUnknownTravel: true,
+      singleUnknownTransition: true,
+      autonomyModeOnArrival: "semi",
+      autonomyModeOnComplete: "off",
+      makePrimaryOnArrival: true,
+      target: Object.freeze({
+        cuoType: "stele",
+        binding: "type-or-mission-scene"
+      })
+    }),
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-ANCIENT-GATEWAY-001",
+          persistent: true,
+          spawnOnce: true
+        })
+      ])
+    }),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "choose-direction-help",
+        when: "active",
+        delayMs: 4000,
+        message: "Cette fois, choisis seulement une direction. Ouvre Planète pour indiquer Nord, Sud, Est ou Ouest.",
+        duration: 14000,
+        highlight: "planet"
+      }),
+      Object.freeze({
+        id: "direction-cards-help",
+        when: "target-available",
+        message: "Choisis une direction : Nord, Sud, Est ou Ouest.",
+        duration: 14000,
+        highlight: "planet-directions"
+      }),
+      Object.freeze({
+        id: "unknown-send-help",
+        when: "target-available",
+        message: "Confirme ensuite avec « Envoyer BlueFox en terre inconnue ».",
+        duration: 14000,
+        highlight: "planet-send-unknown"
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Cette fois, ne me montre pas un point précis. Choisis simplement une direction. Je chercherai moi-même comment quitter cette zone."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "recognize",
+          atCount: 1,
+          text: "J’ai trouvé le passage. La direction vient de toi ; le chemin, de moi."
+        })
+      ]),
+      completed: Object.freeze([
+        "Nouvelle zone… quelque chose se détache du décor. Je vais aller voir sans que tu aies besoin de me le demander."
+      ])
+    })
+  });
+
+  const T08 = Object.freeze({
+    id: "T08",
+    title: "Retrouver le Site du crash",
+    description: "Suggérer explicitement le retour puis laisser BlueFox retrouver le Site du crash par les passages connus.",
+    pattern: "TRAVEL_CYCLE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T07",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T07"]),
+    priority: 84,
+    slots: Object.freeze({
+      travel: Object.freeze({
+        title: "Revenir au Site du crash",
+        target: 1,
+        params: Object.freeze({
+          toMapId: "crystal",
+          distinctBy: "transition"
+        })
+      })
+    }),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 8,
+      scope: "any-established"
+    }),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "return-home-help",
+        when: "active",
+        delayMs: 4000,
+        message: "Si tu veux rentrer, suggère simplement le retour au Site du crash depuis Planète.",
+        duration: 14000,
+        highlight: "planet"
+      }),
+      Object.freeze({
+        id: "return-button-help",
+        when: "target-available",
+        message: "Utilise « Demander le retour à la base ». BlueFox retrouvera seul la route connue.",
+        duration: 14000,
+        highlight: "return-base"
+      }),
+      Object.freeze({
+        id: "autonomy-settings-help",
+        when: "completed",
+        message: "BlueFox peut maintenant fonctionner avec davantage d’autonomie. Ouvre Réglages pour choisir son niveau.",
+        duration: 14000,
+        highlight: "settings"
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je sais d’où je viens. Si tu veux rentrer, dis-le-moi simplement : je devrais pouvoir retrouver le Site du crash sans que tu reconstruises chaque étape."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "travel",
+          atCount: 1,
+          text: "Je reconnais ce passage. Je reprends la route connue."
+        })
+      ]),
+      completed: Object.freeze([
+        "Voilà le Site du crash. Je peux partir et revenir : les zones connues commencent à former un vrai territoire."
+      ]),
+      hesitation: Object.freeze([
+        "On peut continuer à regarder autour de nous, mais si tu veux tester ma mémoire du trajet, suggère-moi simplement de rentrer au Site du crash."
+      ])
+    })
+  });
+
   /*
    * Bible Catalog — BASE PROPRE.
    *
@@ -509,6 +794,10 @@
     T03,
     shelter,
     T04,
+    T05,
+    T06,
+    T07,
+    T08,
     rationDiscovery
   ]);
 

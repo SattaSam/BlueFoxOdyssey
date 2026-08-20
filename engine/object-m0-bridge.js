@@ -144,6 +144,7 @@
     if (!object?.userData) return;
     object.userData.acquisitionIntent = null;
     object.userData.acquisitionIntentSource = null;
+    object.userData.acquisitionPhase = null;
   };
 
   const rememberAcquisitionIntent = (object, action, source) => {
@@ -276,7 +277,7 @@
     };
   };
 
-  const eventMatchesNode = (event, node) => {
+  const eventMatchesNode = (event, node, missionId = null) => {
     if (node.params?.catalogManaged) return false;
     const type = Missions.normalizeActionType(node.type);
     const detail = event.detail || {};
@@ -293,17 +294,22 @@
     if (![BF.ObjectEvents?.types.OBJECT_INSPECTED, BF.ObjectEvents?.types.PHENOMENON_OBSERVED, BF.ObjectEvents?.types.OBJECT_ANALYZED].includes(event.type)) return false;
     if (!isStudyAction(type)) return false;
 
-    if (detail.missionNodeId && detail.missionNodeId !== node.id) return false;
-    if (detail.missionNodeId && event.type !== BF.ObjectEvents?.types.PHENOMENON_OBSERVED) return false;
+    // missionNodeId protège le nœud qui a déclenché l'étude dans SA mission,
+    // sans réserver l'événement aux autres missions actives compatibles.
+    // Le fan-out reste donc générique, tandis qu'une mission d'origine ne peut
+    // pas créditer plusieurs feuilles sœurs avec une seule action prescrite.
+    if (detail.missionNodeId) {
+      const originMissionId = String(detail.missionId || "");
+      const sameOriginMission = !originMissionId ||
+        originMissionId === String(missionId || "");
+      if (sameOriginMission && detail.missionNodeId !== node.id) return false;
+      if (event.type !== BF.ObjectEvents?.types.PHENOMENON_OBSERVED) return false;
+    }
 
-    const requestedVerb = String(
-      detail.missionNarrativeVerb || detail.interactionMode || ""
-    ).toLowerCase();
-    if (
-      !detail.missionNodeId &&
-      requestedVerb &&
-      requestedVerb !== narrativeStudyVerb(type)
-    ) return false;
+    // Convention BlueFox : observer / inspecter / analyser appartiennent à la
+    // même famille fonctionnelle d'étude pour le crédit missionnel. Le type
+    // physique de l'étude ne doit donc pas empêcher le fan-out ; les critères
+    // CUO, le binding et missionNodeId restent les garde-fous.
     if (!metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}, { skipSubject: true })) {
       return false;
     }
@@ -321,15 +327,30 @@
       BF.ObjectEvents?.types.RESOURCE_EXTRACTED
     ].includes(event.type)) return true;
     const bound = manager?.memory?.getFact?.(`bibleTarget:${missionId}`);
-    if (!bound || (!bound.instanceId && !bound.objectId && !bound.cuoType)) return true;
+    if (!bound || (!bound.instanceId && !bound.objectId && !bound.cuoType && !bound.missionSceneMissionId)) return true;
+    if (bound.mapId && String(event.mapId || "") !== String(bound.mapId)) return false;
     if (bound.binding === "instance" && bound.instanceId) {
       return String(event.instanceId || "") === String(bound.instanceId);
     }
     const eventType = String(event.detail?.cuoType || "").toLowerCase();
-    const sameType = bound.cuoType && eventType === String(bound.cuoType).toLowerCase();
+    const sameType = bound.cuoType &&
+      eventType === String(bound.cuoType).toLowerCase();
     const sameDefinition = bound.objectId &&
       String(event.objectId || "").toLowerCase() === String(bound.objectId).toLowerCase();
-    return Boolean(sameType || sameDefinition);
+
+    // Une interaction de mission sur un objet MSC valide uniquement si la cible
+    // avait été reconnue comme appartenant à la MSC de cette mission au moment
+    // de la sélection. ActionBridge pose missionId/missionNodeId seulement après
+    // matchesBoundTarget(), ce qui évite qu'un objet hors MSC puisse profiter
+    // de ce chemin.
+    const detailMissionId = String(event.detail?.missionId || "");
+    const sameMissionScene =
+      bound.binding === "type-or-mission-scene" &&
+      bound.missionSceneMissionId &&
+      detailMissionId === String(missionId) &&
+      Boolean(event.detail?.missionNodeId);
+
+    return Boolean(sameType || sameDefinition || sameMissionScene);
   };
 
   const applyObjectEventProgress = (manager, event) => {
@@ -353,7 +374,7 @@
       if (!eventMatchesBoundTarget(manager, missionId, event)) return;
       let treeChanged = false;
       tree.availableLeaves().forEach((node) => {
-        if (node.isComplete || !eventMatchesNode(event, node)) return;
+        if (node.isComplete || !eventMatchesNode(event, node, missionId)) return;
         if (progressNodeFromEvent(node, event)) {
           changed += 1;
           treeChanged = true;
@@ -450,6 +471,42 @@
     tags: [...objectTags(definition)]
   });
 
+  const directCandidateDefinition = (object) => {
+    if (!object) return null;
+    const own = object.userData || {};
+    const anchor = own.worldAnchor || null;
+    const anchorData = anchor?.userData || {};
+
+    // Pour le choix de cible missionnelle, l'identité portée directement par
+    // l'interactable est souveraine. On évite ainsi qu'un enfant de MSC hérite
+    // accidentellement du CUO d'un parent/anchor voisin.
+    return own.functional ||
+      own.definition ||
+      BF.ObjectLibrary?.getById?.(own.catalogId) ||
+      BF.ObjectLibrary?.get?.(own.libraryType) ||
+      BF.ObjectLibrary?.get?.(own.objectType) ||
+      anchorData.functional ||
+      anchorData.definition ||
+      BF.ObjectLibrary?.getById?.(anchorData.catalogId) ||
+      BF.ObjectLibrary?.get?.(anchorData.libraryType) ||
+      BF.ObjectLibrary?.get?.(anchorData.objectType) ||
+      null;
+  };
+
+  const resolveMissionCandidate = (object) => {
+    const directDefinition = directCandidateDefinition(object);
+    if (!directDefinition) return resolveObject(object);
+
+    const anchor = object?.userData?.worldAnchor || object;
+    return {
+      object,
+      anchor,
+      data: object?.userData || {},
+      rootData: anchor?.userData || {},
+      definition: directDefinition
+    };
+  };
+
   const matchesStudySubject = (definition, subject) => {
     const expected = String(subject || "").trim().toLowerCase();
     if (!expected) return true;
@@ -505,6 +562,18 @@
     cuoType: String(resolved.definition?.type || "").toLowerCase()
   });
 
+  const missionSceneIdOf = (resolved) => String(
+    resolved?.object?.userData?.bibleMissionId ||
+    resolved?.anchor?.userData?.bibleMissionId ||
+    ""
+  );
+
+  const eventMissionSceneId = (event) => String(
+    event?.detail?.bibleMissionId ||
+    event?.detail?.missionSceneMissionId ||
+    ""
+  );
+
   const distinctValueFromEvent = (node, event) => {
     const mode = String(node?.params?.distinctBy || "").trim();
     if (!mode || mode === "none") return null;
@@ -531,22 +600,28 @@
 
   const matchesBoundTarget = (engine, missionId, resolved) => {
     const bound = engine?.missionManager?.memory?.getFact?.(`bibleTarget:${missionId}`);
-    if (!bound || (!bound.instanceId && !bound.objectId && !bound.cuoType)) return true;
+    if (!bound || (!bound.instanceId && !bound.objectId && !bound.cuoType && !bound.missionSceneMissionId)) return true;
+    if (bound.mapId && String(engine?.currentMapId || "") !== String(bound.mapId)) return false;
     const identity = identityOf(resolved);
     if (bound.binding === "instance" && bound.instanceId) {
       return identity.instanceId === String(bound.instanceId);
     }
-    const sameType = bound.cuoType && identity.cuoType === String(bound.cuoType).toLowerCase();
+    const sameType = bound.cuoType &&
+      identity.cuoType === String(bound.cuoType).toLowerCase();
     const sameDefinition = bound.objectId &&
       identity.objectId === String(bound.objectId).toLowerCase();
-    return Boolean(sameType || sameDefinition);
+    const sameMissionScene =
+      bound.binding === "type-or-mission-scene" &&
+      bound.missionSceneMissionId &&
+      missionSceneIdOf(resolved) === String(bound.missionSceneMissionId);
+    return Boolean(sameType || sameDefinition || sameMissionScene);
   };
 
   const selectObservable = (engine, action) =>
     (engine.currentMap?.interactables || [])
       .filter((object) => {
         if (!object.userData.active) return false;
-        const resolved = resolveObject(object);
+        const resolved = resolveMissionCandidate(object);
         const definition = resolved.definition;
         const node = engine?.missionManager?.trees?.get?.(action.missionId)?.find?.(action.nodeId);
         const distinctValue = node ? distinctValueFromResolved(node, resolved) : null;
@@ -566,7 +641,8 @@
 
   const activeStudyDirective = (engine, resolved) => {
     const manager = engine?.missionManager;
-    const definition = resolved?.definition;
+    const missionResolved = resolveMissionCandidate(resolved?.object || resolved?.anchor);
+    const definition = missionResolved?.definition;
     if (!manager || !definition || !canStudy(definition)) return null;
 
     const missionIds = [...(manager.activeMissionIds || [])]
@@ -583,8 +659,8 @@
         if (!isStudyAction(node.type)) continue;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
-        if (!matchesBoundTarget(engine, missionId, resolved)) continue;
-        const distinctValue = distinctValueFromResolved(node, resolved);
+        if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;
+        const distinctValue = distinctValueFromResolved(node, missionResolved);
         if (distinctValue != null && node.hasDistinctValue?.(distinctValue)) continue;
         return {
           missionId,
@@ -836,20 +912,14 @@
       const incomingRequested = String(
         object.userData.requestedInteraction || ""
       ).toLowerCase();
-      const manualResolvedAction = source === "manual"
-        ? (incomingRequested || resolveManualAction(resolved))
-        : incomingRequested;
-      const manualAcquisition = source === "manual" &&
-        ["collect", "extract"].includes(manualResolvedAction);
-      const directive =
-        source === "mission" || manualAcquisition
-          ? null
-          : activeStudyDirective(this, resolved);
+      const acquisitionPhase = object.userData.acquisitionPhase || null;
+      const missionStudyFromAcquisition =
+        source === "mission" && acquisitionPhase === "study";
 
-      // Une mission reste souveraine : elle n'ouvre jamais une chaîne implicite.
-      // Hors mission, une intention d'acquisition est conservée jusqu'à
-      // l'acquisition réelle de CETTE instance.
-      if (source === "mission") {
+      // Une commande missionnelle pure ne crée pas d'acquisition implicite.
+      // Une étude missionnelle insérée dans une acquisition conserve au
+      // contraire l'intention finale et la cible de CE geste.
+      if (source === "mission" && !missionStudyFromAcquisition) {
         clearAcquisitionIntent(object);
       } else if (!retry && capabilities(resolved.definition).collectable) {
         const wanted = ["collect", "extract"].includes(incomingRequested)
@@ -860,8 +930,21 @@
         if (wanted) rememberAcquisitionIntent(object, wanted, source);
       }
 
+      const intendedAcquisition = object.userData.acquisitionIntent;
+      const hasAcquisitionIntent =
+        ["collect", "extract"].includes(intendedAcquisition);
+      const acquiringSameTarget =
+        hasAcquisitionIntent && object.userData.acquisitionPhase === "acquire";
+
+      // Dès que l'étude préalable de CE geste est satisfaite, la phase acquire
+      // verrouille la même instance jusqu'à l'acquisition finale. Aucun nouvel
+      // arbitrage de mission/BAC ne peut détourner la cible entre les deux.
+      const directive =
+        source === "mission" || acquiringSameTarget
+          ? null
+          : activeStudyDirective(this, resolved);
+
       if (directive) {
-        clearAcquisitionIntent(object);
         object.userData.requestedInteraction = "observe";
         object.userData.requestedInteractionSource = "mission";
         object.userData.missionSubject = directive.subject;
@@ -872,24 +955,31 @@
 
       const missionRequested =
         object.userData.requestedInteractionSource === "mission";
-      const intendedAcquisition = missionRequested
-        ? null
-        : object.userData.acquisitionIntent;
 
-      const requestedStep = intendedAcquisition
-        ? resolveManualAction(resolved)
-        : (incomingRequested || resolveManualAction(resolved));
+      const requestedStep = directive
+        ? "observe"
+        : missionRequested
+          ? (incomingRequested || resolveManualAction(resolved))
+          : hasAcquisitionIntent
+            ? resolveManualAction(resolved)
+            : (incomingRequested || resolveManualAction(resolved));
 
       const mode = validateAction(
         resolved,
         requestedStep,
         missionRequested
       );
+
+      if (hasAcquisitionIntent && mode) {
+        object.userData.acquisitionPhase =
+          ["collect", "extract"].includes(mode) ? "acquire" : "study";
+      }
       if (!resolved.definition || !mode) {
         console.warn("[BlueFox O5.1] Interaction refusée : objet absent ou incomplet dans le CUO.", object);
         this.callbacks.onStatus("BlueFox ne sait pas encore comment interagir avec cet objet.");
         object.userData.requestedInteraction = null;
         object.userData.requestedInteractionSource = null;
+        clearAcquisitionIntent(object);
 
         // stale-target-reset-v1
         this.pendingInteraction = null;
@@ -929,6 +1019,7 @@
       const { anchor, definition } = resolved;
       if (!definition) {
         console.warn("[BlueFox O5.1] Définition CUO introuvable pendant l’interaction.", object);
+        clearAcquisitionIntent(object);
         this.pendingInteraction = null;
         this.character.stop();
         return;
@@ -941,6 +1032,7 @@
       );
       if (!mode) {
         this.callbacks.onStatus("Cette interaction n’est pas autorisée par le catalogue d’objets.");
+        clearAcquisitionIntent(object);
         this.pendingInteraction = null;
         this.character.stop();
         return;
@@ -954,6 +1046,7 @@
           if (this.interactionApproachAttempts <= 3) this.targetInteraction(object, true);
           else {
             this.callbacks.onStatus("BlueFox renonce temporairement à cet objet inaccessible.");
+            clearAcquisitionIntent(object);
             this.pendingInteraction = null;
             this.interactionApproachStartedAt = 0;
             this.interactionApproachAttempts = 0;
@@ -1100,14 +1193,15 @@
           label: definition.label,
           interactionState: { ...state }
         });
-        // Une étude préalable n'achève pas une intention de collecte.
-        // On conserve la même instance jusqu'à l'acquisition finale, sans
-        // repasser par le BAC. Les missions restent exclues de cette chaîne.
+        // Une étude préalable, qu'elle soit exigée par le CUO ou par une
+        // mission active, appartient au même geste d'acquisition. La cible ne
+        // change pas et la chaîne passe maintenant en phase acquire.
         continueAcquisition =
-          detail.interactionSource !== "mission" &&
           ["collect", "extract"].includes(object.userData.acquisitionIntent) &&
-          capabilities(definition).collectable &&
-          !activeStudyDirective(this, resolved);
+          capabilities(definition).collectable;
+        if (continueAcquisition) {
+          object.userData.acquisitionPhase = "acquire";
+        }
         object.userData.lastInspectedAt = Date.now();
         object.userData.requestedInteraction = null;
         object.userData.requestedInteractionSource = null;

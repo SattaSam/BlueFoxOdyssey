@@ -92,6 +92,16 @@
       document.querySelector('.tool-rail button[aria-label="Réglages"]') ||
       document.querySelector('.tool-rail button[aria-label="Reglages"]'),
     planet: () => document.querySelector('.tool-rail button[aria-label="Planète"]'),
+    "planet-directions": () => document.querySelector(".map-grid"),
+    "planet-send-unknown": () =>
+      [...document.querySelectorAll(".planet-selection-detail button")].find((button) =>
+        button.textContent?.includes("terre inconnue")
+      ) || null,
+    "return-base": () =>
+      document.querySelector(".return-base-button, [data-action=\"return-base\"]") ||
+      [...document.querySelectorAll(".planet-selection-detail button, .planet-panel button")].find((button) =>
+        /retour/i.test(button.textContent || "")
+      ) || null,
     "mission-panel": () => document.querySelector(".mission-card")
   });
 
@@ -206,7 +216,18 @@
       return required.every((id) => activeIds.has(id));
     }
 
+    if (when === "completed") {
+      return (state?.missions || []).some((mission) =>
+        mission.missionId === missionId && mission.lifecycleStatus === "completed"
+      ) || (state?.catalog || []).some((mission) =>
+        mission.missionId === missionId && mission.status === "completed"
+      );
+    }
+
     if (!activeIds.has(missionId)) return false;
+    if (when === "target-available") {
+      return Boolean(guidance.highlight && resolveTutorialTarget(guidance.highlight));
+    }
     if (when === "active-idle") return !state?.currentAction;
     return true;
   }
@@ -698,9 +719,36 @@
     rail.appendChild(button);
   }
 
+  function tutorialMissionCompleted(state, missionId) {
+    return (state?.missions || []).some((mission) =>
+      mission?.missionId === missionId && mission?.lifecycleStatus === "completed"
+    );
+  }
+
+  function unlockFullOnSettingsClick(toolButton) {
+    const label = String(toolButton?.getAttribute?.("aria-label") || "")
+      .toLocaleLowerCase("fr")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (label !== "reglages") return false;
+
+    const state = BF.getMissionState?.() || latestState;
+    if (!tutorialMissionCompleted(state, "T08")) return false;
+    if (BF.getAutonomyAvailability?.().full === true) return false;
+
+    // Propriétaire conservé : settings-ui-bridge reste seul responsable
+    // du stockage et de l'application du mode d'autonomie.
+    const unlocked = BF.unlockAutonomyMode?.("full") === true;
+    if (!unlocked) return false;
+    BF.setAutonomyMode?.("full", { source: "user" });
+    BF.TutorialUI?.clearHighlight?.();
+    return true;
+  }
+
   document.addEventListener("click", (event) => {
     const toolButton = event.target.closest?.(".tool-rail button");
     if (!toolButton || toolButton.classList.contains("mission-tool-button")) return;
+    unlockFullOnSettingsClick(toolButton);
     document.querySelector(".mission-browser")?.remove();
   }, true);
 

@@ -37,14 +37,22 @@
     return definition;
   };
 
-  const generate = (options = {}) => {
-    const definition = originalGenerate(options);
-    const pending = BF.__pendingBibleMapGeneration
-      ? clone(BF.__pendingBibleMapGeneration)
-      : null;
+  const resolvePrescription = () => {
+    if (BF.__pendingBibleMapGeneration) {
+      return clone(BF.__pendingBibleMapGeneration);
+    }
+    const resolved = BF.resolveBibleMapGenerationPrescription?.();
+    return resolved ? clone(resolved) : null;
+  };
 
-    return pending
-      ? applyPrescription(definition, pending)
+  const generate = (options = {}) => {
+    // Résoudre avant la génération afin que la prescription reste liée à
+    // l'état missionnel qui a déclenché cette nouvelle map.
+    const prescription = resolvePrescription();
+    const definition = originalGenerate(options);
+
+    return prescription
+      ? applyPrescription(definition, prescription)
       : BF.MapIntegrity?.prepareDefinition?.(definition) || definition;
   };
 
