@@ -239,15 +239,139 @@
     }
   }
 
-  const sceneImage = (mapId) => global.BlueFox3D?.sceneImages?.[mapId] || "";
+  const sceneImageCandidates = (mapId) => {
+    const resolvedMapId =
+      mapId || global.BlueFox3D?.currentEngine?.currentMapId || "crystal";
+    const source = global.BlueFox3D?.maps?.[resolvedMapId]?.sceneUrl || "";
+    if (!source) return [];
+    const candidates =
+      global.BLUEFOX_MAP_ASSETS?.imageUrlCandidates?.(source) || [source];
+    return [...new Set(candidates.filter(Boolean))];
+  };
 
   function applySceneImage(element, mapId) {
     if (!element) return;
-    element.dataset.sceneMap = mapId;
-    const asset = sceneImage(mapId);
-    element.style.backgroundImage = asset
-      ? `linear-gradient(180deg, rgba(2, 10, 22, .08), rgba(2, 10, 22, .48)), url("${asset}")`
-      : "linear-gradient(145deg, #123d5e, #071729)";
+    const resolvedMapId =
+      mapId || global.BlueFox3D?.currentEngine?.currentMapId || "crystal";
+    element.dataset.sceneMap = resolvedMapId;
+
+    const candidates = sceneImageCandidates(resolvedMapId);
+    const isJournalWindow =
+      element.classList?.contains("journal-window-biome");
+
+    if (!candidates.length) {
+      // Le hublot n'affiche jamais un faux décor : il attend la scène canonique.
+      if (!isJournalWindow && !element.style.backgroundImage) {
+        element.style.backgroundImage =
+          "linear-gradient(145deg, #123d5e, #071729)";
+      }
+      return;
+    }
+
+    const requestToken = `${resolvedMapId}:${candidates.join("|")}`;
+    element.dataset.sceneRequest = requestToken;
+
+    const tryCandidate = (index) => {
+      if (element.dataset.sceneRequest !== requestToken) return;
+      const asset = candidates[index];
+      if (!asset) {
+        if (!isJournalWindow && !element.style.backgroundImage) {
+          element.style.backgroundImage =
+            "linear-gradient(145deg, #123d5e, #071729)";
+        }
+        return;
+      }
+
+      const image = new Image();
+      image.onload = () => {
+        if (element.dataset.sceneRequest !== requestToken) return;
+        element.style.backgroundImage =
+          `linear-gradient(180deg, rgba(2, 10, 22, .08), rgba(2, 10, 22, .38)), url("${asset}")`;
+        element.dataset.sceneLoaded = resolvedMapId;
+      };
+      image.onerror = () => {
+        if (element.dataset.sceneRequest !== requestToken) return;
+        tryCandidate(index + 1);
+      };
+      image.src = asset;
+    };
+
+    tryCandidate(0);
+  }
+
+
+  // Coordonnées du hublot dans Capsule.png (espace image source 0..1).
+  // Elles sont projetées dans le portrait selon le même object-fit: cover
+  // que l'image de capsule, afin que le décor reste attaché au hublot
+  // quelle que soit la taille ou le ratio de la fenêtre.
+  const JOURNAL_WINDOW_SOURCE = Object.freeze({
+    centerX: 0.72,
+    centerY: 0.285,
+    width: 0.56,
+    height: 0.32
+  });
+
+  function positionJournalWindow(panel) {
+    const portrait = panel?.querySelector(".journal-portrait");
+    const capsule = panel?.querySelector(".journal-capsule");
+    const windowBiome = panel?.querySelector(".journal-window-biome");
+    if (!portrait || !capsule || !windowBiome) return;
+
+    const update = () => {
+      const sourceWidth = Number(capsule.naturalWidth);
+      const sourceHeight = Number(capsule.naturalHeight);
+      const boxWidth = portrait.clientWidth;
+      const boxHeight = portrait.clientHeight;
+      if (
+        !sourceWidth || !sourceHeight ||
+        !boxWidth || !boxHeight
+      ) return;
+
+      // .journal-capsule utilise object-fit: cover + object-position:center.
+      const scale = Math.max(
+        boxWidth / sourceWidth,
+        boxHeight / sourceHeight
+      );
+      const renderedWidth = sourceWidth * scale;
+      const renderedHeight = sourceHeight * scale;
+      const offsetX = (boxWidth - renderedWidth) / 2;
+      const offsetY = (boxHeight - renderedHeight) / 2;
+
+      const centerX =
+        offsetX + renderedWidth * JOURNAL_WINDOW_SOURCE.centerX;
+      const centerY =
+        offsetY + renderedHeight * JOURNAL_WINDOW_SOURCE.centerY;
+      const width = renderedWidth * JOURNAL_WINDOW_SOURCE.width;
+      const height = renderedHeight * JOURNAL_WINDOW_SOURCE.height;
+
+      portrait.style.setProperty(
+        "--journal-window-center-x",
+        `${centerX.toFixed(2)}px`
+      );
+      portrait.style.setProperty(
+        "--journal-window-center-y",
+        `${centerY.toFixed(2)}px`
+      );
+      portrait.style.setProperty(
+        "--journal-window-width",
+        `${width.toFixed(2)}px`
+      );
+      portrait.style.setProperty(
+        "--journal-window-height",
+        `${height.toFixed(2)}px`
+      );
+    };
+
+    if (!capsule.complete || !capsule.naturalWidth) {
+      capsule.addEventListener("load", update, { once: true });
+    }
+    update();
+
+    if (!portrait.__bluefoxJournalWindowObserver) {
+      const observer = new ResizeObserver(update);
+      observer.observe(portrait);
+      portrait.__bluefoxJournalWindowObserver = observer;
+    }
   }
 
   function refreshSceneImages() {
@@ -404,7 +528,7 @@
       ...narrative,
       key,
       trust,
-      needleAngle: -90 + ((trust + 100) / 200) * 180
+      needleAngle: -180 + ((trust + 100) / 200) * 180
     };
   }
 
@@ -413,6 +537,22 @@
     const style = document.createElement("style");
     style.id = "bluefox-journal-trust-styles";
     style.textContent = `
+      .journal-temporal-meta {
+        gap: 10px;
+        margin: 8px 0 10px;
+      }
+      .journal-temporal-meta > div {
+        min-height: 54px;
+        padding: 11px 13px;
+      }
+      .journal-temporal-meta span {
+        margin-bottom: 5px;
+        font-size: 10.5px;
+      }
+      .journal-temporal-meta b {
+        font-size: 15px;
+        line-height: 1.35;
+      }
       .journal-temporal-meta .journal-feeling-block {
         grid-column: 1 / -1;
         width: 100%;
@@ -425,52 +565,56 @@
         display: flex;
         align-items: center;
         width: 100%;
-        gap: 8px;
+        gap: 15px;
         min-width: 0;
-        margin-top: 5px;
+        margin-top: 9px;
       }
       .journal-trust-gauge {
         position: relative;
-        flex: 0 0 28px;
-        width: 28px;
-        height: 16px;
+        flex: 0 0 88px;
+        width: 88px;
+        height: 48px;
       }
       .journal-trust-gauge__arc {
         position: absolute;
-        left: 2px;
-        top: 1px;
-        width: 24px;
-        height: 12px;
+        left: 4px;
+        top: 2px;
+        width: 80px;
+        height: 40px;
         overflow: hidden;
-        border-radius: 24px 24px 0 0;
-        background: conic-gradient(from 270deg at 50% 100%,
-          #bd3845 0deg 72deg,
-          #8b6268 72deg 88deg,
-          #68716e 88deg 92deg,
-          #66866c 92deg 108deg,
-          #42a568 108deg 180deg,
-          transparent 180deg 360deg);
-        box-shadow: inset 0 0 0 1px rgba(225,240,242,.18);
+        border-radius: 80px 80px 0 0;
+        background:
+          repeating-conic-gradient(from 270deg at 50% 100%,
+            rgba(238,248,247,.42) 0deg .8deg,
+            transparent .8deg 9deg),
+          conic-gradient(from 270deg at 50% 100%,
+            #bd3845 0deg 72deg,
+            #8b6268 72deg 88deg,
+            #68716e 88deg 92deg,
+            #66866c 92deg 108deg,
+            #42a568 108deg 180deg,
+            transparent 180deg 360deg);
+        box-shadow: inset 0 0 0 1px rgba(225,240,242,.22);
       }
       .journal-trust-gauge__arc::after {
         content: "";
         position: absolute;
-        left: 4px;
-        top: 4px;
-        width: 16px;
-        height: 8px;
-        border-radius: 16px 16px 0 0;
+        left: 12px;
+        top: 12px;
+        width: 56px;
+        height: 28px;
+        border-radius: 56px 56px 0 0;
         background: rgba(10,28,34,.94);
       }
       .journal-trust-gauge__needle {
         position: absolute;
-        left: 14px;
-        top: 11px;
-        width: 10px;
-        height: 1px;
-        border-radius: 1px;
-        background: #e8f3f2;
-        box-shadow: 0 0 2px rgba(232,243,242,.75);
+        left: 44px;
+        top: 39px;
+        width: 34px;
+        height: 2px;
+        border-radius: 2px;
+        background: #edf8f7;
+        box-shadow: 0 0 4px rgba(232,243,242,.82);
         transform-origin: 0 50%;
         transform: rotate(var(--trust-angle));
         transition: transform .35s ease;
@@ -478,24 +622,27 @@
       }
       .journal-trust-gauge__hub {
         position: absolute;
-        left: 12px;
-        top: 9px;
-        width: 4px;
-        height: 4px;
+        left: 40px;
+        top: 35px;
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
         background: #d7e7e5;
         border: 1px solid rgba(7,20,24,.9);
         z-index: 3;
       }
       .journal-trust-gauge__minus,
+      .journal-trust-gauge__zero,
       .journal-trust-gauge__plus {
         position: absolute;
         bottom: 0;
         font-size: 7px;
         line-height: 1;
         font-weight: 800;
+        white-space: nowrap;
       }
       .journal-trust-gauge__minus { left: 0; color: #e45d67; }
+      .journal-trust-gauge__zero { left: 50%; color: #9bb2b2; transform: translateX(-50%); }
       .journal-trust-gauge__plus { right: 0; color: #61c982; }
       .journal-trust-copy {
         min-width: 0;
@@ -504,25 +651,136 @@
       }
       .journal-trust-copy em {
         display: block;
-        color: rgba(220,235,234,.78);
-        font-size: 10px;
-        line-height: 1;
+        color: rgba(220,235,234,.82);
+        font-size: 13px;
+        line-height: 1.35;
         font-style: italic;
-        white-space: nowrap;
+        white-space: normal;
         overflow: visible;
         text-overflow: clip;
       }
+      .living-notes.journal-narrative-notes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 11px;
+        min-height: 0;
+        margin-bottom: 10px;
+      }
+      .living-notes.journal-narrative-notes article {
+        min-width: 0;
+        min-height: 132px;
+        max-height: 174px;
+        padding: 12px !important;
+        overflow-y: auto;
+        scrollbar-width: thin;
+      }
+      .journal-narrative-notes .journal-narrative-eyebrow {
+        display: block;
+        margin-bottom: 8px;
+        color: #64e6ff;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .11em;
+      }
+      .journal-narrative-notes .journal-narrative-entry {
+        margin: 0 0 7px;
+        color: rgba(224,240,244,.86);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .journal-narrative-notes .journal-narrative-entry:last-child {
+        margin-bottom: 0;
+      }
+      .journal-narrative-notes .journal-narrative-entry b {
+        color: #edfaff;
+      }
+      .journal-narrative-notes .journal-narrative-empty {
+        color: rgba(190,211,218,.62);
+        font-style: italic;
+      }
+      @media (max-width: 900px) {
+        .living-notes.journal-narrative-notes {
+          grid-template-columns: 1fr;
+        }
+      }
     `;
     document.head.appendChild(style);
+  }
+
+  function renderJournalNarrativeNotes(report) {
+    const host = report?.querySelector(".living-notes");
+    if (!host) return;
+
+    const entries = (global.BlueFox3D?.getJournalState?.()?.entries || [])
+      .filter((entry) => entry?.type === "bible" && entry?.text);
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const daily = entries
+      .filter((entry) => Number(entry.at) >= dayStart.getTime())
+      .slice(0, 8);
+    const signature = daily
+      .map((entry) => `${entry.id}:${entry.at}`)
+      .join("|");
+    if (host.dataset.journalNarrativeSignature === signature) return;
+    host.dataset.journalNarrativeSignature = signature;
+    host.classList.add("journal-narrative-notes");
+    host.replaceChildren();
+
+    const makeCard = (label, items, emptyText) => {
+      const article = document.createElement("article");
+      const eyebrow = document.createElement("span");
+      eyebrow.className = "journal-narrative-eyebrow";
+      eyebrow.textContent = label;
+      article.appendChild(eyebrow);
+
+      if (!items.length) {
+        const empty = document.createElement("p");
+        empty.className = "journal-narrative-entry journal-narrative-empty";
+        empty.textContent = emptyText;
+        article.appendChild(empty);
+        return article;
+      }
+
+      items.forEach((entry) => {
+        const paragraph = document.createElement("p");
+        paragraph.className = "journal-narrative-entry";
+        if (entry.title) {
+          const title = document.createElement("b");
+          title.textContent = `${entry.title} — `;
+          paragraph.appendChild(title);
+        }
+        paragraph.append(entry.text);
+        article.appendChild(paragraph);
+      });
+      return article;
+    };
+
+    host.append(
+      makeCard(
+        "PENSÉES DU JOUR",
+        daily,
+        "Aucune pensée missionnelle dédiée au Journal aujourd’hui."
+      ),
+      makeCard(
+        "SYNTHÈSE DES ÉVOLUTIONS",
+        [],
+        "Aucune synthèse narrative consolidée pour le moment."
+      )
+    );
   }
 
   function enhanceJournal(panel) {
     const report = panel.querySelector(".journal-report");
     const heading = report?.querySelector(".journal-heading");
     if (!report || !heading) return;
+    const actionHeading = [...report.children].find((element) =>
+      element.tagName === "H3"
+    );
+    if (actionHeading) actionHeading.textContent = "50 dernières actions";
     const mapId = currentMapId(panel);
     const windowBiome = panel.querySelector(".journal-window-biome");
     if (windowBiome) {
+      positionJournalWindow(panel);
       applySceneImage(windowBiome, mapId);
       windowBiome.classList.add("journal-window-biome-live");
     }
@@ -540,6 +798,7 @@
       global.BlueFox3D?.maps?.[mapId]?.name ||
       mapData[mapId]?.name ||
       "Zone inconnue";
+    renderJournalNarrativeNotes(report);
     const signature = `${Math.floor(totalMinutes)}:${emotion.label}:${trust.key}:${Math.round(trust.trust)}:${mapId}:${mapName}`;
     if (meta.dataset.signature === signature) return;
     meta.dataset.signature = signature;
@@ -550,18 +809,17 @@
       <div class="journal-feeling-block">
         <span>RESSENTI DE BLUEFOX</span><b>${emotion.label}</b>
         <div class="journal-trust-row">
-          <div class="journal-trust-gauge" role="img" aria-label="Influence perçue : ${trust.title}">
+          <div class="journal-trust-gauge" role="img" aria-label="Influence perçue : ${trust.title} · ${trust.trust.toFixed(1)} sur 100">
             <span class="journal-trust-gauge__arc"></span>
-            <span class="journal-trust-gauge__needle" style="--trust-angle:${trust.needleAngle.toFixed(1)}deg"></span>
+            <span class="journal-trust-gauge__needle" style="--trust-angle:${trust.needleAngle.toFixed(2)}deg"></span>
             <span class="journal-trust-gauge__hub"></span>
-            <span class="journal-trust-gauge__minus" aria-hidden="true">−</span>
-            <span class="journal-trust-gauge__plus" aria-hidden="true">+</span>
+            <span class="journal-trust-gauge__minus" aria-hidden="true">−100</span>
+            <span class="journal-trust-gauge__zero" aria-hidden="true">0</span>
+            <span class="journal-trust-gauge__plus" aria-hidden="true">+100</span>
           </div>
           <div class="journal-trust-copy"><em>${trust.text}</em></div>
         </div>
       </div>`;
-    const badge = heading.querySelector(".emotion");
-    if (badge) badge.textContent = emotion.badge;
   }
 
   function setPlanetDetail(panel, direction) {

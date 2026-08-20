@@ -1,7 +1,7 @@
 .journal-layout {
   grid-template-columns: minmax(310px, 42%) minmax(440px, 58%);
   width: 100%;
-  height: calc(100dvh - 76px);
+  height: calc(100dvh - 24px);
   min-height: 0;
   max-width: 1380px;
 }
@@ -26,25 +26,32 @@
 
 .journal-window-biome {
   z-index: 0;
-  background-position: center;
+  inset: auto;
+  left: var(--journal-window-center-x, 72%);
+  top: var(--journal-window-center-y, 28.5%);
+  width: var(--journal-window-width, 56%);
+  height: var(--journal-window-height, 32%);
+  overflow: hidden;
+  background-position: 50% 50%;
   background-size: cover;
-  transform: scale(1.04);
+  transform: translate(-50%, -50%) scale(1.055);
+  transform-origin: 50% 50%;
 }
 
 .journal-window-biome-live {
   filter: saturate(.92) contrast(1.04) brightness(.82);
   animation: journal-biome-perspective 18s ease-in-out infinite alternate;
-  will-change: transform, background-position;
+  will-change: background-position, background-size;
 }
 
 @keyframes journal-biome-perspective {
   from {
-    background-position: 47% 50%;
-    transform: scale(1.05) translate3d(-.5%, 0, 0);
+    background-position: 49% 50.5%;
+    transform: translate(-50%, -50%) scale(1.055);
   }
   to {
-    background-position: 53% 48%;
-    transform: scale(1.09) translate3d(.5%, -.4%, 0);
+    background-position: 51% 49.5%;
+    transform: translate(-50%, -50%) scale(1.085);
   }
 }
 
@@ -88,8 +95,9 @@
 }
 
 .full-screen-panel:has(.journal-layout) {
+  position: relative;
   overflow: hidden;
-  padding: 38px 18px 12px;
+  padding: 12px 18px;
 }
 
 .full-screen-panel:has(.journal-layout) > .eyebrow {
@@ -97,10 +105,17 @@
 }
 
 .full-screen-panel:has(.journal-layout) > h2 {
-  height: 32px;
-  margin: -30px auto 6px;
-  font-size: 20px;
-  line-height: 32px;
+  position: absolute;
+  z-index: 12;
+  top: 20px;
+  left: 34px;
+  height: auto;
+  margin: 0;
+  color: #eefbff;
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1.15;
+  text-shadow: 0 2px 7px rgba(0, 6, 16, .9);
+  pointer-events: none;
 }
 
 .full-screen-panel:has(.journal-layout) .drawer-close {
@@ -114,15 +129,27 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  padding: 18px 20px;
+  padding: 8px 20px 12px;
 }
 
 .journal-report > p {
-  margin: 4px 0 8px;
+  display: none;
 }
 
 .journal-heading {
   flex: 0 0 auto;
+  margin: 0 0 2px;
+}
+
+.journal-heading .eyebrow,
+.journal-heading .emotion {
+  display: none !important;
+}
+
+.journal-heading h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
 }
 
 .project-cards {
@@ -136,7 +163,7 @@
 
 .living-notes {
   flex: 0 0 auto;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .living-notes article {
@@ -149,13 +176,30 @@
 
 .journal-report > h3 {
   flex: 0 0 auto;
-  margin: 3px 0 5px;
+  margin: auto 0 4px;
+  font-size: 13px;
+  line-height: 1.15;
 }
 
 .journal-list {
-  min-height: 90px;
-  flex: 1 1 auto;
+  min-height: 72px;
+  max-height: 24vh;
+  flex: 0 1 24vh;
   overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.journal-list p {
+  margin: 0 0 3px;
+  font-size: 10.5px;
+  line-height: 1.18;
+}
+
+.journal-list time {
+  margin-right: 6px;
+  font-size: 9px;
+  line-height: inherit;
 }
 
 .map-transition {
@@ -179,8 +223,14 @@
 }
 
 @media (max-width: 900px) {
-  .journal-layout {
+.journal-layout {
     grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .full-screen-panel:has(.journal-layout) > h2 {
+    top: 18px;
+    left: 28px;
   }
 
   .journal-portrait {

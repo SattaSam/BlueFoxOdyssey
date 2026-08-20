@@ -1069,16 +1069,6 @@
           engine.callbacks?.onAction?.(next.text);
         }
 
-        BF.addJournalEntry?.({
-          id: next.id,
-          type: "bible",
-          title: next.title,
-          text: next.text,
-          mapId: next.mapId,
-          zoneId: next.zoneId,
-          important: next.important
-        });
-
         this.narrativeTimer = global.setTimeout?.(playNext, duration) || null;
       };
 
@@ -1097,14 +1087,24 @@
 
         if (!text) return;
 
-        this.queueNarrativeLine({
+        const payload = {
           id: `bible:${mission.id}:${moment}:${index}:${Date.now()}`,
           title: mission.title,
           text,
           mapId: context.mapId ?? BF.currentEngine?.currentMapId ?? null,
           zoneId: context.zoneId ?? BF.currentEngine?.currentZoneIndex ?? null,
           important: moment === "revealed" || moment === "completed"
-        });
+        };
+
+        if (item?.route === "journal") {
+          BF.addJournalEntry?.({
+            ...payload,
+            type: "bible"
+          });
+          return;
+        }
+
+        this.queueNarrativeLine(payload);
       });
 
       return true;
@@ -1432,9 +1432,21 @@
         this.state.progressNarrative[key] = Date.now();
         this.saveState();
 
-        BF.addJournalEntry?.({
+        if (milestone.route === "journal") {
+          BF.addJournalEntry?.({
+            id: `bible:${key}`,
+            type: "bible",
+            title: mission.title,
+            text: milestone.text,
+            mapId: BF.currentEngine?.currentMapId || null,
+            zoneId: BF.currentEngine?.currentZoneIndex ?? null,
+            important: false
+          });
+          continue;
+        }
+
+        this.queueNarrativeLine({
           id: `bible:${key}`,
-          type: "bible",
           title: mission.title,
           text: milestone.text,
           mapId: BF.currentEngine?.currentMapId || null,
