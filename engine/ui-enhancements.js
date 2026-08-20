@@ -183,7 +183,7 @@
   const normalizedSceneIdentity = (mapId) => {
     const definition = global.BlueFox3D?.maps?.[mapId];
     return String(
-      sceneImage(mapId) ||
+      sceneImageCandidates(mapId)[0] ||
       definition?.sceneUrl ||
       definition?.backgroundUrl ||
       definition?.sceneImage ||
