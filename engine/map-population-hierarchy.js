@@ -67,6 +67,18 @@
     return 3;
   };
 
+  const isTutorialProtected = (definition) => {
+    const mapNumber = Number(definition?.number);
+    const discoveryIndex = Number(definition?.generator?.discoveryIndex);
+    return Boolean(
+      definition?.isStartingMap ||
+      definition?.startingMap ||
+      definition?.id === "crystal" ||
+      (Number.isFinite(mapNumber) && mapNumber >= 1 && mapNumber <= 3) ||
+      (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 2)
+    );
+  };
+
   const pointToSegmentSquared = (start, end, x, z) => {
     const dx = end.x - start.x;
     const dz = end.z - start.z;
@@ -147,6 +159,20 @@
         if (instanceIndex >= 0) this.instances.splice(instanceIndex, 1);
       });
     });
+
+    // Les cartes tutoriels conservent la variation et l'allègement des
+    // rochers ci-dessus, mais aucune seconde passe décorative ne peut y
+    // réinjecter faune, phénomène, ressource rare ou MSC spéciale.
+    if (isTutorialProtected(options.definition)) {
+      return {
+        ...result,
+        microSceneBudgetSeparate: true,
+        decorativeMicroScenes: 0,
+        decorativeMicroScenesByZone: zoneStats.map(() => 0),
+        populationHierarchyVersion: VERSION,
+        tutorialPopulationProtected: true
+      };
+    }
 
     const biome = options.definition?.generator?.biomeId ||
       options.definition?.biome || options.definition?.id || "alien";

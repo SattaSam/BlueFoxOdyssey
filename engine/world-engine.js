@@ -2774,6 +2774,12 @@
         this.completedTransitions += 1;
         if (this.persistentNavigationIntent?.mapId === this.currentMapId) {
           this.clearPersistentNavigationIntent();
+        } else if (this.persistentNavigationIntent?.discoverUnknown === true) {
+          // Une suggestion directionnelle vers l'inconnu désigne exactement
+          // le territoire voisin. Elle est consommée au premier passage afin
+          // de ne jamais se propager aux cartes suivantes.
+          this.clearPersistentNavigationIntent();
+          this.navigationRoute = [];
         }
         global.dispatchEvent(new CustomEvent("bluefox:map-transition-completed", {
           detail: {

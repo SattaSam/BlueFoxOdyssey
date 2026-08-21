@@ -175,9 +175,19 @@
 
     const key = `tutorialSemiScope:${mission.id}`;
     const existing = manager.memory?.getFact?.(key, null);
+    const activeMissionIds = [...new Set(manager.activeMissionIds || [])];
+    if (
+      existing &&
+      activeMissionIds.length === 1 &&
+      activeMissionIds[0] === mission.id &&
+      manager.primaryMissionId === mission.id &&
+      manager.activeMissionId === mission.id
+    ) {
+      return false;
+    }
     const snapshot = Array.isArray(existing?.activeMissionIds)
       ? existing.activeMissionIds
-      : [...new Set(manager.activeMissionIds || [])];
+      : activeMissionIds;
 
     if (!existing) {
       manager.memory?.setFact?.(key, {
@@ -274,6 +284,7 @@
           const mission = explicitMission || activeControlledNavigationMission(engine);
 
           if (!mission && !unknownTravelUnlocked(engine)) {
+            engine.clearPersistentNavigationIntent?.();
             engine.callbacks?.onStatus?.(
               "BlueFox n’est pas encore prêt à quitter le territoire connu."
             );
