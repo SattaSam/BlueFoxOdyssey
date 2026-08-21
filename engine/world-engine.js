@@ -78,6 +78,7 @@
       this.navigationRoute = [];
       this.persistentNavigationIntent = null;
       this.returningToBase = false;
+      this.__cachedInteractionApproach = null;
 
       // WorldEngine reste le propriétaire unique de l'exécution du monde :
       // OFF, pause d'intro et fenêtres de grâce agissent ici, avant BAC/Missions.
@@ -1955,12 +1956,12 @@
       if (intent.discoverUnknown && intent.direction) {
         const known = BF.maps[this.currentMapId]?.exits?.[intent.direction];
         if (known?.targetMap) {
-          intent.mapId = known.targetMap;
-          intent.discoverUnknown = false;
-        } else {
-          this.generateUnknownPassage(intent.direction);
+          this.navigationRoute = [known.targetMap];
+          this.navigateNextRouteStep();
           return true;
         }
+        this.generateUnknownPassage(intent.direction);
+        return true;
       }
       if (intent.mapId) {
         const route = this.findKnownRoute(this.currentMapId, intent.mapId);
@@ -2047,6 +2048,7 @@
       );
       if (!gate) {
         this.navigationRoute = [];
+        this.clearPersistentNavigationIntent();
         this.callbacks.onStatus("L’itinéraire mémorisé est devenu impraticable.");
         return;
       }
@@ -2106,16 +2108,29 @@
         candidates.push({ point, pathLength });
       }
       candidates.sort((a, b) => a.pathLength - b.pathLength);
-      return {
-        point: candidates[0]?.point || this.character.pathPlanner.nearestClearGoal(
-          anchor.position.clone().add(fromResource.normalize()
-            .multiplyScalar(approachDistance)),
-          colliders,
-          this.character.radius,
-          0.2
-        ),
-        approachDistance
+      const fallbackPoint = candidates[0]?.point || this.character.pathPlanner.nearestClearGoal(
+        anchor.position.clone().add(fromResource.normalize()
+          .multiplyScalar(approachDistance)),
+        colliders,
+        this.character.radius,
+        0.2
+      );
+      const result = {
+        point: fallbackPoint,
+        approachDistance,
+        pathLength: candidates[0]?.pathLength
       };
+      if (attempt === 0 && fallbackPoint) {
+        this.__cachedInteractionApproach = {
+          object,
+          mapId: this.currentMapId,
+          at: performance.now(),
+          originX: this.character.root.position.x,
+          originZ: this.character.root.position.z,
+          result
+        };
+      }
+      return result;
     }
 
 
@@ -2216,10 +2231,24 @@
         this.noteLocalAutonomousDecision();
       }
       this.pendingZoneExploration = null;
-      const approach = this.interactionApproachPoint(
-        object,
-        retry ? this.interactionApproachAttempts : 0
+      const cachedApproach = this.__cachedInteractionApproach;
+      const cacheUsable = Boolean(
+        !retry &&
+        cachedApproach?.object === object &&
+        cachedApproach.mapId === this.currentMapId &&
+        performance.now() - cachedApproach.at <= 1200 &&
+        Math.hypot(
+          this.character.root.position.x - cachedApproach.originX,
+          this.character.root.position.z - cachedApproach.originZ
+        ) <= 0.5
       );
+      const approach = cacheUsable
+        ? cachedApproach.result
+        : this.interactionApproachPoint(
+            object,
+            retry ? this.interactionApproachAttempts : 0
+          );
+      this.__cachedInteractionApproach = null;
       this.pendingInteraction = object;
       object.userData.approachDistance = approach.approachDistance;
       object.userData.interactionProfile = this.interactionProfile(object);
@@ -2382,6 +2411,7 @@
         this.callbacks.onAction(`Zone chargée : ${this.narrativeMapName(mapId)}.`);
       }
       this.__bacTargetLock = null;
+      this.__cachedInteractionApproach = null;
       this.lastAutonomyAt = performance.now() - 5200;
       this.lastActivityAt = performance.now();
       this.updateCurrentZone(performance.now(), true);
@@ -2797,6 +2827,7 @@
         this.pendingGate = null;
         this.navigationRoute = [];
         this.returningToBase = false;
+        this.clearPersistentNavigationIntent();
         this.callbacks.onStatus(
           "Le passage n’a pas pu être franchi. BlueFox reprend son exploration dans la zone actuelle."
         );

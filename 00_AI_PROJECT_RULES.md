@@ -63,6 +63,7 @@ Méthode de travail
 * Exécution de tests dans l'environnement disponible.
 * Demande des fichiers manquants si nécessaire.
 * Livraison uniquement après validation technique.
+* Avant toute livraison audit et réfutation individuellement de tous les consommateurs directs et indirects des fichiers modifiés.
 Engagement qualité
 * Ne plus annoncer un correctif comme terminé avant validation.
 * Signaler explicitement les hypothèses restantes.

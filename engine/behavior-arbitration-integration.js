@@ -542,27 +542,12 @@
       const approach = engine.interactionApproachPoint?.(object);
       const point = approach?.point || approach?.position || null;
       if (!point) return directDistance(engine, object);
-      const planner = engine.character?.pathPlanner;
-      if (!planner?.plan) {
-        return engine.character.root.position.distanceTo(point);
+      if (Number.isFinite(Number(approach?.pathLength))) {
+        return Number(approach.pathLength);
       }
-      const anchor = object?.userData?.worldAnchor || object;
-      const colliders = (engine.currentMap?.colliders || [])
-        .filter((collider) => collider.owner !== anchor);
-      const path = planner.plan(
-        engine.character.root.position,
-        point,
-        colliders,
-        engine.character.radius,
-        0.16
-      );
-      if (!Array.isArray(path) || !path.length) {
-        return engine.character.root.position.distanceTo(point);
-      }
-      return path.reduce((total, waypoint, index) => {
-        const previous = index ? path[index - 1] : engine.character.root.position;
-        return total + previous.distanceTo(waypoint);
-      }, 0);
+      return engine.character?.root?.position
+        ? engine.character.root.position.distanceTo(point)
+        : directDistance(engine, object);
     } catch (_) {
       return directDistance(engine, object);
     }
@@ -589,7 +574,7 @@
         ? preferredAvailable
         : available;
 
-    const ranked = candidatePool
+    const shortlist = candidatePool
       .map((object) => {
         const interest = targetInterest(engine, object, axis);
         return {
@@ -597,19 +582,27 @@
           interest: interest.score,
           interestBand: Math.floor(interest.score / 10),
           reasons: interest.reasons,
-          direct: directDistance(engine, object),
-          cost: routeCost(engine, object)
+          researchKnowledge: interest.researchKnowledge || null,
+          direct: directDistance(engine, object)
         };
       })
       .filter((entry) => entry.interest > 0)
+      .sort((left, right) =>
+        right.interestBand - left.interestBand ||
+        right.interest - left.interest ||
+        left.direct - right.direct
+      )
+      .slice(0, TARGET_CANDIDATES)
+      .map((entry) => ({
+        ...entry,
+        cost: routeCost(engine, entry.object)
+      }))
       .sort((left, right) =>
         right.interestBand - left.interestBand ||
         left.cost - right.cost ||
         right.interest - left.interest ||
         left.direct - right.direct
       );
-
-    const shortlist = ranked.slice(0, TARGET_CANDIDATES);
     const selected = shortlist[0]?.object || null;
     lastTargetDecision = {
       at: Date.now(),
@@ -638,7 +631,7 @@
           : null,
         interest: entry.interest,
         reasons: entry.reasons,
-        researchKnowledge: targetInterest(engine, entry.object, axis).researchKnowledge || null,
+        researchKnowledge: entry.researchKnowledge,
         directDistance: Number(entry.direct.toFixed?.(2) ?? entry.direct),
         routeCost: Number(entry.cost.toFixed?.(2) ?? entry.cost)
       }))
