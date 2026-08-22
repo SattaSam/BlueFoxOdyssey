@@ -1748,6 +1748,10 @@
       if (this.transitioning || performance.now() < this.startupQuietUntil) return;
       this.noteLocalAutonomousDecision();
       this.navigationRoute = [];
+      this.clearPersistentNavigationIntent();
+      this.pendingGate = null;
+      this.pendingZoneExploration = null;
+      this.returningToBase = false;
       this.showClickMarker(event);
       const rect = this.renderer.domElement.getBoundingClientRect();
       this.pointer.set(
@@ -1782,10 +1786,9 @@
       point.x = BF.clamp(point.x, -mapBounds, mapBounds);
       point.z = BF.clamp(point.z, -mapBounds, mapBounds);
       this.pendingInteraction = null;
-      this.pendingZoneExploration = null;
       this.character.cancelInteraction();
       this.character.setTarget(point, movementMode);
-      this.showWorldMarker(point);
+      this.showWorldMarker(this.character.finalTarget || point);
       this.callbacks.onStatus("BlueFox suit progressivement la destination suggérée.");
     }
 
