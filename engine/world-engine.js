@@ -2063,13 +2063,28 @@
       );
     }
 
+    interactionWorldPosition(object) {
+      const anchor = object?.userData?.worldAnchor || object;
+      if (!anchor) return null;
+      anchor.updateWorldMatrix?.(true, false);
+      return typeof anchor.getWorldPosition === "function"
+        ? anchor.getWorldPosition(new this.THREE.Vector3())
+        : anchor.position?.clone?.() || null;
+    }
+
+    interactionValidationDistance(object) {
+      const approachDistance = Number(object?.userData?.approachDistance);
+      return (Number.isFinite(approachDistance) ? approachDistance : 1.36) + 0.48;
+    }
+
     interactionApproachPoint(object, attempt = 0) {
       const anchor = object.userData.worldAnchor || object;
+      const anchorPosition = this.interactionWorldPosition(object) || anchor.position;
       const colliderRadius = object.userData.interactionRadius || 0.5;
       const approachDistance =
         colliderRadius + this.character.radius + 0.22;
       const fromResource = this.character.root.position.clone()
-        .sub(anchor.position);
+        .sub(anchorPosition);
       fromResource.y = 0;
       if (fromResource.lengthSq() < 0.001) fromResource.set(0, 0, 1);
       const baseAngle = Math.atan2(fromResource.z, fromResource.x);
@@ -2084,9 +2099,9 @@
         const angle = baseAngle +
           (alternatingStep + attempt * 2) * (Math.PI / 6);
         const point = new this.THREE.Vector3(
-          anchor.position.x + Math.cos(angle) * approachDistance,
+          anchorPosition.x + Math.cos(angle) * approachDistance,
           0,
-          anchor.position.z + Math.sin(angle) * approachDistance
+          anchorPosition.z + Math.sin(angle) * approachDistance
         );
         const mapBounds = (this.currentMap?.bounds || 27) - 0.4;
         if (Math.abs(point.x) > mapBounds || Math.abs(point.z) > mapBounds) continue;
@@ -2112,7 +2127,7 @@
       }
       candidates.sort((a, b) => a.pathLength - b.pathLength);
       const fallbackPoint = candidates[0]?.point || this.character.pathPlanner.nearestClearGoal(
-        anchor.position.clone().add(fromResource.normalize()
+        anchorPosition.clone().add(fromResource.normalize()
           .multiplyScalar(approachDistance)),
         colliders,
         this.character.radius,
@@ -2859,8 +2874,9 @@
       const object = this.pendingInteraction;
       const profile = object.userData.interactionProfile || this.interactionProfile(object);
       const anchor = object.userData.worldAnchor || object;
-      const distance = this.character.root.position.distanceTo(anchor.position);
-      const interactionDistance = (object.userData.approachDistance || 1.36) + 0.48;
+      const anchorPosition = this.interactionWorldPosition(object) || anchor.position;
+      const distance = this.character.root.position.distanceTo(anchorPosition);
+      const interactionDistance = this.interactionValidationDistance(object);
       if (distance > interactionDistance) {
         if (!this.interactionStartedAt && now - this.interactionApproachStartedAt > 6500) {
           this.interactionApproachAttempts += 1;
@@ -2880,7 +2896,7 @@
       this.character.stop();
       if (!this.interactionStartedAt) {
         this.interactionStartedAt = now;
-        this.character.facePoint(anchor.position);
+        this.character.facePoint(anchorPosition);
         const duration = this.character.playInteraction(
           profile.action,
           profile.animationHints

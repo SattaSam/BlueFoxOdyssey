@@ -702,7 +702,7 @@
       })
       .sort((left, right) => {
         const distance = (object) => engine.character.root.position.distanceTo(
-          object.userData.worldAnchor?.position || object.position
+          engine.interactionWorldPosition(object)
         );
         return distance(left) - distance(right);
       })[0] || null;
@@ -730,7 +730,7 @@
       .sort((left, right) => {
         const distance = (object) =>
           engine.character.root.position.distanceTo(
-            object.userData.worldAnchor?.position || object.position
+            engine.interactionWorldPosition(object)
           );
         return distance(left) - distance(right);
       })[0] || null;
@@ -1271,8 +1271,9 @@
         return;
       }
       object.userData.requestedInteraction = mode;
-      const distance = this.character.root.position.distanceTo(anchor.position);
-      const interactionDistance = (object.userData.approachDistance || 1.36) + 0.18;
+      const anchorPosition = this.interactionWorldPosition(object);
+      const distance = this.character.root.position.distanceTo(anchorPosition);
+      const interactionDistance = this.interactionValidationDistance(object);
       if (distance > interactionDistance) {
         if (!this.interactionStartedAt && now - this.interactionApproachStartedAt > 6500) {
           this.interactionApproachAttempts += 1;
@@ -1292,7 +1293,7 @@
       this.character.stop();
       if (!this.interactionStartedAt) {
         this.interactionStartedAt = now;
-        this.character.facePoint(anchor.position);
+        this.character.facePoint(anchorPosition);
         const acquisition = mode === "collect" || mode === "extract";
         const size = String(definition.size || "S").toUpperCase();
         const isPlant = definition.knowledge?.family === "flora" ||
