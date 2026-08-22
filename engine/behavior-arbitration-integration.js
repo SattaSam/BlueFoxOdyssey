@@ -1013,7 +1013,17 @@
         autonomyBreakTarget: this.autonomyBreakTarget
       }) || null;
 
-      if (survivalDecision) {
+      const primaryMissionOwnsAction =
+        this.missionManager?.hasPrimaryMissionAuthority?.() === true;
+      const criticalSurvivalDecision = Boolean(
+        survivalDecision &&
+        (
+          survivalDecision.speech === "critical-rest" ||
+          survivalDecision.routine === "critical-rest"
+        )
+      );
+
+      if (survivalDecision && (!primaryMissionOwnsAction || criticalSurvivalDecision)) {
         // OFF / pause runtime / fenêtre de grâce restent propriétaires dans WorldEngine.
         if (!this.autonomyAllowed?.(now)) {
           return originalAutonomy(now);
@@ -1065,7 +1075,7 @@
         return;
       }
 
-      if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
+      if (primaryMissionOwnsAction) return;
       this.lastAutonomyAt = now;
       const interactables = (this.currentMap?.interactables || [])
         .filter((object) => this.canInteractWith(object, now));
@@ -1263,6 +1273,7 @@
     const originalEnsureActivity = engine.ensureActivity?.bind(engine);
     if (originalEnsureActivity) {
       engine.ensureActivity = function ensureActivityAsWatchdog(now) {
+        if (this.missionManager?.hasPrimaryMissionAuthority?.()) return;
         const idle = now - Number(this.lastActivityAt || now);
         if (idle < 12000 || this.transitioning || this.pendingInteraction || this.currentRoutine) return;
 

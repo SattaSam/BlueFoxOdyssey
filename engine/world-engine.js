@@ -2966,9 +2966,9 @@
       const fatigue = survival.fatigue || { level: "normal", movement: 1, actionDuration: 1 };
       this.character.fatigueSpeedMultiplier = fatigue.movement || 1;
 
-      // Une mission principale active et réalisable conserve toujours la main.
-      // L'autonomie libre n'intervient que si aucune mission prioritaire ne peut agir.
-      if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
+      // Une mission principale active conserve l'autorité, même lorsqu'elle
+      // attend temporairement une cible, une direction ou une action joueur.
+      if (this.missionManager?.hasPrimaryMissionAuthority?.()) return;
 
       this.lastAutonomyAt = now;
       if (survival.needs?.criticalRest) {
@@ -3128,7 +3128,7 @@
 
     ensureActivity(now) {
       if (!this.autonomyAllowed(now)) return;
-      if (this.missionManager?.hasRunnablePrimaryMission?.()) return;
+      if (this.missionManager?.hasPrimaryMissionAuthority?.()) return;
       if (this.pendingGate) {
         if (this.character.speed > 0.08) {
           this.lastActivityAt = now;

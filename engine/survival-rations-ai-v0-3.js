@@ -267,6 +267,15 @@
         const survivalState =
           BF.getSurvivalState?.() || {};
 
+        // La ration décrit un besoin de survie mais ne préempte jamais une
+        // mission principale active et ne devient pas propriétaire d'action.
+        if (
+          this.missionManager
+            ?.hasPrimaryMissionAuthority?.()
+        ) {
+          return originalAutonomy(now);
+        }
+
         if (
           currentProfile.shouldCraft &&
           autoCraftEnabled() &&
@@ -398,37 +407,6 @@
           return originalAutonomy(now);
         }
 
-        const plants = (
-          this.currentMap?.interactables ||
-          []
-        )
-          .filter(
-            (object) =>
-              object?.userData?.active &&
-              this.canInteractWith(
-                object,
-                now
-              )
-          )
-          .filter(isFoodFlora);
-
-        if (!plants.length) {
-          return originalAutonomy(now);
-        }
-
-        this.lastAutonomyAt = now;
-        const object = nearest(
-          this,
-          plants
-        );
-        if (!object) {
-          return originalAutonomy(now);
-        }
-
-        object.userData
-          .requestedInteractionSource =
-          "autonomy";
-
         this.__lastRationAutonomyDecision =
           {
             at: Date.now(),
@@ -436,20 +414,11 @@
               currentProfile.level ||
               null,
             shouldCollect: true,
-            directOverride: true,
-            candidateCount:
-              plants.length,
-            selectedKind:
-              objectInventoryKey(object),
+            directOverride: false,
             recipeId: RECIPE_ID
           };
 
-        this.callbacks?.onStatus?.(
-          "BlueFox cherche en priorité de quoi reconstituer ses réserves alimentaires."
-        );
-        return this.targetInteraction(
-          object
-        );
+        return originalAutonomy(now);
       };
 
     engine.__rationAiVersion =

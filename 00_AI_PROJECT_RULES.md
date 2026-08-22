@@ -45,9 +45,12 @@ RÈGLE ABSOLUE — DÉMARRAGE DE CHAQUE NOUVEAU CHANTIER
 3. Avant toute décision technique, identifier le propriétaire dans le “Registre canonique des propriétaires” de docs/ARCHITECTURE\_TECHNIQUE.md. Si un propriétaire y est défini, il prime sur toute nouvelle architecture ou inférence.
 4. Interdiction de remplacer un fichier du commit par une copie locale, un ancien ZIP ou un fichier d'une conversation précédente.
 5. Un fichier local ne peut servir de copie technique que si son Git blob SHA est vérifié identique au blob du commit de départ ; sinon il est rejeté.
-6. Avant livraison d'un cumulatif, comparer chaque fichier modifié à sa version du commit de départ et vérifier que les fonctions déjà validées présentes dans ce même fichier n'ont pas régressé.
-7. Si la version exacte d'un fichier du commit ne peut pas être obtenue ou vérifiée, ne pas reconstruire approximativement : demander le fichier ou refuser la livraison.
-8. Un correctif cumulatif doit cumuler les travaux validés depuis le dernier commit de référence ; il ne doit jamais réinjecter une version antérieure d'un fichier partagé.
+6. liste de fichiers verrouillée après le GO ;
+7. comparaison des mêmes tests sur deux copies BASE/CANDIDAT ;
+8. Avant livraison d'un cumulatif, comparer chaque fichier modifié à sa version du commit de départ et vérifier que les fonctions déjà validées présentes dans ce même fichier n'ont pas régressé.
+9. abandon total d’une tentative rejetée au lieu d’un correctif empilé.
+10. Si la version exacte d'un fichier du commit ne peut pas être obtenue ou vérifiée, ne pas reconstruire approximativement : demander le fichier ou refuser la livraison.
+11. Un correctif cumulatif doit cumuler les travaux validés depuis le dernier commit de référence ; il ne doit jamais réinjecter une version antérieure d'un fichier partagé.
 pas de fichiers versionnés dans les patchs committables ;
 ZIP = uniquement fichiers modifiés ;
 pas de README parasite ;

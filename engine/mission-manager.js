@@ -398,6 +398,10 @@
       return lifecycle?.status === "active" && !this.tree.root.isComplete;
     }
 
+    hasPrimaryMissionAuthority() {
+      return this.hasActivePrimaryMission();
+    }
+
     primaryActionAssessment() {
       if (!this.hasActivePrimaryMission()) return null;
       return this.assessMission(this.primaryMissionId, this.bridge.context());
