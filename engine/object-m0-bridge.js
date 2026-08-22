@@ -1,4 +1,4 @@
-﻿(function (global) {
+(function (global) {
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
@@ -351,6 +351,15 @@
     ].includes(event.type)) {
       if (![Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(type)) {
         return false;
+      }
+      // Une acquisition prescrite ne crédite que son nœud dans la mission
+      // d'origine. Le même ObjectEvent reste disponible pour le fan-out vers
+      // les autres missions actives compatibles.
+      if (detail.missionNodeId) {
+        const originMissionId = String(detail.missionId || "");
+        const sameOriginMission = !originMissionId ||
+          originMissionId === String(missionId || "");
+        if (sameOriginMission && detail.missionNodeId !== node.id) return false;
       }
       return metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {});
     }
