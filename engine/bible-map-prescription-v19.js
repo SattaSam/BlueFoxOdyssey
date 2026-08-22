@@ -89,7 +89,7 @@
     let changed = false;
 
     required.forEach((scene) => {
-      if (!scene?.id) return;
+      if (!scene?.id || scene.persistent === true) return;
       const recordId = `${mission.id}:${scene.id}`;
       if (existing.some((record) => record?.id === recordId)) return;
       existing.push({
