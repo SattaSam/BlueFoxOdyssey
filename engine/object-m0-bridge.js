@@ -145,13 +145,70 @@
     object.userData.acquisitionIntent = null;
     object.userData.acquisitionIntentSource = null;
     object.userData.acquisitionPhase = null;
+    object.userData.acquisitionMissionId = null;
+    object.userData.acquisitionMissionNodeId = null;
+    object.userData.acquisitionInstanceId = null;
+    object.userData.acquisitionMissionSubject = null;
+    object.userData.acquisitionMissionNarrativeVerb = null;
+  };
+
+  const clearAcquisitionTransaction = (engine, object) => {
+    if (!object) return;
+    const resolved = resolveObject(object);
+    const instanceId = String(
+      object.userData?.instanceId ||
+      resolved.anchor?.userData?.instanceId ||
+      ""
+    );
+    clearAcquisitionIntent(object);
+    if (resolved.anchor !== object) clearAcquisitionIntent(resolved.anchor);
+    if (!instanceId) return;
+    (engine?.currentMap?.interactables || []).forEach((candidate) => {
+      const candidateId = String(
+        candidate?.userData?.instanceId ||
+        candidate?.userData?.worldAnchor?.userData?.instanceId ||
+        ""
+      );
+      if (candidateId === instanceId) clearAcquisitionIntent(candidate);
+    });
   };
 
   const rememberAcquisitionIntent = (object, action, source) => {
     if (!object?.userData || !["collect", "extract"].includes(action)) return;
     object.userData.acquisitionIntent = action;
-    object.userData.acquisitionIntentSource =
-      source === "autonomy" ? "autonomy" : "manual";
+    object.userData.acquisitionIntentSource = source || "manual";
+    object.userData.acquisitionMissionId = object.userData.missionId || null;
+    object.userData.acquisitionMissionNodeId =
+      object.userData.missionNodeId || null;
+    object.userData.acquisitionInstanceId = String(
+      object.userData.instanceId ||
+      object.userData.worldAnchor?.userData?.instanceId ||
+      ""
+    ) || null;
+    object.userData.acquisitionMissionSubject =
+      object.userData.missionSubject || null;
+    object.userData.acquisitionMissionNarrativeVerb =
+      object.userData.missionNarrativeVerb || null;
+  };
+
+  const bindAcquisitionMission = (object) => {
+    if (!object?.userData?.acquisitionIntent) return;
+    object.userData.acquisitionMissionId =
+      object.userData.missionId ||
+      object.userData.acquisitionMissionId ||
+      null;
+    object.userData.acquisitionMissionNodeId =
+      object.userData.missionNodeId ||
+      object.userData.acquisitionMissionNodeId ||
+      null;
+    object.userData.acquisitionMissionSubject =
+      object.userData.missionSubject ||
+      object.userData.acquisitionMissionSubject ||
+      null;
+    object.userData.acquisitionMissionNarrativeVerb =
+      object.userData.missionNarrativeVerb ||
+      object.userData.acquisitionMissionNarrativeVerb ||
+      null;
   };
 
   const validateAction = (resolved, requested, missionRequested = false) => {
@@ -160,6 +217,12 @@
     const allowed = new Set(resolved.definition?.interaction?.actions || []);
     if (requested === "collect" || requested === "extract") {
       if (!caps.collectable) return caps.inspectable ? "inspect" : null;
+      const neverStudied =
+        !state.observed && !state.inspected && !state.analyzed && !state.identified &&
+        Number(state.observationCount || 0) === 0 &&
+        Number(state.inspectionCount || 0) === 0 &&
+        Number(state.analysisCount || 0) === 0;
+      if (neverStudied && canStudy(resolved.definition)) return "observe";
       if (caps.requiresInspection && !state.inspected && !state.identified) return "inspect";
       if (requested === "extract" && !caps.extractable) {
         return allowed.has("collect") ? "collect" : null;
@@ -322,10 +385,6 @@
   };
 
   const eventMatchesBoundTarget = (manager, missionId, event) => {
-    if ([
-      BF.ObjectEvents?.types.RESOURCE_COLLECTED,
-      BF.ObjectEvents?.types.RESOURCE_EXTRACTED
-    ].includes(event.type)) return true;
     const bound = manager?.memory?.getFact?.(`bibleTarget:${missionId}`);
     if (!bound || (!bound.instanceId && !bound.objectId && !bound.cuoType && !bound.missionSceneMissionId)) return true;
     if (bound.mapId && String(event.mapId || "") !== String(bound.mapId)) return false;
@@ -639,6 +698,34 @@
         return distance(left) - distance(right);
       })[0] || null;
 
+  const selectAcquisitionTarget = (engine, action) =>
+    (engine.currentMap?.interactables || [])
+      .filter((object) => {
+        if (!object.userData.active) return false;
+        const resolved = resolveMissionCandidate(object);
+        const definition = resolved.definition;
+        const caps = capabilities(definition);
+        if (!definition || !caps.collectable) return false;
+        if (
+          action.type === Missions.ActionType.EXTRACT &&
+          !caps.extractable
+        ) return false;
+        return (
+          metadataMatchesMissionCriteria(
+            definitionMissionMetadata(definition),
+            action.params || {}
+          ) &&
+          matchesBoundTarget(engine, action.missionId, resolved)
+        );
+      })
+      .sort((left, right) => {
+        const distance = (object) =>
+          engine.character.root.position.distanceTo(
+            object.userData.worldAnchor?.position || object.position
+          );
+        return distance(left) - distance(right);
+      })[0] || null;
+
   const activeStudyDirective = (engine, resolved) => {
     const manager = engine?.missionManager;
     const missionResolved = resolveMissionCandidate(resolved?.object || resolved?.anchor);
@@ -674,10 +761,58 @@
   };
 
   const installActionBridge = () => {
-    if (installed.action || !Missions.ActionBridge) return false;
-    installed.action = true;
-    const originalExecute = Missions.ActionBridge.prototype.execute;
-    Missions.ActionBridge.prototype.execute = function executeObjectAware(action, now) {
+    const proto = Missions.ActionBridge?.prototype;
+    if (!proto || typeof proto.execute !== "function") return false;
+    if (proto.execute.__objectM0Wrapped) {
+      installed.action = true;
+      return true;
+    }
+    const originalExecute = proto.execute;
+    const executeObjectAware = function executeObjectAware(action, now) {
+      if ([
+        Missions.ActionType.COLLECT,
+        Missions.ActionType.EXTRACT
+      ].includes(action?.type) && !this.isEngineBusy()) {
+        const target = selectAcquisitionTarget(this.engine, action);
+        if (!target) return false;
+        const resolved = resolveMissionCandidate(target);
+        const identity = identityOf(resolved);
+        const state = interactionState(resolved);
+        const needsInitialStudy =
+          !state.observed && !state.inspected && !state.analyzed && !state.identified &&
+          Number(state.observationCount || 0) === 0 &&
+          Number(state.inspectionCount || 0) === 0 &&
+          Number(state.analysisCount || 0) === 0 &&
+          canStudy(resolved.definition);
+        action.instanceId = identity.instanceId || null;
+        target.userData.requestedInteraction = needsInitialStudy
+          ? "observe"
+          : action.type;
+        target.userData.requestedInteractionSource = "mission";
+        target.userData.missionSubject = action.params?.subject || null;
+        target.userData.missionNarrativeVerb = action.type;
+        target.userData.missionNodeId = action.nodeId || null;
+        target.userData.missionId = action.missionId || null;
+        rememberAcquisitionIntent(target, action.type, "mission");
+        target.userData.acquisitionPhase = needsInitialStudy
+          ? "study"
+          : "acquire";
+        bindAcquisitionMission(target);
+        const accepted = this.engine.targetInteraction(target);
+        if (accepted === false) {
+          target.userData.requestedInteraction = null;
+          target.userData.requestedInteractionSource = null;
+          target.userData.missionSubject = null;
+          target.userData.missionNarrativeVerb = null;
+          target.userData.missionNodeId = null;
+          target.userData.missionId = null;
+          clearAcquisitionTransaction(this.engine, target);
+          target.userData.lastInteractionAt = performance.now();
+          this.engine.callbacks?.onAction?.("mission-interaction-refused");
+          return false;
+        }
+        return true;
+      }
       if ([
         Missions.ActionType.OBSERVE,
         Missions.ActionType.INSPECT,
@@ -685,6 +820,8 @@
       ].includes(action?.type) && !this.isEngineBusy()) {
         const target = selectObservable(this.engine, action);
         if (target) {
+          const identity = identityOf(resolveMissionCandidate(target));
+          action.instanceId = identity.instanceId || null;
           target.userData.requestedInteraction = "observe";
           target.userData.requestedInteractionSource = "mission";
           target.userData.missionSubject = action.params?.subject || null;
@@ -709,6 +846,10 @@
       }
       return originalExecute.call(this, action, now);
     };
+    executeObjectAware.__objectM0Wrapped = true;
+    executeObjectAware.__objectM0Original = originalExecute;
+    proto.execute = executeObjectAware;
+    installed.action = true;
     return true;
   };
 
@@ -906,6 +1047,67 @@
     engine.__objectM0BridgePatched = true;
     const originalTarget = engine.targetInteraction.bind(engine);
 
+    engine.cancelMissionInteraction = function cancelMissionInteraction(
+      action = null,
+      reason = "cancelled"
+    ) {
+      const object = this.pendingInteraction;
+      if (!object?.userData) return false;
+
+      const resolved = resolveObject(object);
+      const identity = identityOf(resolved);
+      const missionId =
+        object.userData.missionId ||
+        object.userData.acquisitionMissionId ||
+        null;
+      const nodeId =
+        object.userData.missionNodeId ||
+        object.userData.acquisitionMissionNodeId ||
+        null;
+      const instanceId =
+        object.userData.acquisitionInstanceId ||
+        identity.instanceId ||
+        null;
+
+      if (
+        action?.missionId &&
+        String(action.missionId) !== String(missionId || "")
+      ) return false;
+      if (
+        action?.nodeId &&
+        String(action.nodeId) !== String(nodeId || "")
+      ) return false;
+      if (
+        action?.instanceId &&
+        String(action.instanceId) !== String(instanceId || "")
+      ) return false;
+
+      object.userData.requestedInteraction = null;
+      object.userData.requestedInteractionSource = null;
+      object.userData.requestedMovementMode = null;
+      object.userData.missionSubject = null;
+      object.userData.missionNarrativeVerb = null;
+      object.userData.missionNodeId = null;
+      object.userData.missionId = null;
+      clearAcquisitionTransaction(this, object);
+
+      this.pendingInteraction = null;
+      this.interactionStartedAt = 0;
+      this.interactionApproachStartedAt = 0;
+      this.interactionApproachAttempts = 0;
+      this.character?.cancelInteraction?.();
+      this.character?.stop?.();
+      this.postActionRecoveryUntil = performance.now() + 350;
+      this.lastInteractionCancellation = {
+        missionId,
+        nodeId,
+        instanceId,
+        reason,
+        at: Date.now()
+      };
+      return true;
+    };
+
     engine.targetInteraction = function targetObjectInteraction(object, retry = false) {
       const resolved = resolveObject(object);
       const source = object.userData.requestedInteractionSource || "manual";
@@ -919,15 +1121,22 @@
       // Une commande missionnelle pure ne crée pas d'acquisition implicite.
       // Une étude missionnelle insérée dans une acquisition conserve au
       // contraire l'intention finale et la cible de CE geste.
-      if (source === "mission" && !missionStudyFromAcquisition) {
-        clearAcquisitionIntent(object);
-      } else if (!retry && capabilities(resolved.definition).collectable) {
+      if (!retry && capabilities(resolved.definition).collectable) {
         const wanted = ["collect", "extract"].includes(incomingRequested)
           ? incomingRequested
           : source === "manual"
             ? acquisitionAction(resolved.definition)
             : null;
         if (wanted) rememberAcquisitionIntent(object, wanted, source);
+        else if (source === "mission" && !missionStudyFromAcquisition) {
+          clearAcquisitionIntent(object);
+        }
+      } else if (
+        source === "mission" &&
+        !missionStudyFromAcquisition &&
+        !["collect", "extract"].includes(object.userData.acquisitionIntent)
+      ) {
+        clearAcquisitionTransaction(this, object);
       }
 
       const intendedAcquisition = object.userData.acquisitionIntent;
@@ -951,6 +1160,7 @@
         object.userData.missionNarrativeVerb = directive.narrativeVerb;
         object.userData.missionNodeId = directive.nodeId;
         object.userData.missionId = directive.missionId;
+        bindAcquisitionMission(object);
       }
 
       const missionRequested =
@@ -973,13 +1183,14 @@
       if (hasAcquisitionIntent && mode) {
         object.userData.acquisitionPhase =
           ["collect", "extract"].includes(mode) ? "acquire" : "study";
+        bindAcquisitionMission(object);
       }
       if (!resolved.definition || !mode) {
         console.warn("[BlueFox O5.1] Interaction refusée : objet absent ou incomplet dans le CUO.", object);
         this.callbacks.onStatus("BlueFox ne sait pas encore comment interagir avec cet objet.");
         object.userData.requestedInteraction = null;
         object.userData.requestedInteractionSource = null;
-        clearAcquisitionIntent(object);
+        clearAcquisitionTransaction(this, object);
 
         // stale-target-reset-v1
         this.pendingInteraction = null;
@@ -1013,15 +1224,26 @@
 
     engine.updateInteraction = function updateObjectInteraction(now) {
       updateStudyPose(this.character, now);
-      if (!this.pendingInteraction || !this.pendingInteraction.userData.active) return;
+      if (!this.pendingInteraction) return;
+      if (!this.pendingInteraction.userData.active) {
+        const source =
+          this.pendingInteraction.userData.requestedInteractionSource;
+        this.cancelMissionInteraction(null, "object-inactive");
+        if (source === "mission") {
+          this.missionManager?.cancelCurrentAction("object-inactive");
+        }
+        return;
+      }
       const object = this.pendingInteraction;
       const resolved = resolveObject(object);
       const { anchor, definition } = resolved;
       if (!definition) {
-        console.warn("[BlueFox O5.1] Définition CUO introuvable pendant l’interaction.", object);
-        clearAcquisitionIntent(object);
-        this.pendingInteraction = null;
-        this.character.stop();
+        console.warn("[BlueFox O5.1] Définition CUO introuvable pendant l'interaction.", object);
+        const source = object.userData.requestedInteractionSource;
+        this.cancelMissionInteraction(null, "object-definition-missing");
+        if (source === "mission") {
+          this.missionManager?.cancelCurrentAction("object-definition-missing");
+        }
         return;
       }
       const state = interactionState(resolved);
@@ -1031,10 +1253,12 @@
         object.userData.requestedInteractionSource === "mission"
       );
       if (!mode) {
-        this.callbacks.onStatus("Cette interaction n’est pas autorisée par le catalogue d’objets.");
-        clearAcquisitionIntent(object);
-        this.pendingInteraction = null;
-        this.character.stop();
+        this.callbacks.onStatus("Cette interaction n'est pas autorisée par le catalogue d'objets.");
+        const source = object.userData.requestedInteractionSource;
+        this.cancelMissionInteraction(null, "object-action-rejected");
+        if (source === "mission") {
+          this.missionManager?.cancelCurrentAction("object-action-rejected");
+        }
         return;
       }
       object.userData.requestedInteraction = mode;
@@ -1046,12 +1270,11 @@
           if (this.interactionApproachAttempts <= 3) this.targetInteraction(object, true);
           else {
             this.callbacks.onStatus("BlueFox renonce temporairement à cet objet inaccessible.");
-            clearAcquisitionIntent(object);
-            this.pendingInteraction = null;
-            this.interactionApproachStartedAt = 0;
-            this.interactionApproachAttempts = 0;
-            this.character.stop();
-            this.missionManager?.cancelCurrentAction("object-inaccessible");
+            const source = object.userData.requestedInteractionSource;
+            this.cancelMissionInteraction(null, "object-inaccessible");
+            if (source === "mission") {
+              this.missionManager?.cancelCurrentAction("object-inaccessible");
+            }
           }
         }
         return;
@@ -1148,26 +1371,26 @@
           label: definition.label,
           inventoryKey
         });
-        clearAcquisitionIntent(object);
+        clearAcquisitionTransaction(this, object);
         if (removeFromWorld) {
           const respawnSeconds = Number(definition.interaction?.respawnSeconds);
           if (!Number.isFinite(respawnSeconds) || respawnSeconds <= 0) {
             console.error(
               `[BlueFox3D] Métadonnée CUO interaction.respawnSeconds absente ou invalide pour ${definition.id || definition.type}.`
             );
-            return;
+          } else {
+            const respawnMs = respawnSeconds * 1000;
+            const cooldown = setTimeout(() => {
+              if (this.disposed) return;
+              anchor.visible = true;
+              object.userData.active = true;
+              state.collected = false;
+              object.userData.requestedInteraction = null;
+              object.userData.requestedInteractionSource = null;
+              this.resourceCooldowns.delete(object);
+            }, respawnMs);
+            this.resourceCooldowns.set(object, cooldown);
           }
-          const respawnMs = respawnSeconds * 1000;
-          const cooldown = setTimeout(() => {
-            if (this.disposed) return;
-            anchor.visible = true;
-            object.userData.active = true;
-            state.collected = false;
-            object.userData.requestedInteraction = null;
-            object.userData.requestedInteractionSource = null;
-            this.resourceCooldowns.delete(object);
-          }, respawnMs);
-          this.resourceCooldowns.set(object, cooldown);
         }
       } else {
         state.identified = true;
@@ -1234,10 +1457,15 @@
       object.userData.requestedMovementMode = null;
       object.userData.requestedInteraction = null;
       object.userData.requestedInteractionSource = null;
-      object.userData.missionSubject = null;
-      object.userData.missionNarrativeVerb = null;
-      object.userData.missionNodeId = null;
-      object.userData.missionId = null;
+      if (!continueAcquisition) {
+        object.userData.missionSubject = null;
+        object.userData.missionNarrativeVerb = null;
+        object.userData.missionNodeId = null;
+        object.userData.missionId = null;
+        if (acquisition) {
+          clearAcquisitionTransaction(this, object);
+        }
+      }
       if (continueAcquisition && object.userData.active && !this.disposed) {
         const intended = object.userData.acquisitionIntent;
         const intendedSource =
@@ -1249,6 +1477,14 @@
         // Aucune recherche de cible : on garde exactement le même objet.
         object.userData.requestedInteraction = intended;
         object.userData.requestedInteractionSource = intendedSource;
+        object.userData.missionSubject =
+          object.userData.acquisitionMissionSubject || null;
+        object.userData.missionNarrativeVerb =
+          object.userData.acquisitionMissionNarrativeVerb || null;
+        object.userData.missionNodeId =
+          object.userData.acquisitionMissionNodeId || null;
+        object.userData.missionId =
+          object.userData.acquisitionMissionId || null;
         this.postActionRecoveryUntil = now;
         this.targetInteraction(object, true);
       }
@@ -1263,7 +1499,12 @@
     if (BF.mount.__objectM0Wrapped) return false;
     const originalMount = BF.mount;
     const wrappedMount = async function mountWithObjectBridge(options) {
+      // ActionBridge peut être défini après le chargement initial de ce
+      // bridge. Revalider le prototype réellement actif avant que mount()
+      // ne construise MissionManager et son ActionBridge.
+      installActionBridge();
       const engine = await originalMount.call(this, options);
+      installActionBridge();
       patchWorldEngineInstance(engine);
       return engine;
     };

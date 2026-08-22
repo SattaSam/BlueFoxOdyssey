@@ -727,8 +727,13 @@
 
     cancelCurrentAction(reason = "cancelled") {
       if (!this.currentAction) return;
+      const cancelledAction = this.currentAction;
+      this.engine?.cancelMissionInteraction?.(
+        cancelledAction,
+        reason
+      );
       this.memory.remember("action-cancelled", {
-        ...this.currentAction,
+        ...cancelledAction,
         reason
       });
       this.currentAction = null;
