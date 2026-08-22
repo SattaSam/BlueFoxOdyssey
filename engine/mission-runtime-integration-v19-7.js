@@ -69,8 +69,8 @@
           return !action.params?.kind || String(kind)===String(action.params.kind);
         })
         .sort((a,b)=>{
-          const pa=a.userData?.worldAnchor?.position || a.position;
-          const pb=b.userData?.worldAnchor?.position || b.position;
+          const pa=this.engine.interactionWorldPosition(a);
+          const pb=this.engine.interactionWorldPosition(b);
           return this.engine.character.root.position.distanceTo(pa)-
             this.engine.character.root.position.distanceTo(pb);
         });
@@ -152,8 +152,9 @@
         return;
       }
 
-      const distance=this.character.root.position.distanceTo(anchor.position);
-      const interactionDistance=(object.userData.approachDistance || 1.36)+0.18;
+      const anchorPosition=this.interactionWorldPosition(object);
+      const distance=this.character.root.position.distanceTo(anchorPosition);
+      const interactionDistance=this.interactionValidationDistance(object);
       if (distance>interactionDistance) {
         if (!this.interactionStartedAt && now-this.interactionApproachStartedAt>6500) {
           this.interactionApproachAttempts+=1;
@@ -171,7 +172,7 @@
       this.character.stop?.();
       if (!this.interactionStartedAt) {
         this.interactionStartedAt=now;
-        this.character.facePoint?.(anchor.position);
+        this.character.facePoint?.(anchorPosition);
         const hints=definition.interaction?.animation?.[mode] || [];
         const duration=this.character.playInteraction?.(mode,hints) || 0;
         this.interactionDuration=Math.max(900,duration*1000);
