@@ -575,9 +575,9 @@
     const hitbox = makeBoxHitbox(
       THREE,
       root,
-      3.15,
-      1.95,
-      2.05,
+      3.80,
+      2.15,
+      2.55,
       "crash_capsule"
     );
 

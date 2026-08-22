@@ -5,75 +5,6 @@
   const originalMount = BF.mount;
   if (typeof originalMount !== "function") return;
 
-  const capsuleDefinition = Object.freeze({
-    id: "LANDMARK-CRASH-CAPSULE-001",
-    type: "crash-capsule",
-    label: "capsule accidentée",
-    category: "technology",
-    gameplay: Object.freeze({
-      interactive: true, collectable: false, inspectable: true,
-      destructible: false, obstacle: true, discoverable: true
-    }),
-    interaction: Object.freeze({
-      actions: Object.freeze(["observe"]),
-      defaultAction: "observe",
-      defaultManualAction: "observe",
-      removeFromWorld: false,
-      animation: Object.freeze({ observe: Object.freeze(["Ear_Right"]) })
-    }),
-    knowledge: Object.freeze({ family: "technology", discoverable: true, uniqueByInstance: true }),
-    situation: Object.freeze({ tags: Object.freeze(["technology","crash","landmark","capsule"]) })
-  });
-
-  function attachCapsule(engine) {
-    const map = engine?.currentMap, capsule = map?.crashCapsule;
-    if (!capsule) return;
-    const old = (map.interactables || []).filter((object) =>
-      object?.userData?.instanceId === "crystal:crash-capsule"
-    );
-    old.forEach((object) => {
-      const i = map.interactables.indexOf(object);
-      if (i >= 0) map.interactables.splice(i,1);
-      object.removeFromParent?.();
-    });
-
-    capsule.updateWorldMatrix?.(true,true);
-    const box = new engine.THREE.Box3().setFromObject(capsule);
-    if (box.isEmpty()) return;
-    const size = box.getSize(new engine.THREE.Vector3());
-    const center = box.getCenter(new engine.THREE.Vector3());
-    const localCenter = capsule.worldToLocal(center.clone());
-    const scale = capsule.getWorldScale(new engine.THREE.Vector3());
-    const worldSize = new engine.THREE.Vector3(
-      Math.max(.8, size.x + .9),
-      Math.max(.8, size.y + .6),
-      Math.max(.8, size.z + .9)
-    );
-    const localSize = new engine.THREE.Vector3(
-      worldSize.x / Math.max(.0001, Math.abs(scale.x)),
-      worldSize.y / Math.max(.0001, Math.abs(scale.y)),
-      worldSize.z / Math.max(.0001, Math.abs(scale.z))
-    );
-    const hitbox = new engine.THREE.Mesh(
-      new engine.THREE.BoxGeometry(localSize.x, localSize.y, localSize.z),
-      new engine.THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false })
-    );
-    hitbox.name = "BlueFoxCrashCapsuleHitbox";
-    hitbox.position.copy(localCenter);
-    Object.assign(hitbox.userData, {
-      interactable:true, active:true, kind:"crash-capsule",
-      libraryType:"crash-capsule", catalogId:capsuleDefinition.id,
-      functional:capsuleDefinition, instanceId:"crystal:crash-capsule",
-      worldAnchor:capsule, interactionRadius:Math.max(worldSize.x,worldSize.z)*.52
-    });
-    Object.assign(capsule.userData, {
-      functional:capsuleDefinition, catalogId:capsuleDefinition.id,
-      libraryType:"crash-capsule", instanceId:"crystal:crash-capsule"
-    });
-    capsule.add(hitbox);
-    map.interactables.push(hitbox);
-  }
-
   function renderMissionScenes(engine) {
     const definition = BF.maps?.[engine?.currentMapId], map = engine?.currentMap;
     if (!definition || !map?.group || !BF.ObjectSpawner) return;
@@ -151,11 +82,9 @@
     const originalLoad = engine.loadMap.bind(engine);
     engine.loadMap = async function loadMapBibleV19(...args) {
       const result = await originalLoad(...args);
-      attachCapsule(engine);
       renderMissionScenes(engine);
       return result;
     };
-    attachCapsule(engine);
     renderMissionScenes(engine);
     return engine;
   };

@@ -2860,7 +2860,7 @@
       const profile = object.userData.interactionProfile || this.interactionProfile(object);
       const anchor = object.userData.worldAnchor || object;
       const distance = this.character.root.position.distanceTo(anchor.position);
-      const interactionDistance = (object.userData.approachDistance || 1.36) + 0.18;
+      const interactionDistance = (object.userData.approachDistance || 1.36) + 0.48;
       if (distance > interactionDistance) {
         if (!this.interactionStartedAt && now - this.interactionApproachStartedAt > 6500) {
           this.interactionApproachAttempts += 1;
