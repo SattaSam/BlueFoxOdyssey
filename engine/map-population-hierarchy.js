@@ -75,7 +75,7 @@
       definition?.startingMap ||
       definition?.id === "crystal" ||
       (Number.isFinite(mapNumber) && mapNumber >= 1 && mapNumber <= 3) ||
-      (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 2)
+      (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 3)
     );
   };
 

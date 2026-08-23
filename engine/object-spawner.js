@@ -22,6 +22,16 @@
     5: Object.freeze({ min: 190, max: 226, resourcesMin: 48, resourcesMax: 62, landmarksMin: 1, landmarksMax: 2 }),
     6: Object.freeze({ min: 222, max: 264, resourcesMin: 56, resourcesMax: 72, landmarksMin: 1, landmarksMax: 3 })
   });
+  const TUTORIAL_REQUIRED_RESOURCES = Object.freeze([
+    "adaptive_plant", "fiber", "bush", "crystal"
+  ]);
+  const TUTORIAL_FORBIDDEN_LANDMARK_TYPES = new Set([
+    "prismatic_orchid", "rare_biological_resource", "stellar_iridium", "energy_crystal",
+    "logic_prism", "pulse_core", "memory_capsule", "tech_relic", "abandoned_drone",
+    "scout_drone", "harvest_drone", "fun_creature", "small_creature", "brouteur",
+    "sauteur", "patte_creature", "nocturnal_animal", "amphibian_species",
+    "electrostatic_storm", "mobile_islet", "fog_bank"
+  ]);
   const segmentDistanceSquared = (start, end, x, z) => {
     const dx = end.x - start.x;
     const dz = end.z - start.z;
@@ -350,7 +360,7 @@
         occupied.some((item) =>
           Math.hypot(x - item.x, z - item.z) < radius + item.radius + 0.28
         );
-      const randomPosition = (minimumDistance, maximumDistance, radius, type = "frond") => {
+      const randomPosition = (minimumDistance, maximumDistance, radius, type = "frond", mustPlace = false) => {
         const volume = placement(type).volume;
         const preferences = placementPreferences[volume];
         const mapEdgeBand = volume === "large" ? 9.5 : volume === "medium" ? 8 : 6.5;
@@ -416,6 +426,32 @@
             z < minZ + outerSafety || z > maxZ - outerSafety
           ) continue;
           if (!isReserved(x, z, radius, type) && !isOccupied(x, z, radius)) return { x, z };
+        }
+        if (mustPlace) {
+          // Même propriétaire, mêmes règles de validité : après la voie RNG
+          // normale, balayage borné à l'intérieur des plateaux réels.
+          const maxDistance = Math.min(maximumDistance, 25);
+          const radialStep = Math.max(0.75, radius * 0.75);
+          for (const region of (zoneRegions.length ? zoneRegions : [{ center: mapCenter }])) {
+            for (let distance = minimumDistance; distance <= maxDistance; distance += radialStep) {
+              const angularSteps = Math.max(
+                32,
+                Math.ceil((Math.PI * 2 * Math.max(distance, 1)) / Math.max(0.75, radius * 0.75))
+              );
+              for (let step = 0; step < angularSteps; step += 1) {
+                const angle = (step / angularSteps) * Math.PI * 2;
+                const x = region.center.x + Math.cos(angle) * distance;
+                const z = region.center.z + Math.sin(angle) * distance;
+                if (
+                  x < minX + outerSafety || x > maxX - outerSafety ||
+                  z < minZ + outerSafety || z > maxZ - outerSafety
+                ) continue;
+                if (!isReserved(x, z, radius, type) && !isOccupied(x, z, radius)) {
+                  return { x, z };
+                }
+              }
+            }
+          }
         }
         return null;
       };
@@ -493,7 +529,7 @@
             allowCustomRange ? mapBudget.max * 2 : mapBudget.max
           )
         : Math.round(mapBudget.min + next() * (mapBudget.max - mapBudget.min));
-      const resourceCount = Number.isFinite(Number(lockedBudget.resources))
+      let resourceCount = Number.isFinite(Number(lockedBudget.resources))
         ? BF.clamp(
             Math.round(Number(lockedBudget.resources)),
             allowCustomRange ? 0 : mapBudget.resourcesMin,
@@ -523,8 +559,17 @@
         definition.startingMap ||
         definition.id === "crystal" ||
         (Number.isFinite(mapNumber) && mapNumber >= 1 && mapNumber <= 3) ||
-        (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 2)
+        (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 3)
       );
+      const effectiveLandmarkTemplate = tutorialProtected
+        ? landmarkTemplate.filter(([type]) => !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type))
+        : landmarkTemplate;
+      const effectiveLandmarks = tutorialProtected
+        ? landmarks.filter(([type]) => !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type))
+        : landmarks;
+      if (tutorialProtected && !allowCustomRange) {
+        resourceCount = Math.max(resourceCount, TUTORIAL_REQUIRED_RESOURCES.length);
+      }
       const generatedSpecialScenes = definition.generated && !tutorialProtected
         ? (definition.generator?.microSceneIds || [])
           .map((id) => BF.MicroScenes.get(id))
@@ -589,7 +634,7 @@
       const floatingIslandsCustomScene = dedicatedFloatingIslands
         ? BF.MicroScenes.get("MSC-CUSTOM-ILES-SUSPENDUES2")
         : null;
-      const ruinSceneIds = /megalo|city|cite|ruine.*jungle|jungle.*ruine|ruine.*envahi|envahi.*ruine/.test(generationContext)
+      const ruinSceneIds = !tutorialProtected && /megalo|city|cite|ruine.*jungle|jungle.*ruine|ruine.*envahi|envahi.*ruine/.test(generationContext)
         ? [
             "MSC-CUSTOM-COMPOSANT-RUIN", "MSC-CUSTOM-HABITAT-RUINE",
             "MSC-CUSTOM-RUINE-MODULAIRE1", "MSC-CUSTOM-RUINE-MODULAIRE2",
@@ -601,16 +646,16 @@
             "MSC-CUSTOM-CARRIEREDECRISTAUX1", "MSC-CUSTOM-BASALT-RIFT"
           ]
         : [];
-      const underwaterCoralSceneIds = bioluminescentUnderwater
+      const underwaterCoralSceneIds = !tutorialProtected && bioluminescentUnderwater
         ? [
             "MSC-CUSTOM-CORAILBIOLUMINESCENT1",
             "MSC-CUSTOM-CORAILBIOLUMINESCENT2",
             "MSC-CUSTOM-CORAILBIOLUMINESCENT3"
           ]
         : [];
-      const landmarkObjectBudget = landmarks.length
-        ? landmarks.length
-        : landmarkCount * landmarkTemplate.length;
+      const landmarkObjectBudget = effectiveLandmarks.length
+        ? effectiveLandmarks.length
+        : landmarkCount * effectiveLandmarkTemplate.length;
       let remainingAfterResources = Math.max(
         0,
         targetObjectBudget - resourceCount - landmarkObjectBudget
@@ -648,6 +693,20 @@
             0,
             remainingAfterResources - selectedCoralScene.objects.length
           );
+        }
+      }
+
+      let placedResources = 0;
+      if (tutorialProtected && !allowCustomRange) {
+        for (const type of TUTORIAL_REQUIRED_RESOURCES) {
+          if (!BF.ObjectLibrary.get(type)) continue;
+          const radius = placement(type).radius;
+          const center = randomPosition(3.5, 24, radius, type, true);
+          if (!center) continue;
+          const object = placeObject(type, center.x, center.z, placedResources % 3, next() * Math.PI * 2);
+          object.root.userData.microScene = "tutorial-required-resource";
+          object.root.userData.tutorialGuaranteedResource = true;
+          placedResources += 1;
         }
       }
 
@@ -731,19 +790,28 @@
         }
       }
 
-      let placedResources = 0;
       let resourceGuard = 0;
+      const knownResourceType = (type) => Boolean(type && BF.ObjectLibrary.get(type));
       const pickResourceKind = () => {
-        const entries = (population.resourceWeights || []).map((entry) => ({
-          definition: { type: entry.family },
-          weight: entry.weight
-        }));
-        return weightedPick(entries, next)?.definition?.type ||
-          population.resourcePattern[placedResources % population.resourcePattern.length];
+        const entries = (population.resourceWeights || [])
+          .filter((entry) => knownResourceType(entry?.family))
+          .map((entry) => ({
+            definition: { type: entry.family },
+            weight: entry.weight
+          }));
+        const weighted = weightedPick(entries, next)?.definition?.type;
+        if (knownResourceType(weighted)) return weighted;
+        const pattern = Array.isArray(population.resourcePattern) ? population.resourcePattern : [];
+        for (let offset = 0; offset < pattern.length; offset += 1) {
+          const candidate = pattern[(placedResources + offset) % pattern.length];
+          if (knownResourceType(candidate)) return candidate;
+        }
+        return null;
       };
       while (placedResources < resourceCount && resourceGuard < resourceCount * 6) {
         resourceGuard += 1;
         const kind = pickResourceKind();
+        if (!kind) break;
         const center = randomPosition(3.5, 24, placement(kind).radius, kind);
         if (!center) continue;
         const remaining = resourceCount - placedResources;
@@ -756,6 +824,7 @@
         const rotation = next() * Math.PI * 2;
         for (let member = 0; member < clusterSize; member += 1) {
           const memberKind = member === 0 ? kind : pickResourceKind();
+          if (!memberKind) break;
           const isAnchor = member === 0;
           const distance = isAnchor ? 0 : resourceCluster.minRadius + next() * resourceCluster.radiusRange;
           const angle = rotation + next() * Math.PI * 2;
@@ -929,7 +998,7 @@
         }
       }
 
-      if (!landmarks.length) {
+      if (!effectiveLandmarks.length) {
         for (let landmarkIndex = 0; landmarkIndex < landmarkCount; landmarkIndex += 1) {
           const specialChance = ["magnetic", "electrical", "floating_islands", "curiosity"]
             .includes(definition.generator?.biomeId) ? 0.72 : 0.34;
@@ -953,8 +1022,10 @@
           const sine = Math.sin(rotation);
           const activeLandmark = specialScene
             ? specialScene.objects.map((entry) => [entry.type, entry.offset[0], entry.offset[2], entry.variant || 0])
-            : landmarkTemplate;
-          activeLandmark.forEach(([type, offsetX, offsetZ, variant]) => {
+            : effectiveLandmarkTemplate;
+          activeLandmark
+            .filter(([type]) => !tutorialProtected || !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type))
+            .forEach(([type, offsetX, offsetZ, variant]) => {
             if (type === "electrostatic_storm" && (placedTypeCounts.get(type) || 0) >= 6) return;
             const x = center.x + offsetX * cosine - offsetZ * sine;
             const z = center.z + offsetX * sine + offsetZ * cosine;
@@ -963,7 +1034,7 @@
           });
         }
       }
-      landmarks.forEach(([type, x, z, variant, rotation]) => {
+      effectiveLandmarks.forEach(([type, x, z, variant, rotation]) => {
         if (type === "electrostatic_storm" && (placedTypeCounts.get(type) || 0) >= 6) return;
         placeObject(type, x, z, variant, rotation);
       });

@@ -62,6 +62,11 @@
     alien: Object.freeze({ bush: 0.45, tree_fallen: 0.38 })
   });
   const COMPONENT_FAMILIES = new Set(["relay_block", "pulse_core", "memory_capsule", "logic_prism", "tech_relic"]);
+  const TUTORIAL_RESOURCE_FORBIDDEN = new Set([
+    "prismatic_orchid", "rare_biological_resource", "stellar_iridium", "energy_crystal",
+    "logic_prism", "pulse_core", "memory_capsule", "tech_relic", "abandoned_drone",
+    "scout_drone", "harvest_drone"
+  ]);
   const clampRichness = (value) => Math.max(1.2, Math.min(2.8, Number(value) || 1.2));
   const RESOURCE_RICHNESS = Object.freeze({
     volcanic: Object.freeze({ family: "resonant_basalt", multiplier: 1.65 }), frozen: Object.freeze({ family: "thermosap_moss", multiplier: 1.35 }), forest: Object.freeze({ family: "fiber", multiplier: 1.55 }), plain: Object.freeze({ family: "fiber", multiplier: 1.35 }), swamp: Object.freeze({ family: "fiber", multiplier: 1.65 }), fungal: Object.freeze({ family: "thermosap_moss", multiplier: 1.75 }), ruins: Object.freeze({ family: "azure_ferrite", multiplier: 1.35 }), archaeological: Object.freeze({ family: "relay_block", multiplier: 1.8 }), aquatic: Object.freeze({ family: "lunar_vine", multiplier: 1.45 }), coastal: Object.freeze({ family: "fiber", multiplier: 1.35 }), archipelago: Object.freeze({ family: "lunar_vine", multiplier: 1.55 }), desert: Object.freeze({ family: "azure_ferrite", multiplier: 1.5 }), magnetic: Object.freeze({ family: "magnetic_ore", multiplier: 1.85 }), crystalline: Object.freeze({ family: "crystal", multiplier: 1.75 }), atypical: Object.freeze({ family: "adaptive_plant", multiplier: 1.5 }), alien: Object.freeze({ family: "adaptive_plant", multiplier: 1.2 })
@@ -132,15 +137,25 @@
       const mapProfile = this.getMapProfile(profileId);
       const traitIds = new Set((definition.traits || []).map((trait) => trait.id));
       const plateauCount = Math.max(1, Math.min(6, Number(definition.plateauCount || definition.zones?.length) || 1));
-      const isStartingMap = Boolean(definition.isStartingMap || definition.startingMap || definition.id === "crystal" || definition.number === 1);
+      const discoveryIndex = Number(definition.generator?.discoveryIndex);
+      const isStartingMap = Boolean(
+        definition.isStartingMap ||
+        definition.startingMap ||
+        definition.id === "crystal" ||
+        definition.number === 1 ||
+        (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 3)
+      );
       const rockCount = mapProfile.rocks + (traitIds.has("magnetic") ? 4 : 0) + (traitIds.has("floating") ? 2 : 0) - (traitIds.has("wetland") ? 2 : 0);
       const roll = deterministicRoll(definition);
       let familyLimit = Math.max(mapProfile.familyMin, Math.min(mapProfile.familyMax, mapProfile.familyMin + Math.floor(roll * (mapProfile.familyMax - mapProfile.familyMin + 1))));
       if (isStartingMap) familyLimit = plateauCount <= 2 ? 2 : plateauCount <= 4 ? 4 : 5;
       familyLimit = Math.min(MAX_RESOURCE_FAMILIES, familyLimit);
       const componentLimit = isStartingMap && plateauCount < 6 ? 0 : Math.min(mapProfile.componentMax, plateauCount >= 6 ? mapProfile.componentMax : 0);
-      const normalResources = mapProfile.resources.filter((entry) => !COMPONENT_FAMILIES.has(entry.family));
-      const componentResources = mapProfile.resources.filter((entry) => COMPONENT_FAMILIES.has(entry.family)).slice(0, componentLimit);
+      const selectableResources = isStartingMap
+        ? mapProfile.resources.filter((entry) => !TUTORIAL_RESOURCE_FORBIDDEN.has(entry.family))
+        : mapProfile.resources;
+      const normalResources = selectableResources.filter((entry) => !COMPONENT_FAMILIES.has(entry.family));
+      const componentResources = selectableResources.filter((entry) => COMPONENT_FAMILIES.has(entry.family)).slice(0, componentLimit);
       const normalLimit = Math.max(1, familyLimit - componentResources.length);
       const resourceEntries = [...normalResources.slice(0, normalLimit), ...componentResources].slice(0, familyLimit);
       const traitDecorations = [
@@ -424,11 +439,7 @@
   const RARE_MINERALS=new Set(["stellar_iridium","energy_crystal"]);
   const PHENOMENA=new Set(["electrostatic_storm","mobile_islet","fog_bank"]);
   const GIANT_MUSHROOMS=new Set(["giant_mushroom"]);
-  const TUTORIAL_RARE=new Set([
-   "prismatic_orchid","rare_biological_resource","stellar_iridium","energy_crystal",
-   "logic_prism","pulse_core","memory_capsule","tech_relic","abandoned_drone",
-   "scout_drone","harvest_drone"
-  ]);
+  const TUTORIAL_RARE=TUTORIAL_RESOURCE_FORBIDDEN;
   const normalizePopulation=v=>String(v||"").toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g,"");
   const contextOf=def=>normalizePopulation([
    def?.id,def?.name,def?.description,def?.profile,def?.generator?.biomeId,
@@ -459,7 +470,7 @@
    const tutorial=!!(
      def?.isStartingMap||def?.startingMap||def?.id==="crystal"||
      (Number.isFinite(mapNumber)&&mapNumber>=1&&mapNumber<=3)||
-     (Number.isFinite(discoveryIndex)&&discoveryIndex>=0&&discoveryIndex<=2)
+     (Number.isFinite(discoveryIndex)&&discoveryIndex>=0&&discoveryIndex<=3)
    );
    const magneticWorld=biomeId==="magnetic"||profile==="magnetic"||/magnet/.test(context);
    const magneticRoll=deterministic(def);
@@ -540,7 +551,16 @@
    const faunaLimit=profile==="desert"?1:(deterministic(def)<.48?1:2);
    const keep=new Set(faunaTypes.slice(0,faunaLimit));
    dec=dec.filter(([t])=>!FAUNA.has(t)||keep.has(t));
-   return {...pop,rockCount:rocks,decorations:dec,resourceWeights:Object.freeze(rw.map(Object.freeze)),policyVersion:"canonical"};
+   const resourceWeights=Object.freeze(rw.slice(0,MAX_RESOURCE_FAMILIES).map(Object.freeze));
+   if(tutorial){
+     const resourceFamilies=Object.freeze(resourceWeights.map(e=>e.family));
+     const previousRichness=pop.richness||{};
+     const richnessFamily=resourceFamilies.includes(previousRichness.family)?previousRichness.family:(resourceFamilies[0]||null);
+     const richness=Object.freeze({family:richnessFamily,multiplier:Number(previousRichness.multiplier)||1});
+     const resourcePattern=Object.freeze(resourceWeights.flatMap(e=>Array(Math.max(1,Math.round((Number(e.weight)||0)/10))).fill(e.family)));
+     return {...pop,rockCount:rocks,decorations:dec,resourceWeights,resourceFamilies,resourcePattern,richness,policyVersion:"canonical"};
+   }
+   return {...pop,rockCount:rocks,decorations:dec,resourceWeights,policyVersion:"canonical"};
   };
   const orig=base.getMapPopulation.bind(base);
   BF.BiomeRules=Object.freeze({...base,getMapPopulation(def){return patch(def,orig(def));}});
