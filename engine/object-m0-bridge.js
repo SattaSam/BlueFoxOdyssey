@@ -642,8 +642,14 @@
     ""
   );
 
+  const studyDistinctMode = (node) => {
+    const configured = String(node?.params?.distinctBy || "").trim();
+    if (configured) return configured;
+    return isStudyAction(node?.type) ? "instanceId" : "";
+  };
+
   const distinctValueFromEvent = (node, event) => {
-    const mode = String(node?.params?.distinctBy || "").trim();
+    const mode = studyDistinctMode(node);
     if (!mode || mode === "none") return null;
     if (mode === "instanceId") return String(event?.instanceId || "");
     if (mode === "objectId") return String(event?.objectId || "").toLowerCase();
@@ -651,7 +657,7 @@
   };
 
   const distinctValueFromResolved = (node, resolved) => {
-    const mode = String(node?.params?.distinctBy || "").trim();
+    const mode = studyDistinctMode(node);
     if (!mode || mode === "none") return null;
     const identity = identityOf(resolved);
     if (mode === "instanceId") return identity.instanceId;
@@ -1066,12 +1072,12 @@
       const resolved = resolveObject(object);
       const identity = identityOf(resolved);
       const missionId =
-        object.userData.missionId ||
         object.userData.acquisitionMissionId ||
+        object.userData.missionId ||
         null;
       const nodeId =
-        object.userData.missionNodeId ||
         object.userData.acquisitionMissionNodeId ||
+        object.userData.missionNodeId ||
         null;
       const instanceId =
         object.userData.acquisitionInstanceId ||
@@ -1157,10 +1163,11 @@
       // Dès que l'étude préalable de CE geste est satisfaite, la phase acquire
       // verrouille la même instance jusqu'à l'acquisition finale. Aucun nouvel
       // arbitrage de mission/BAC ne peut détourner la cible entre les deux.
+      const dueStudyDirective = activeStudyDirective(this, resolved);
       const directive =
-        source === "mission" || acquiringSameTarget
+        acquiringSameTarget && !dueStudyDirective
           ? null
-          : activeStudyDirective(this, resolved);
+          : dueStudyDirective;
 
       if (directive) {
         object.userData.requestedInteraction = "observe";
@@ -1169,7 +1176,6 @@
         object.userData.missionNarrativeVerb = directive.narrativeVerb;
         object.userData.missionNodeId = directive.nodeId;
         object.userData.missionId = directive.missionId;
-        bindAcquisitionMission(object);
       }
 
       const missionRequested =
@@ -1192,7 +1198,7 @@
       if (hasAcquisitionIntent && mode) {
         object.userData.acquisitionPhase =
           ["collect", "extract"].includes(mode) ? "acquire" : "study";
-        bindAcquisitionMission(object);
+        if (!directive) bindAcquisitionMission(object);
       }
       if (!resolved.definition || !mode) {
         console.warn("[BlueFox O5.1] Interaction refusée : objet absent ou incomplet dans le CUO.", object);
@@ -1426,14 +1432,31 @@
           label: definition.label,
           interactionState: { ...state }
         });
-        // Une étude préalable, qu'elle soit exigée par le CUO ou par une
-        // mission active, appartient au même geste d'acquisition. La cible ne
-        // change pas et la chaîne passe maintenant en phase acquire.
+        // Une étude missionnelle peut en débloquer une autre sur la même
+        // instance. OBSERVE reste l'unique geste physique ; le verbe narratif
+        // (observe/inspect/analyze) distingue l'objectif missionnel.
+        // Le distinct par instance du nœud empêche de recompter cette même
+        // instance pour le même objectif avant de reprendre l'acquisition.
+        const continueStudyDirective =
+          ["collect", "extract"].includes(object.userData.acquisitionIntent) &&
+          capabilities(definition).collectable
+            ? activeStudyDirective(this, resolved)
+            : null;
         continueAcquisition =
           ["collect", "extract"].includes(object.userData.acquisitionIntent) &&
           capabilities(definition).collectable;
         if (continueAcquisition) {
-          object.userData.acquisitionPhase = "acquire";
+          object.userData.acquisitionPhase =
+            continueStudyDirective ? "study" : "acquire";
+          if (continueStudyDirective) {
+            object.userData.requestedInteraction = "observe";
+            object.userData.requestedInteractionSource = "mission";
+            object.userData.missionSubject = continueStudyDirective.subject;
+            object.userData.missionNarrativeVerb =
+              continueStudyDirective.narrativeVerb;
+            object.userData.missionNodeId = continueStudyDirective.nodeId;
+            object.userData.missionId = continueStudyDirective.missionId;
+          }
         }
         object.userData.lastInspectedAt = Date.now();
         object.userData.requestedInteraction = null;
@@ -1485,16 +1508,22 @@
 
         // La chaîne continue AVANT toute nouvelle décision autonome.
         // Aucune recherche de cible : on garde exactement le même objet.
-        object.userData.requestedInteraction = intended;
-        object.userData.requestedInteractionSource = intendedSource;
-        object.userData.missionSubject =
-          object.userData.acquisitionMissionSubject || null;
-        object.userData.missionNarrativeVerb =
-          object.userData.acquisitionMissionNarrativeVerb || null;
-        object.userData.missionNodeId =
-          object.userData.acquisitionMissionNodeId || null;
-        object.userData.missionId =
-          object.userData.acquisitionMissionId || null;
+        const continuingStudy =
+          object.userData.acquisitionPhase === "study" &&
+          object.userData.requestedInteraction === "observe" &&
+          object.userData.requestedInteractionSource === "mission";
+        if (!continuingStudy) {
+          object.userData.requestedInteraction = intended;
+          object.userData.requestedInteractionSource = intendedSource;
+          object.userData.missionSubject =
+            object.userData.acquisitionMissionSubject || null;
+          object.userData.missionNarrativeVerb =
+            object.userData.acquisitionMissionNarrativeVerb || null;
+          object.userData.missionNodeId =
+            object.userData.acquisitionMissionNodeId || null;
+          object.userData.missionId =
+            object.userData.acquisitionMissionId || null;
+        }
         this.postActionRecoveryUntil = now;
         this.targetInteraction(object, true);
       }
