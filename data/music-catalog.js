@@ -242,42 +242,42 @@
   const cue=(id,family,files,gain=.72,extra={})=>Object.freeze({id,family,files:Object.freeze(files),gain,...extra});
   var CUES = Object.freeze({
     "collection.plant":cue("collection.plant","collection",[
-      "audio/music/cues/drift_note_A_5-5s.mp3",
-      "audio/music/cues/drift_note_B_11-1s.mp3"
+      "audio/music/cues/plante_A_drift_13-7s.mp3",
+      "audio/music/cues/quiet_note_A_5-2s.mp3"
     ],.68),
     "collection.mineral":cue("collection.mineral","collection",[
       "audio/music/cues/drift_note_D2_18-3s.mp3",
-      "audio/music/cues/drift_note_E2_21-2s.mp3"
+      "audio/music/cues/relique_C_evolution_35-7s.mp3"
     ],.72),
     "collection.generic":cue("collection.generic","collection",[
-      "audio/music/cues/drift_note_C_16-8s.mp3"
+      "audio/music/cues/relique_A_descente_intermediaire.mp3"
     ],.68),
     "observation.quiet":cue("observation.quiet","observation",[
-      "audio/music/cues/quiet_note_A_5-2s.mp3"
+      "audio/music/cues/drift_note_C_16-8s.mp3"
     ],.58),
     "curiosity.subtle":cue("curiosity.subtle","observation",[
-      "audio/music/cues/plante_A_drift_13-7s.mp3"
+      "audio/music/cues/drift_note_E2_21-2s.mp3"
     ],.58),
     "relic.detected":cue("relic.detected","relic",[
-      "audio/music/cues/relique_C_evolution_35-7s.mp3"
+      "audio/music/cues/drift_note_A_5-5s.mp3"
     ],.66),
     "relic.active":cue("relic.active","relic",[
-      "audio/music/cues/relique_A_developpement_19-2s.mp3"
+      "audio/music/cues/drift_note_C_16-8s.mp3"
     ],.72),
     "relic.intermediate":cue("relic.intermediate","relic",[
-      "audio/music/cues/relique_A_descente_intermediaire.mp3"
+      "audio/music/cues/drift_note_B_11-1s.mp3"
     ],.64),
     "research.notes":cue("research.notes","research",[
-      "audio/music/cues/relic_note_E_development_42-3s.mp3"
+      "audio/music/cues/relic_note_D_research_60-2s.mp3"
     ],.67),
     "research.complete":cue("research.complete","research",[
-      "audio/music/cues/relic_note_D_research_60-2s.mp3"
+      "audio/music/cues/mission_C_dynamics_125-2s.mp3"
     ],.69),
     "civilization.major":cue("civilization.major","relic",[
       "audio/music/cues/relic_note_F_civilization_19-7s.mp3"
     ],.72,{cooldownMs:18000}),
     "dynamic.priority":cue("dynamic.priority","dynamic",[
-      "audio/music/cues/mission_C_dynamics_125-2s.mp3"
+      "audio/music/cues/relic_note_E_development_42-3s.mp3"
     ],.78,{cooldownMs:18000})
   });
   var TRACKS = Object.freeze([

@@ -7,5 +7,5 @@ Ces fichiers sont les documents de référence officiels maintenus :
 
 Ils ont été construits directement à partir des fichiers fournis par l'utilisateur.
 Les documents DOCX générés précédemment restent des annexes utiles mais ne remplacent
-pas ces références. TODO.md et ROADMAP_TODO.md sont des archives historiques et ne
-doivent plus être utilisés pour piloter le chantier courant.
+pas ces références. TODO.md est une archive historique et ne doit plus être utilisé
+pour piloter le chantier courant. ROADMAP_TODO.md reste la seule TODO active.

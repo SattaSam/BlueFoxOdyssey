@@ -1,6 +1,6 @@
 # BlueFox Odyssey — Architecture technique
 
-Référence : **commit `35685c793ecb110bc928e9af0b5b3fecd1658e0b` — 19 août 2026**
+Référence : **commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` — 23 août 2026**
 
 ## Registre canonique des propriétaires
 
@@ -36,7 +36,7 @@ Référence : **commit `35685c793ecb110bc928e9af0b5b3fecd1658e0b` — 19 août 2
 | Missions / orchestration | `engine/mission-manager.js` | Propriétaire du cycle missionnel |
 | Mémoire mission | `engine/mission-memory.js` | Lifecycles, faits, historique, sites |
 | Planification mission | `engine/mission-planner.js` | Traduit mission en intention/action |
-| Arbre / objectifs | `engine/mission-tree.js` | Structure des objectifs |
+| Arbre / objectifs | `engine/mission-tree.js` | Structure des objectifs et mémoire `distinctValues` |
 | Types mission | `engine/mission-types.js` | Modèle des types/objectifs |
 | Contrat Bible | `engine/bible-contract-v0-1.js` | Contrat des fiches/patrons |
 | Runtime Bible | `engine/bible-runtime-v0-1-unified.js` | Interprétation Bible, narration, effets et crédits d’activation |
@@ -45,7 +45,7 @@ Référence : **commit `35685c793ecb110bc928e9af0b5b3fecd1658e0b` — 19 août 2
 | Catalogue Bible | `data/bible-catalog.js` | Fiches missionnelles |
 | Exécution mission → action | `engine/action-bridge.js` | Raccord intention/action réelle |
 | Événements objets | `engine/object-event-registry.js` | Normalisation événements |
-| Raccord CUO → M0 | `engine/object-m0-bridge.js` | Matching générique critères mission ↔ métadonnées CUO |
+| Raccord CUO → M0 | `engine/object-m0-bridge.js` | Matching générique critères mission ↔ métadonnées CUO ; études missionnelles avant acquisition ; distinct étude par instance |
 | Arbitrage cible mission | `engine/mission-target-arbitration-v19-12.js` | Choix/priorité de cible |
 | Intégration runtime missions | `engine/mission-runtime-integration-v19-7.js` | Raccord runtime mission au jeu |
 | UI missions / tutoriel | `engine/mission-ui-bridge.js` | Affichage mission + consommation guidage tutoriel ; aucune logique missionnelle propriétaire |
@@ -109,6 +109,32 @@ Une même action canonique peut faire progresser plusieurs missions déjà activ
 P04 + `GAME-shelter` constituent le test de référence actuel de ce comportement.
 Aucun bridge supplémentaire ne doit intercepter l’événement avant ses consommateurs normaux.
 
+### Études missionnelles avant acquisition — contrat validé au 23 août 2026
+Le raccord reste porté par `engine/object-m0-bridge.js`; aucun propriétaire supplémentaire n'est créé.
+
+Contrat courant :
+- `observer`, `inspecter` et `analyser` sont trois verbes missionnels/narratifs d'une même action physique : `observe` ;
+- une instance collectable peut être observée avant sa collecte si une mission le demande, y compris si elle avait déjà été observée historiquement ;
+- plusieurs nœuds missionnels successifs peuvent demander de nouvelles observations de la même instance ;
+- après la dernière étude réellement due, `collect/extract` reprend immédiatement sur la même instance ;
+- une observation canonique reste disponible au fan-out vers toutes les missions actives compatibles ;
+- l'identité persistante de l'acquisition (`acquisitionMission*`) reste distincte de l'identité momentanée du nœud d'étude (`mission*`) ;
+- l'annulation d'une acquisition pendant une étude intermédiaire doit nettoyer l'ensemble de la transaction sans interaction orpheline.
+
+### Unicité d'étude nœud × instance
+`MissionNode` reste propriétaire de `distinctValues`, `incrementDistinct()` et `hasDistinctValue()`.
+
+Pour les nœuds d'étude `OBSERVE/INSPECT/ANALYZE` sans `distinctBy` explicite, `object-m0-bridge.js` applique désormais un distinct effectif `instanceId`.
+
+Règles :
+- un même nœud d'étude ne peut créditer une même instance qu'une seule fois ;
+- une autre instance peut faire progresser le même nœud ;
+- un autre nœud peut réobserver la même instance ;
+- un `distinctBy` explicite reste prioritaire (`instanceId`, `objectId`, `none`) ;
+- les nœuds non-study, notamment `collect/extract`, ne reçoivent aucun distinct implicite.
+
+Cas de référence : `GAME-shelter / plantStudy` (« Observer, inspecter ou analyser 100 plantes ») doit progresser sur des instances distinctes et ne jamais boucler sur la même plante.
+
 ## UI tutorielle
 La façade visuelle `BF.TutorialUI`, installée dans `mission-ui-bridge.js`, reste non destructive :
 - message ;
@@ -144,6 +170,7 @@ persistRuntime()
 ```
 
 `persistRuntime()` ne doit pas créer artificiellement un état modifié. `MissionMemory` conserve son mécanisme dirty/flush.
+`MissionNode.toJSON()` persiste `distinctValues`; la preuve intégrée save → reload → reprise du correctif du 23 août reste à rejouer dans le banc complet.
 
 ## Contrat CUO → événements → missions
 Le CUO ne sert pas uniquement au rendu 3D. Les définitions normalisées exposent actions, états, familles, tags, connaissances, recherche, ressources, progression, rareté, biomes et spawn.
@@ -160,12 +187,13 @@ Ces métadonnées sont projetées dans `userData` puis réinjectées dans les é
 ## Raccords missionnels encore ouverts
 À ajouter uniquement lorsqu’une future mission l’exige :
 - propagation `targetBinding=instance` jusqu'à ActionBridge ;
-- `distinctBy` générique ;
 - agrégation multi-map / multi-biome / multi-instance ;
 - généralisation éventuelle du spawn missionnel au-delà de `site.establish`;
 - présence / proximité / durée / délai ;
 - excursion → changement de map → retour ;
 - effets génériques réputation / branche / faits.
+
+Le distinct générique n'est plus un raccord « à créer » : le moteur possède le mécanisme `MissionNode.distinctValues`, les overrides explicites `distinctBy` et le distinct implicite `instanceId` pour les nœuds d'étude validé au commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f`.
 
 ## Discipline de modification
 - toujours partir du fichier complet du HEAD courant ;

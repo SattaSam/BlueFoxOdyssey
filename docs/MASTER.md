@@ -1,11 +1,11 @@
 # BLUEFOX ODYSSEY — MASTER
 
 ## État de référence
-Dernière mise à jour : 2026-08-19
+Dernière mise à jour : 2026-08-23
 
 ### Version de travail
-- Base GitHub de référence : commit `35685c793ecb110bc928e9af0b5b3fecd1658e0b`.
-- Cette base cumule les travaux validés récents : stabilisation fatigue/BAC, fondations UI tutoriel, routage Bible vers bulles/journal/50 actions, intégration P01→P04, timer de bulles V5.3 et restauration des garanties missionnelles perdues lors du patch timer.
+- Base GitHub de référence : commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f`.
+- Cette base cumule les travaux validés récents : stabilisation fatigue/BAC, fondations UI tutoriel, routage Bible vers bulles/journal/50 actions, intégration P01→P04, restauration des garanties missionnelles, corrections MSC/camp récentes et correction de la double interaction missionnelle observation→collecte.
 - Base PC historique : V16.20.
 - Version mobile/APK précédente : V16.14, considérée obsolète.
 - Développement mobile à reprendre depuis la base PC stable courante.
@@ -59,6 +59,7 @@ Fichiers principaux :
 - `save-ui-bridge.js` ne force plus `BF.progression.save()` avant la capture d'état.
 - Le mécanisme de signature d'autosave peut ainsi réellement ignorer un état inchangé.
 - `ProgressionRegistry` continue de sauvegarder ses vraies mutations à leur source.
+- `MissionNode` sérialise déjà `distinctValues`; la validation intégrée save → reload → reprise du correctif missionnel du 23 août reste un point de preuve à rejouer.
 - Règle renforcée : tout fichier modifié doit être construit depuis le fichier complet du HEAD courant ou depuis un fichier complet fourni par l'utilisateur ; jamais depuis un extrait de lecture partielle.
 
 ## Système de missions et progression
@@ -76,6 +77,24 @@ Fichiers principaux :
 - P04 `Comprendre qu’un projet peut progresser en parallèle` : objectif unique de collecte d'une ressource utile au Refuge ; progression parallèle avec `GAME-shelter`.
 - `GAME-shelter` est visible/active en parallèle après P03 sous le titre `Construire un refuge`.
 - Le fan-out d'une collecte vers plusieurs missions actives reste un comportement moteur générique.
+
+### Double interaction missionnelle validée
+Contrat validé au commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` :
+- sur un objet collectable, une ou plusieurs études missionnelles réellement dues peuvent précéder la collecte ;
+- une instance déjà observée historiquement peut être réobservée si un nœud missionnel le demande ;
+- `observer / inspecter / analyser` restent des verbes narratifs d'une même action physique `observe`;
+- plusieurs nœuds différents peuvent réobserver la même instance ;
+- un même nœud d'étude ne peut créditer une même instance qu'une seule fois ;
+- pour les nœuds d'étude sans `distinctBy` explicite, le distinct effectif est `instanceId`;
+- `distinctBy` explicite (`instanceId`, `objectId`, `none`) reste prioritaire ;
+- après la dernière étude due, `collect/extract` reprend immédiatement sur la même instance ;
+- fan-out observation et fan-out collecte restent génériques ;
+- l'identité d'acquisition persistante reste séparée de l'identité missionnelle momentanée de l'étude ;
+- annuler l'acquisition pendant une étude intermédiaire nettoie la transaction.
+
+Validation runtime en jeu :
+- T06 : observation missionnelle d'une plante puis collecte de la même instance, sans boucle ;
+- `GAME-shelter / plantStudy` : plusieurs plantes distinctes sont chacune observées une fois puis collectées ; une même instance ne peut pas faire progresser plusieurs fois le même objectif 100 plantes.
 
 ### UI tutorielle validée sur P01→P04
 - Les prescriptions tutoriel sont portées par les fiches missionnelles et consommées par `mission-ui-bridge.js`.
@@ -130,14 +149,14 @@ Les trois familles historiques restent le socle : découvrir/comprendre ; accumu
 ## CUO → missions
 - Le CUO reste source de vérité de l'objet ; aucun catalogue parallèle n'est créé dans le raccord missionnel.
 - `object-m0-bridge.js` peut comparer les critères missionnels aux métadonnées disponibles : `objectId`, `cuoType`, `kind`, `family`, `subject`, `category`, tags et exclusions associées.
+- Le même raccord assure désormais l'insertion des études missionnelles avant acquisition et applique le distinct d'étude effectif sans créer de mémoire parallèle.
 - Cette capacité permet les distinctions génériques plante/bois/minéral et prépare les futures fiches sans règle codée en dur par mission.
 
 ## Audit Bible / CUO / moteur — raccords encore ouverts
-Déjà disponibles : triggers interaction/exploration/progression ; `instanceId`, `mapId`, `zoneId`, `factionId` dans les événements ; `targetBinding` au contrat ; mission instanciable par map ; `uniqueOnly` ; persistance des faits/historiques ; spawn MSC via `site.establish` ; fan-out multi-missions ; métadonnées CUO riches.
+Déjà disponibles : triggers interaction/exploration/progression ; `instanceId`, `mapId`, `zoneId`, `factionId` dans les événements ; `targetBinding` au contrat ; mission instanciable par map ; `uniqueOnly` ; persistance des faits/historiques ; spawn MSC via `site.establish` ; fan-out multi-missions ; métadonnées CUO riches ; distinct par nœud/instance pour les objectifs d'étude et overrides `distinctBy`.
 
 Raccords à compléter seulement lorsqu'une mission future les exige :
 - faire suivre réellement `targetBinding=instance` jusqu'à ActionBridge ;
-- ajouter `distinctBy` sur les objectifs actifs ;
 - agréger plusieurs maps/biomes/instances dans une mission globale ;
 - généraliser le spawn MSC missionnel si nécessaire ;
 - durée/proximité/délai ;
@@ -162,7 +181,7 @@ La brique de ration existante doit être auditée/raccordée avant toute créati
 
 ## Direction actuelle
 Priorité immédiate :
-1. intégrer P05→P012 sur la base `35685c79…` en conservant les comportements P01→P04 ;
+1. poursuivre P05→P012 depuis le HEAD courant en conservant les comportements P01→P04 et le contrat observation→collecte validé au 23 août ;
 2. n'ajouter que les raccords missionnels génériques réellement exigés par cette tranche ;
 3. poursuivre factions/réputation + ration ;
 4. industrialiser progressivement les 182 missions ;

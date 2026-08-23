@@ -1,12 +1,12 @@
 # BlueFox Odyssey — Roadmap et TODO
 
-Mise à jour : **19 août 2026**
+Mise à jour : **23 août 2026**
 
 Cette page est la **seule TODO active**.
 
 ## Base de reprise
 
-* [x] Base courante auditée : `35685c793ecb110bc928e9af0b5b3fecd1658e0b`.
+* [x] Base courante auditée : `b757aa457ce5eca4a994ff8f35dcc482aca5c77f`.
 * [x] Restauration complète de `save-ui-bridge.js` après troncature accidentelle.
 * [x] Correction dirty-state autosave.
 * [x] Raccord `special-object-runtime.js` au `RuntimeBudget` existant.
@@ -18,6 +18,11 @@ Cette page est la **seule TODO active**.
 * [x] Routage Bible narration / bulles / journal / 50 actions.
 * [x] Timer / queue des bulles narratives V5.3.
 * [x] Restauration après régression du précrédit inventaire et de `mission_revealed`.
+* [x] Double interaction missionnelle : observation(s) réellement due(s) puis collecte de la même instance.
+* [x] Réobservation missionnelle possible d'une instance déjà connue.
+* [x] Unicité nœud d'étude × instance ; `GAME-shelter / plantStudy` ne peut plus compter plusieurs fois la même plante.
+* [x] Fan-out observation et collecte conservé.
+* [x] Annulation transactionnelle propre pendant les études intermédiaires.
 
 ## P0 — Intégration missions tutoriel
 
@@ -46,7 +51,7 @@ Cette page est la **seule TODO active**.
 * [ ] Ne créer aucun code spécifique à une mission si un paramètre générique suffit.
 * [ ] Préserver intégralement les comportements P01→P04.
 * [ ] Propager `targetBinding=instance` jusqu'à ActionBridge uniquement si requis.
-* [ ] Ajouter `distinctBy` uniquement si requis.
+* [x] Raccord `distinctBy` générique disponible ; distinct implicite `instanceId` validé pour les nœuds d'étude.
 * [ ] Supporter agrégation multi-map / multi-biome / multi-instance si le lot l'exige.
 * [ ] Généraliser le spawn missionnel si nécessaire.
 * [ ] Ajouter présence/proximité/durée/délai si nécessaire.
@@ -61,9 +66,10 @@ Cette page est la **seule TODO active**.
 * [x] `SEQUENCE_ACTIONS` validé sur P03 / Refuge.
 * [x] Matching CUO générique validé sur T02.
 * [x] Crédit d'inventaire à l'activation validé comme prescription générique.
+* [x] `distinctBy` utilisé sur besoin réel : objectifs d'étude à cardinalité multiple.
+* [x] Unicité par instance intégrée aux nœuds d'étude sans `distinctBy` explicite ; overrides explicites conservés.
 * [ ] Définir seulement les familles supplémentaires réellement nécessaires après P05→P012.
 * [ ] Viser un petit nombre de familles génériques plutôt qu'un patron par mission.
-* [ ] Ajouter `distinctBy` seulement lorsqu’un cas réel l’exige.
 
 ## P1 — CUO / factions / réputation
 * [ ] Attribuer `speciesId` aux créatures/PNJ pertinents.
@@ -91,6 +97,8 @@ Cette page est la **seule TODO active**.
 
 ## P4 — MAP_Test / CUO Lab / non-régression
 * [ ] Continuer la qualification sauvegarde/relecture.
+* [ ] Rejouer la preuve intégrée save → reload → reprise de `MissionNode.distinctValues`.
+* [ ] Rejouer le banc complet P01→P04 après le commit `b757aa45…`.
 * [ ] Vérifier preview vs moteur production.
 * [ ] Maintenir le contrat MSC exact.
 * [ ] Garder les axes principaux dégagés.

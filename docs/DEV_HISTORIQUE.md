@@ -1,5 +1,107 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Session du 23 août 2026 — Double interaction missionnelle / unicité nœud × instance
+
+### Base finale de session
+- HEAD validé et commité : `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` — `double action observe`.
+- Blob final `engine/object-m0-bridge.js` : `54a7d25041878109c448ccbba0577f8c6d487a20`.
+- Base avant chantier : `b5375d820833d93c180797b44c0700a92cb5ab1d`.
+- Blob avant : `ce8ef38a8f67faf6a0f392a501d02f782bed156e`.
+
+### Besoin fonctionnel
+Sur un objet collectable, une mission peut imposer une observation avant la collecte, même lorsque l'instance avait déjà été observée historiquement.
+
+Les termes narratifs `observer`, `inspecter` et `analyser` restent une seule action physique : `observe`.
+
+Le comportement final validé est :
+
+```text
+collectable
+→ 0..N observations missionnelles réellement dues
+→ même instance
+→ collect/extract
+```
+
+### Chaînage multi-études
+Plusieurs nœuds distincts peuvent demander successivement une observation de la même instance :
+
+```text
+S1 narratif observe
+→ OBSERVE I1
+S2 narratif inspect
+→ OBSERVE I1
+S3 narratif analyze
+→ OBSERVE I1
+→ COLLECT I1
+```
+
+La nuance est portée par `missionNarrativeVerb`, pas par trois gestes physiques différents.
+
+### Identité transactionnelle
+Pendant une étude intermédiaire :
+- `missionId / missionNodeId` peuvent désigner la mission d'étude momentanée ;
+- `acquisitionMissionId / acquisitionMissionNodeId` restent ceux de l'acquisition initiale.
+
+Cette séparation est obligatoire pour reprendre correctement la collecte finale et préserver le fan-out.
+
+### Annulation
+`cancelMissionInteraction()` résout prioritairement l'identité persistante de l'acquisition lorsque la transaction contient une étude momentanée issue d'une autre mission.
+
+Une annulation pendant ou entre deux observations nettoie :
+- `pendingInteraction`;
+- `requestedInteraction*`;
+- `mission*`;
+- `acquisition*`.
+
+Aucune observation orpheline ne doit être exécutée après annulation.
+
+### Unicité nœud × instance
+Le défaut final observé en jeu concernait `GAME-shelter / plantStudy` (« Observer, inspecter ou analyser 100 plantes ») : le même nœud pouvait réutiliser la même plante et provoquer une boucle d'observation.
+
+Décision durable :
+- `MissionNode` reste propriétaire de `distinctValues`, `incrementDistinct()` et `hasDistinctValue()`;
+- pour un nœud d'étude sans `distinctBy` explicite, `object-m0-bridge.js` applique un distinct effectif `instanceId`;
+- une même instance ne peut créditer qu'une fois le même nœud ;
+- une autre instance peut progresser ce nœud ;
+- un autre nœud peut réobserver la même instance ;
+- `distinctBy` explicite `instanceId`, `objectId` ou `none` reste prioritaire ;
+- les nœuds non-study ne reçoivent aucun distinct implicite.
+
+### Fan-out
+Une seule `PHENOMENON_OBSERVED` reste disponible à tous les nœuds compatibles des missions actives.
+
+Chaque nœud crédité enregistre indépendamment la même `instanceId` dans ses propres `distinctValues`, ce qui évite de rejouer inutilement l'observation pour une seconde mission déjà satisfaite par fan-out.
+
+La collecte finale reste elle aussi disponible au fan-out générique.
+
+### Validation
+Réfutation exhaustive du candidat final :
+- unicité nœud × instance : PASS ;
+- réobservation inter-nœud : PASS ;
+- instance historiquement connue : PASS ;
+- multi-observations : PASS ;
+- même instance : PASS ;
+- identité transactionnelle : PASS ;
+- fan-out observation : PASS ;
+- fan-out collecte : PASS ;
+- annulation : PASS ;
+- distinct explicite/implicite : PASS ;
+- aucun FAIL technique démontré ;
+- aucune régression technique démontrée.
+
+Validation runtime en jeu :
+- T06 : `PHENOMENON_OBSERVED` puis `RESOURCE_COLLECTED` sur la même plante ;
+- `GAME-shelter` : plusieurs instances distinctes de plante fibreuse sont chacune observées une fois puis collectées ;
+- aucune boucle de réobservation de la même instance constatée.
+
+Réserves de preuve :
+- banc intégré P01→P04 complet non rejoué dans l'environnement de réfutation ;
+- cycle save → reload → reprise non exécuté avec le candidat non commité au moment de la réfutation.
+
+Ces réserves sont des limites de preuve, pas des régressions techniques démontrées.
+
+---
+
 ## Session du 19 août 2026 — P01→P04, narration Bible et sécurisation du cumulatif
 
 ### Base finale de session
@@ -140,7 +242,7 @@ Présent :
 - mission instanciable par map ;
 - infrastructure de spawn MSC via `site.establish`.
 
-Écarts génériques historiques :
+Écarts génériques historiques à cette date :
 - targetBinding=instance à propager jusqu'au choix exact d'ActionBridge ;
 - `distinctBy` générique ;
 - agrégation multi-map/biome ;
@@ -148,6 +250,9 @@ Présent :
 - durée/proximité/délai ;
 - excursion/retour ;
 - effets réputation/branche/faits.
+
+Note de mise à jour du 23 août 2026 :
+- l'écart historique `distinctBy` est désormais partiellement résolu et validé pour les objectifs d'étude : mécanisme `MissionNode.distinctValues`, overrides explicites et distinct implicite `instanceId` pour les nœuds d'étude.
 
 ### Décision architecture missions
 - Limiter le nombre de patrons.
