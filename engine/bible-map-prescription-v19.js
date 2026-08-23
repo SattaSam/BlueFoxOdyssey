@@ -61,6 +61,28 @@
     );
   };
 
+  const resolveNavigationSuggestionPrescription = (engine, detail = {}) => {
+    const targetMapId = String(detail?.mapId || "");
+    if (targetMapId !== "crystal") return null;
+
+    const mission = catalog().find((entry) => {
+      if (missionStatus(engine, entry?.id) !== "active") return false;
+      if (entry?.pattern !== "TRAVEL_CYCLE") return false;
+      if (String(entry?.slots?.travel?.params?.toMapId || "") !== targetMapId) {
+        return false;
+      }
+      const gate = entry?.completionGate;
+      return gate?.type === "proximity.shelter" &&
+        String(gate?.mapId || "") === targetMapId;
+    });
+
+    return mission
+      ? { action: "return-base", missionId: mission.id, mapId: targetMapId }
+      : null;
+  };
+
+  BF.resolveBibleNavigationSuggestion = resolveNavigationSuggestionPrescription;
+
   const matchesTarget = (object, target = {}) => {
     if (!object?.userData?.active) return false;
     const definition =

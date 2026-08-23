@@ -1701,6 +1701,16 @@
     attachSiteRecords(records, site, engine = BF.currentEngine) {
       const map = engine?.currentMap;
       if (!map || !records?.length) return false;
+      const structuralSite = [
+        "MSC-CUSTOM-CAMP",
+        "MSC-CUSTOM-CAMP-BASE",
+        "MSC-CUSTOM-CAMP-BASE-REINFORCED"
+      ].includes(site?.microSceneId);
+      if (structuralSite && Array.isArray(map.interactables)) {
+        map.interactables = map.interactables.filter((object) =>
+          String(object?.userData?.microSceneId || "") !== String(site.microSceneId)
+        );
+      }
       records.forEach((record, index) => {
         const root = record.root;
         if (!root) return;
@@ -1712,7 +1722,9 @@
           root.userData.libraryType = site.kind;
           root.userData.shelterKind = site.kind;
         }
-        if (record.instance?.hitbox) map.interactables.push(record.instance.hitbox);
+        if (!structuralSite && record.instance?.hitbox) {
+          map.interactables.push(record.instance.hitbox);
+        }
         (record.instance?.colliders || []).forEach((collider) => {
           const transformRoot = record.objectRoot || root;
           transformRoot.updateWorldMatrix(true, false);

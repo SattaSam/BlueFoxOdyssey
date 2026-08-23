@@ -1949,12 +1949,18 @@
     resumePersistentNavigation() {
       const intent = this.persistentNavigationIntent;
       if (!intent || this.transitioning) return false;
+      if (this.pendingInteraction || this.currentRoutine || this.missionManager?.currentAction) {
+        return false;
+      }
+      const prescription = BF.resolveBibleNavigationSuggestion?.(this, intent);
+      if (prescription?.action === "return-base") {
+        this.clearPersistentNavigationIntent();
+        this.returnToBase();
+        return true;
+      }
       if (intent.mapId && intent.mapId === this.currentMapId) {
         this.clearPersistentNavigationIntent();
         return true;
-      }
-      if (this.pendingInteraction || this.currentRoutine || this.missionManager?.currentAction) {
-        return false;
       }
       if (intent.discoverUnknown && intent.direction) {
         const known = BF.maps[this.currentMapId]?.exits?.[intent.direction];
@@ -1984,6 +1990,12 @@
         this.callbacks.onStatus(
           "BlueFox termine son action en cours puis suivra la destination suggérée."
         );
+        return;
+      }
+      const prescription = BF.resolveBibleNavigationSuggestion?.(this, detail);
+      if (prescription?.action === "return-base") {
+        this.clearPersistentNavigationIntent();
+        this.returnToBase();
         return;
       }
       if (detail.discoverUnknown && detail.direction) {
