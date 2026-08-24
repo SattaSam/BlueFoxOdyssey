@@ -61,7 +61,10 @@
     Object.freeze(["bush", -19, 4, 0, 0.523599]),
     Object.freeze(["bush", 18, 4, 2, -0.785398]),
     Object.freeze(["tree_fallen", -15, -18, 1, 1.047198]),
-    Object.freeze(["fiber", 12, 8, 0, 0.261799])
+    Object.freeze(["fiber", 12, 8, 0, 0.261799]),
+    // Invariant tutoriel T06 : une stèle réellement générée, hors capsule et
+    // hors des trois emprises de construction, doit toujours rester étudiable.
+    Object.freeze(["stele", 17, -15, 0, -0.523599])
   ]);
 
   const tutorialPopulationBudget = Object.freeze({

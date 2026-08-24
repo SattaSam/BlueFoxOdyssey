@@ -562,7 +562,9 @@
         (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 3)
       );
       const tutorialAllowsType = (type) =>
-        !tutorialProtected || BF.ObjectLibrary.get(type)?.rarity !== "rare";
+        !tutorialProtected ||
+        (definition.id === "crystal" && type === "stele") ||
+        BF.ObjectLibrary.get(type)?.rarity !== "rare";
       const effectiveLandmarkTemplate = tutorialProtected
         ? landmarkTemplate.filter(([type]) =>
             !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type) &&
