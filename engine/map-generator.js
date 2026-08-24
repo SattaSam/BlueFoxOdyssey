@@ -149,59 +149,32 @@
       (template.terrainUrls?.length ? template.terrainUrls : [template.terrainUrl])
         .filter(Boolean)
     )];
-    const otherTemplates = catalogTemplates().filter((entry) =>
-      entry.id !== template.id
-    );
-    const sameBiome = [...new Set(
-      otherTemplates
-        .filter((entry) => templateScore(entry, biomeId, legacyProfile) >= 2)
-        .flatMap(terrainUrlsOf)
-        .filter((url) => !preferred.includes(url))
-    )];
-    const compatibleProfiles = COMPATIBLE_PROFILES[biomeId] || [legacyProfile];
-    const compatible = [...new Set(
-      otherTemplates
-        .filter((entry) =>
-          templateScore(entry, biomeId, legacyProfile) < 2 &&
-          compatibleProfiles.includes(entry.profile)
-        )
-        .flatMap(terrainUrlsOf)
-        .filter((url) => !preferred.includes(url) && !sameBiome.includes(url))
-    )];
+    const fallback = fallbackTerrainUrls();
     const selected = [];
     const sources = [];
-    const pick = (pool) => {
-      if (!pool.length) return null;
-      const alternatives = pool.length > 1
-        ? pool.filter((url) => url !== selected[selected.length - 1])
-        : pool;
-      const usable = alternatives.length ? alternatives : pool;
-      return usable[random.integer(usable.length)];
-    };
+    const associatedCount = Math.min(preferred.length, plateauCount);
+    const fallbackCount = Math.max(0, plateauCount - associatedCount);
+    let associatedIndex = 0;
+    let fallbackIndex = 0;
     while (selected.length < plateauCount) {
-      let role = "associated";
-      let pool = preferred;
-      if (selected.length >= preferred.length) {
-        const roll = random.next();
-        if (roll < 0.85) {
-          role = "associated-repeat";
-        } else if (roll < 0.98 && sameBiome.length) {
-          pool = sameBiome;
-          role = "same-biome";
-        } else if (compatible.length) {
-          pool = compatible;
-          role = "compatible-exception";
-        } else if (sameBiome.length) {
-          pool = sameBiome;
-          role = "same-biome";
-        } else {
-          role = "associated-repeat";
-        }
+      const remainingAssociated = associatedCount - associatedIndex;
+      const remainingFallback = fallbackCount - fallbackIndex;
+      const useFallback = remainingFallback > 0 && (
+        remainingAssociated <= 0 ||
+        (selected.length > 0 &&
+          Math.floor((selected.length + 1) * associatedCount / plateauCount) <= associatedIndex)
+      );
+      let role = useFallback ? "default-fallback" : "associated";
+      let url = useFallback
+        ? fallback[fallbackIndex % fallback.length]
+        : preferred[associatedIndex % preferred.length];
+      if (useFallback) fallbackIndex += 1;
+      else associatedIndex += 1;
+      if (!url) {
+        url = preferred[0] || fallback[selected.length % fallback.length] ||
+          template.sceneUrl;
+        role = preferred[0] ? "associated-repeat" : "default-fallback";
       }
-      const fallback = fallbackTerrainUrls();
-      const url = pick(pool) || preferred[0] ||
-        (fallback.length ? fallback[selected.length % fallback.length] : null) ||
-        template.sceneUrl;
       selected.push(url);
       sources.push({ url, role });
     }
@@ -404,7 +377,7 @@
         },
         templateId: template.id,
         templateNumber: template.number,
-        terrainPolicy: "associated-85_same-biome-13_compatible-2",
+        terrainPolicy: "associated_then_default-028_alternated",
         terrainSources: clone(terrainPlan.sources)
       }
     };

@@ -138,12 +138,25 @@
     panel.setAttribute("aria-live", "polite");
 
     const copy = createTextElement("p", "", message);
-    const close = createTextElement("button", "bluefox-tutorial-message-close", "×");
-    close.type = "button";
-    close.setAttribute("aria-label", "Fermer le message d’aide");
-    close.addEventListener("click", hideTutorialMessage);
+    const acknowledge = options.acknowledge;
+    const button = createTextElement(
+      "button",
+      "bluefox-tutorial-message-close",
+      acknowledge ? String(acknowledge.label || "OK") : "×"
+    );
+    button.type = "button";
+    button.setAttribute(
+      "aria-label",
+      acknowledge ? String(acknowledge.label || "OK") : "Fermer le message d’aide"
+    );
+    button.addEventListener("click", () => {
+      if (acknowledge && typeof options.onAcknowledge === "function") {
+        options.onAcknowledge();
+      }
+      hideTutorialMessage();
+    });
 
-    panel.append(copy, close);
+    panel.append(copy, button);
     document.body.appendChild(panel);
 
     const duration = Math.max(0, Number(options.duration ?? 14000) || 0);
@@ -250,7 +263,27 @@
     tutorialGuidanceShown.add(key);
     tutorialGuidanceTimers.delete(key);
     BF.TutorialUI?.showMessage?.(guidance.message, {
-      duration: guidance.duration
+      duration: guidance.duration,
+      acknowledge: guidance.acknowledge,
+      onAcknowledge: guidance.acknowledge
+        ? () => {
+            const mode = String(guidance.acknowledge.autonomyMode || "").toLowerCase();
+            if (!["semi", "full"].includes(mode)) return;
+            if (BF.unlockAutonomyMode?.(mode) !== true) return;
+            if (BF.setAutonomyMode?.(mode, { source: "tutorial" }) !== true) return;
+            global.dispatchEvent?.(new CustomEvent(
+              "bluefox:tutorial-guidance-acknowledged",
+              {
+                detail: {
+                  missionId,
+                  guidanceId: guidance.id || null,
+                  autonomyMode: mode
+                }
+              }
+            ));
+            BF.TutorialUI?.clearHighlight?.();
+          }
+        : null
     });
     if (guidance.highlight) BF.TutorialUI?.highlight?.(guidance.highlight);
 
@@ -719,36 +752,9 @@
     rail.appendChild(button);
   }
 
-  function tutorialMissionCompleted(state, missionId) {
-    return (state?.missions || []).some((mission) =>
-      mission?.missionId === missionId && mission?.lifecycleStatus === "completed"
-    );
-  }
-
-  function unlockFullOnSettingsClick(toolButton) {
-    const label = String(toolButton?.getAttribute?.("aria-label") || "")
-      .toLocaleLowerCase("fr")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
-    if (label !== "reglages") return false;
-
-    const state = BF.getMissionState?.() || latestState;
-    if (!tutorialMissionCompleted(state, "T08")) return false;
-    if (BF.getAutonomyAvailability?.().full === true) return false;
-
-    // Propriétaire conservé : settings-ui-bridge reste seul responsable
-    // du stockage et de l'application du mode d'autonomie.
-    const unlocked = BF.unlockAutonomyMode?.("full") === true;
-    if (!unlocked) return false;
-    BF.setAutonomyMode?.("full", { source: "user" });
-    BF.TutorialUI?.clearHighlight?.();
-    return true;
-  }
-
   document.addEventListener("click", (event) => {
     const toolButton = event.target.closest?.(".tool-rail button");
     if (!toolButton || toolButton.classList.contains("mission-tool-button")) return;
-    unlockFullOnSettingsClick(toolButton);
     document.querySelector(".mission-browser")?.remove();
   }, true);
 

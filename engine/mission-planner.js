@@ -24,6 +24,10 @@
     }
 
     score(node, context) {
+      // Une étape événementielle décrit une condition de progression ; elle
+      // ne doit jamais être proposée comme action exécutable au bridge.
+      if (node?.params?.eventDriven === true) return -100;
+
       let score = 100;
       const type = Missions.normalizeActionType(node.type);
       if ([Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(type)) {
@@ -83,6 +87,14 @@
         detail.kind !== node.params.kind
       ) {
         return false;
+      }
+      if (node.params.requiredMapFact) {
+        const fact = this.memory?.getFact?.(node.params.requiredMapFact, null);
+        const field = node.params.requiredMapField || "mapId";
+        const requiredMapId = fact?.[field];
+        if (!requiredMapId || String(detail.mapId || "") !== String(requiredMapId)) {
+          return false;
+        }
       }
       const changed = node.increment(Math.max(1, Number(detail.amount) || 1));
       tree.refresh();

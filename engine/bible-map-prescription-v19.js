@@ -26,8 +26,7 @@
 
     const mission = missionById(missionId);
     const prescription = mission?.mapGeneration;
-    const required = prescription?.requiredMicroScenes;
-    if (!prescription || !Array.isArray(required) || !required.length) return null;
+    if (!prescription || typeof prescription !== "object") return null;
 
     return {
       missionId: mission.id,
@@ -292,6 +291,97 @@
     });
   };
 
+  const unknownDirectionsFrom = (engine) => {
+    const definition = BF.maps?.[engine?.currentMapId];
+    if (!definition) return [];
+    return ["north", "south", "east", "west"].filter((direction) => {
+      if (definition.exits?.[direction]?.targetMap) return false;
+      const topologyTarget = engine.worldTopology?.targetFrom?.(
+        engine.currentMapId,
+        direction
+      );
+      return !topologyTarget?.mapId;
+    });
+  };
+
+  const requestAutonomousUnknownTravel = async (engine, mission) => {
+    if (mission?.navigation?.autonomousUnknownTravel !== true) return false;
+    if (missionStatus(engine, mission.id) !== "active") return false;
+    if (engine?.missionManager?.primaryMissionId !== mission.id) return false;
+    if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") {
+      return false;
+    }
+    if (
+      engine.transitioning ||
+      engine.pendingGate ||
+      engine.pendingInteraction ||
+      engine.currentRoutine ||
+      engine.missionManager?.currentAction
+    ) return false;
+
+    const memory = engine.missionManager?.memory;
+    const key = `tutorialExcursion:${mission.id}`;
+    const previous = memory?.getFact?.(key, {}) || {};
+    if (
+      previous.requesting === true ||
+      previous.generatedTargetMapId ||
+      previous.arrived === true
+    ) return false;
+
+    const directions = unknownDirectionsFrom(engine);
+    if (!directions.length) return false;
+    const direction = directions[
+      Math.floor(Math.random() * directions.length)
+    ] || directions[0];
+
+    memory?.setFact?.(key, {
+      ...previous,
+      direction,
+      fromMapId: engine.currentMapId,
+      requesting: true,
+      requestedAt: Date.now()
+    });
+    memory?.save?.();
+
+    try {
+      const result = await engine.generateUnknownPassage?.(direction, {
+        bibleMissionId: mission.id,
+        source: "autonomy"
+      });
+      if (result === false) {
+        const current = memory?.getFact?.(key, {}) || {};
+        memory?.setFact?.(key, { ...current, requesting: false });
+        memory?.save?.();
+        return false;
+      }
+      return true;
+    } catch (error) {
+      const current = memory?.getFact?.(key, {}) || {};
+      memory?.setFact?.(key, { ...current, requesting: false });
+      memory?.save?.();
+      console.warn("[BlueFox] Voyage autonome Bible différé.", error);
+      return false;
+    }
+  };
+
+  const acknowledgeMissionAutonomy = (engine, detail = {}) => {
+    const mission = missionById(detail.missionId);
+    if (missionStatus(engine, mission?.id) !== "active") return false;
+    if (mission?.tutorialAutonomy?.autonomousEligibleOnAcknowledge !== true) {
+      return false;
+    }
+
+    const manager = engine?.missionManager;
+    const lifecycle = manager?.ensureLifecycle?.(mission.id);
+    if (!lifecycle) return false;
+    lifecycle.autoPrimaryEligible = true;
+    lifecycle.updatedAt = Date.now();
+    manager.memory?.save?.();
+    manager.selectBestPrimary?.(performance.now(), true);
+    manager.publish?.();
+    return true;
+  };
+
   const wrapped = async function mountBibleMapPrescriptionV21(options) {
     const engine = await originalMount.call(this, options);
     const originalGenerateUnknownPassage =
@@ -318,7 +408,11 @@
           const prescription = mission.mapGeneration || null;
 
           const manager = engine.missionManager;
-          manager?.memory?.setFact?.(`tutorialExcursion:${mission.id}`, {
+          const excursionKey = `tutorialExcursion:${mission.id}`;
+          const previousExcursion =
+            manager?.memory?.getFact?.(excursionKey, {}) || {};
+          manager?.memory?.setFact?.(excursionKey, {
+            ...previousExcursion,
             fromMapId: engine.currentMapId,
             direction,
             confirmedAt: Date.now()
@@ -335,6 +429,14 @@
           try {
             const result = await originalGenerateUnknownPassage(direction);
             const destinationMapId = BF.maps?.[engine.currentMapId]?.exits?.[direction]?.targetMap || null;
+            const excursion = manager?.memory?.getFact?.(excursionKey, {}) || {};
+            manager?.memory?.setFact?.(excursionKey, {
+              ...excursion,
+              requesting: false,
+              generatedTargetMapId: destinationMapId || excursion.generatedTargetMapId || null,
+              generatedAt: destinationMapId ? Date.now() : excursion.generatedAt || 0
+            });
+            manager?.memory?.save?.();
             if (destinationMapId) {
               ensureMissionMicroScenes(destinationMapId, mission);
               const target = mission.navigation?.target;
@@ -450,6 +552,14 @@
       });
       unlockCompletedMissionAutonomy(state);
 
+      const primaryMission = missionById(manager?.primaryMissionId);
+      if (
+        primaryMission?.navigation?.autonomousUnknownTravel === true &&
+        missionStatus(engine, primaryMission.id) === "active"
+      ) {
+        requestAutonomousUnknownTravel(engine, primaryMission);
+      }
+
       (state?.missions || []).forEach((entry) => {
         if (entry.lifecycleStatus !== "active") return;
         const mission = missionById(entry.missionId);
@@ -484,11 +594,22 @@
       });
     };
 
+    const onTutorialGuidanceAcknowledged = (event) =>
+      acknowledgeMissionAutonomy(engine, event?.detail || {});
+
     global.addEventListener("bluefox:map-transition-completed", onMapTransition);
     global.addEventListener("bluefox:mission-state", onMissionState);
+    global.addEventListener(
+      "bluefox:tutorial-guidance-acknowledged",
+      onTutorialGuidanceAcknowledged
+    );
     engine.__disposeBibleMapPrescriptionV21 = () => {
       global.removeEventListener("bluefox:map-transition-completed", onMapTransition);
       global.removeEventListener("bluefox:mission-state", onMissionState);
+      global.removeEventListener(
+        "bluefox:tutorial-guidance-acknowledged",
+        onTutorialGuidanceAcknowledged
+      );
     };
 
     return engine;

@@ -44,6 +44,12 @@
         normalize(params.toMapId) !== normalize(detail.toMapId)) {
       return false;
     }
+    if (params.toDiscoveryIndex != null) {
+      const discoveryIndex = Number(
+        BF.maps?.[detail.toMapId]?.generator?.discoveryIndex
+      );
+      if (discoveryIndex !== Number(params.toDiscoveryIndex)) return false;
+    }
     return true;
   };
 
@@ -127,7 +133,8 @@
 
       tree.availableLeaves().forEach((node) => {
         if (node.isComplete) return;
-        if (node.params?.biblePattern !== "TRAVEL_CYCLE") return;
+        const eventDriven = node.params?.eventDriven === true;
+        if (!eventDriven && node.params?.biblePattern !== "TRAVEL_CYCLE") return;
         if (Missions.normalizeActionType(node.type) !== Missions.ActionType.TRAVEL) return;
         if (!eventMatchesFilters(node, detail)) return;
 

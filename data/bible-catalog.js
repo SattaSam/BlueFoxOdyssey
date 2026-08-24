@@ -609,13 +609,6 @@
         message: "Utilise « Demander le retour à la base ». BlueFox retrouvera seul la route connue.",
         duration: 14000,
         highlight: "return-base"
-      }),
-      Object.freeze({
-        id: "autonomy-settings-help",
-        when: "completed",
-        message: "BlueFox peut maintenant fonctionner avec davantage d’autonomie. Ouvre Réglages pour choisir son niveau.",
-        duration: 14000,
-        highlight: "settings"
       })
     ]),
     narrative: Object.freeze({
@@ -634,6 +627,103 @@
       ]),
       hesitation: Object.freeze([
         "On peut continuer à regarder autour de nous, mais si tu veux tester ma mémoire du trajet, suggère-moi simplement de rentrer au Site du crash."
+      ])
+    })
+  });
+
+  const T09 = Object.freeze({
+    id: "T09",
+    title: "Retrouver les mêmes plantes ailleurs",
+    description: "Laisser BlueFox choisir seul une nouvelle destination puis vérifier la présence de deux espèces déjà connues.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T08",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T08"]),
+    priority: 400,
+    passivePriorityAxis: "exploration",
+    tutorialAutonomy: Object.freeze({
+      autonomousEligibleOnAcknowledge: true
+    }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachFourPlateauMap",
+        title: "Rejoindre un nouveau territoire",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          toDiscoveryIndex: 2,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "adaptivePlant",
+        title: "Observer une plante adaptative",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachFourPlateauMap"]),
+        params: Object.freeze({
+          cuoType: "adaptive_plant",
+          requiredMapFact: "tutorialExcursion:T09",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "fiberPlant",
+        title: "Observer une plante fibreuse",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachFourPlateauMap"]),
+        params: Object.freeze({
+          cuoType: "fiber",
+          requiredMapFact: "tutorialExcursion:T09",
+          requiredMapField: "generatedTargetMapId"
+        })
+      })
+    ]),
+    mapGeneration: Object.freeze({
+      size: 4,
+      compatibleBiomes: Object.freeze([
+        "forest",
+        "aquatic"
+      ])
+    }),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "full-autonomy-introduction",
+        when: "active",
+        message: "À partir de maintenant, BlueFox est autonome dans ses décisions. Il peut choisir ses destinations et suivre une mission tout seul.",
+        duration: 0,
+        acknowledge: Object.freeze({
+          label: "OK",
+          autonomyMode: "full"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "J’ai reconnu certaines de ces plantes dans plusieurs zones. Elles ne sont peut-être pas propres au Site du crash. Je vais partir vérifier jusqu’où elles se sont répandues."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          at: 0.66,
+          text: "Cette espèce pousse donc aussi ici. Une seule correspondance pourrait être un hasard ; il m’en faut une seconde."
+        }),
+        Object.freeze({
+          at: 1,
+          text: "Deux espèces connues dans une nouvelle zone. Leur présence dépasse probablement les environs immédiats du crash."
+        })
+      ]),
+      completed: Object.freeze([
+        "Ces plantes semblent capables d’occuper plusieurs territoires. Pour comprendre leur répartition, je dois maintenant comparer un environnement plus vaste."
       ])
     })
   });
@@ -798,6 +888,7 @@
     T06,
     T07,
     T08,
+    T09,
     rationDiscovery
   ]);
 

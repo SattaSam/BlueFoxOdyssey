@@ -11,12 +11,25 @@
   const persist = (definition) =>
     BF.MapIntegrity?.persistGeneratedDefinition?.(definition) || false;
 
+  const compatibleBiome = (definition, prescription) => {
+    if (prescription.biome && prescription.biome !== "random") {
+      return prescription.biome;
+    }
+    const allowed = (prescription.compatibleBiomes || [])
+      .filter((id) => BF.MapGenerationRules?.getBiome?.(id));
+    if (!allowed.length) return "random";
+    const current = definition?.generator?.biomeId;
+    if (current && allowed.includes(current)) return current;
+    const seed = Math.abs(Number(definition?.seed) || Number(definition?.generator?.ordinal) || 0);
+    return allowed[seed % allowed.length];
+  };
+
   const applyPrescription = (definition, prescription) => {
     if (!definition || !prescription) return definition;
 
     BF.MapIntegrity?.prepareDefinition?.(definition, {
       plateauCount: prescription.size ?? "random",
-      biome: prescription.biome ?? "random"
+      biome: compatibleBiome(definition, prescription)
     });
 
     (prescription.requiredMicroScenes || []).forEach((scene) => {
