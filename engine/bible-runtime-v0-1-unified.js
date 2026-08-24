@@ -1570,7 +1570,11 @@
       const before = JSON.stringify(manager.memory.state.missionLifecycle);
       manager.syncLifecycleFromTrees?.();
       const changed = before !== JSON.stringify(manager.memory.state.missionLifecycle);
-      if (changed) manager.publish?.();
+      if (changed) {
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+        manager.publish?.();
+      }
       return changed;
     }
 
