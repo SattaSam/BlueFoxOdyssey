@@ -66,6 +66,10 @@
   let newGameResetInProgress = false;
   let introInProgress = false;
   let introOverlay = null;
+  let firstLaunchGate = null;
+  let firstLaunchGateActive = false;
+  let firstLaunchPauseTimer = null;
+  let runtimePausedForFirstLaunch = false;
   let lastAutoStateSignature = null;
 
   const keys = () =>
@@ -345,7 +349,9 @@
   };
 
   const flush = async () => {
-    if (!startupReady || newGameResetInProgress) return false;
+    if (!startupReady || newGameResetInProgress || firstLaunchGateActive) {
+      return false;
+    }
     const now = Date.now();
     if (now - lastFlushAt < 3000) return false;
     lastFlushAt = now;
@@ -580,6 +586,92 @@
     }
   };
 
+  const pauseRuntimeForFirstLaunch = () => {
+    const engine = BF.currentEngine;
+    if (!engine?.setRuntimePaused) return false;
+    engine.setRuntimePaused(true, "first-launch-gate");
+    runtimePausedForFirstLaunch = true;
+    if (firstLaunchPauseTimer) {
+      global.clearInterval(firstLaunchPauseTimer);
+      firstLaunchPauseTimer = null;
+    }
+    return true;
+  };
+
+  const removeFirstLaunchGate = ({ resume = true } = {}) => {
+    if (firstLaunchPauseTimer) {
+      global.clearInterval(firstLaunchPauseTimer);
+      firstLaunchPauseTimer = null;
+    }
+    firstLaunchGate?.remove();
+    firstLaunchGate = null;
+    firstLaunchGateActive = false;
+    global.document.documentElement.classList.remove(
+      "bluefox-first-launch-open"
+    );
+    if (resume && runtimePausedForFirstLaunch) {
+      BF.currentEngine?.setRuntimePaused?.(false, "first-launch-gate-cleared");
+    }
+    runtimePausedForFirstLaunch = false;
+  };
+
+  const showFirstLaunchGate = ({ ready = false } = {}) => {
+    if (!firstLaunchGate) {
+      const overlay = global.document.createElement("div");
+      overlay.className = "bluefox-first-launch-overlay";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-label", "Démarrer BlueFox Odyssey");
+      global.document.body.append(overlay);
+      firstLaunchGate = overlay;
+    }
+
+    firstLaunchGate.replaceChildren();
+    firstLaunchGateActive = true;
+    global.document.documentElement.classList.add(
+      "bluefox-first-launch-open"
+    );
+
+    if (ready) {
+      const startButton = button(
+        "Nouvelle partie",
+        "bluefox-first-launch-button",
+        async () => {
+          if (introInProgress) return;
+          await playIntroThenStartNewGame();
+        }
+      );
+      firstLaunchGate.append(startButton);
+      pauseExistingMedia(null);
+      if (!pauseRuntimeForFirstLaunch() && !firstLaunchPauseTimer) {
+        firstLaunchPauseTimer = global.setInterval(
+          pauseRuntimeForFirstLaunch,
+          100
+        );
+      }
+    }
+    return firstLaunchGate;
+  };
+
+  const hasLocalLaunchEvidence = () => Boolean(
+    global.localStorage.getItem("bluefox_new_game_start_v1") ||
+    readLocalSnapshot("auto") ||
+    readLocalSnapshot(1) ||
+    readLocalSnapshot(2)
+  );
+
+  const resolveFirstLaunch = async () => {
+    let slots = null;
+    try {
+      slots = await BF.getSaveSlots();
+    } catch {}
+    const hasExistingSave = Boolean(slots?.auto || slots?.[1] || slots?.[2]);
+    const hasStartedGame = Boolean(
+      global.localStorage.getItem("bluefox_new_game_start_v1")
+    );
+    return !hasStartedGame && !hasExistingSave;
+  };
+
   const showNewGameConfirmation = (root) => {
     closePopover(root);
     const popover = global.document.createElement("div");
@@ -716,8 +808,20 @@
       origin: global.location.origin
     });
 
-  bootstrapFromFile().then((ready) => {
+  if (!hasLocalLaunchEvidence()) {
+    // Masque le monde pendant la vérification asynchrone des sauvegardes
+    // fichier. Aucun bouton n'est affiché avant que l'absence soit prouvée.
+    showFirstLaunchGate({ ready: false });
+  }
+
+  bootstrapFromFile().then(async (ready) => {
     if (!ready) return;
+    const firstLaunch = await resolveFirstLaunch();
+    if (firstLaunch) {
+      showFirstLaunchGate({ ready: true });
+      return;
+    }
+    removeFirstLaunchGate();
     global.setTimeout(flush, 15000);
     global.setInterval(flush, AUTOSAVE_INTERVAL_MS);
     global.addEventListener("pagehide", flush);

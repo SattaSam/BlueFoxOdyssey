@@ -154,7 +154,28 @@
         return score(b) - score(a);
       });
       ranked.slice(keepTarget).forEach((record) => {
-        record.root?.parent?.remove(record.root);
+        const root = record.root || null;
+        const hitbox = record.instance?.hitbox || null;
+        root?.parent?.remove(root);
+
+        if (hitbox && Array.isArray(options.interactables)) {
+          const hitboxIndex = options.interactables.indexOf(hitbox);
+          if (hitboxIndex >= 0) options.interactables.splice(hitboxIndex, 1);
+        }
+        if (root && Array.isArray(options.colliders)) {
+          for (let index = options.colliders.length - 1; index >= 0; index -= 1) {
+            if (options.colliders[index]?.owner === root) {
+              options.colliders.splice(index, 1);
+            }
+          }
+        }
+        if (root && Array.isArray(options.animatedObjects)) {
+          for (let index = options.animatedObjects.length - 1; index >= 0; index -= 1) {
+            if (options.animatedObjects[index]?.root === root) {
+              options.animatedObjects.splice(index, 1);
+            }
+          }
+        }
         const instanceIndex = this.instances.indexOf(record);
         if (instanceIndex >= 0) this.instances.splice(instanceIndex, 1);
       });

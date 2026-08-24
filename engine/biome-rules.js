@@ -67,6 +67,8 @@
     "logic_prism", "pulse_core", "memory_capsule", "tech_relic", "abandoned_drone",
     "scout_drone", "harvest_drone"
   ]);
+  const tutorialAllowsType = (type) =>
+    BF.ObjectLibrary?.get?.(type)?.rarity !== "rare";
   const clampRichness = (value) => Math.max(1.2, Math.min(2.8, Number(value) || 1.2));
   const RESOURCE_RICHNESS = Object.freeze({
     volcanic: Object.freeze({ family: "resonant_basalt", multiplier: 1.65 }), frozen: Object.freeze({ family: "thermosap_moss", multiplier: 1.35 }), forest: Object.freeze({ family: "fiber", multiplier: 1.55 }), plain: Object.freeze({ family: "fiber", multiplier: 1.35 }), swamp: Object.freeze({ family: "fiber", multiplier: 1.65 }), fungal: Object.freeze({ family: "thermosap_moss", multiplier: 1.75 }), ruins: Object.freeze({ family: "azure_ferrite", multiplier: 1.35 }), archaeological: Object.freeze({ family: "relay_block", multiplier: 1.8 }), aquatic: Object.freeze({ family: "lunar_vine", multiplier: 1.45 }), coastal: Object.freeze({ family: "fiber", multiplier: 1.35 }), archipelago: Object.freeze({ family: "lunar_vine", multiplier: 1.55 }), desert: Object.freeze({ family: "azure_ferrite", multiplier: 1.5 }), magnetic: Object.freeze({ family: "magnetic_ore", multiplier: 1.85 }), crystalline: Object.freeze({ family: "crystal", multiplier: 1.75 }), atypical: Object.freeze({ family: "adaptive_plant", multiplier: 1.5 }), alien: Object.freeze({ family: "adaptive_plant", multiplier: 1.2 })
@@ -152,7 +154,10 @@
       familyLimit = Math.min(MAX_RESOURCE_FAMILIES, familyLimit);
       const componentLimit = isStartingMap && plateauCount < 6 ? 0 : Math.min(mapProfile.componentMax, plateauCount >= 6 ? mapProfile.componentMax : 0);
       const selectableResources = isStartingMap
-        ? mapProfile.resources.filter((entry) => !TUTORIAL_RESOURCE_FORBIDDEN.has(entry.family))
+        ? mapProfile.resources.filter((entry) =>
+            !TUTORIAL_RESOURCE_FORBIDDEN.has(entry.family) &&
+            tutorialAllowsType(entry.family)
+          )
         : mapProfile.resources;
       const normalResources = selectableResources.filter((entry) => !COMPONENT_FAMILIES.has(entry.family));
       const componentResources = selectableResources.filter((entry) => COMPONENT_FAMILIES.has(entry.family)).slice(0, componentLimit);
@@ -163,7 +168,10 @@
       ];
       const woodDecorations = Object.entries(WOOD_POPULATION[profileId] || {})
         .map(([type, weight]) => [type, Math.max(1, Math.round(weight * 4))]);
-      const decorations = definition.id === "crystal" ? [["needle", 9], ["frond", 7], ["debris", 3]] : definition.id === "jungle" ? [["fern", 14], ["spore", 8], ["frond", 6], ["debris", 5], ["needle", 2], ...woodDecorations] : [...mapProfile.decorations.map((entry) => [...entry]), ...traitDecorations, ...woodDecorations];
+      const rawDecorations = definition.id === "crystal" ? [["needle", 9], ["frond", 7], ["debris", 3]] : definition.id === "jungle" ? [["fern", 14], ["spore", 8], ["frond", 6], ["debris", 5], ["needle", 2], ...woodDecorations] : [...mapProfile.decorations.map((entry) => [...entry]), ...traitDecorations, ...woodDecorations];
+      const decorations = isStartingMap
+        ? rawDecorations.filter(([type]) => tutorialAllowsType(type))
+        : rawDecorations;
       const resourceFamilies = resourceEntries.map((entry) => entry.family);
       const richnessProfile = RESOURCE_RICHNESS[profileId] || RESOURCE_RICHNESS.alien;
       const richness = Object.freeze({ family: resourceFamilies.includes(richnessProfile.family) ? richnessProfile.family : resourceFamilies[0] || null, multiplier: clampRichness(richnessProfile.multiplier) });
@@ -542,8 +550,8 @@
    const faunaAllowed=FAUNA_BY_PROFILE[profile];
    if(faunaAllowed)dec=dec.filter(([t])=>!FAUNA.has(t)||faunaAllowed.has(t));
    if(tutorial){
-     dec=dec.filter(([t])=>!FAUNA.has(t)&&!PHENOMENA.has(t)&&!TUTORIAL_RARE.has(t));
-     rw=rw.filter(e=>!RARE_PLANTS.has(e.family)&&!RARE_MINERALS.has(e.family)&&!TUTORIAL_RARE.has(e.family));
+     dec=dec.filter(([t])=>!FAUNA.has(t)&&!PHENOMENA.has(t)&&!TUTORIAL_RARE.has(t)&&tutorialAllowsType(t));
+     rw=rw.filter(e=>!RARE_PLANTS.has(e.family)&&!RARE_MINERALS.has(e.family)&&!TUTORIAL_RARE.has(e.family)&&tutorialAllowsType(e.family));
    }
    if(!["ruins","archaeological"].includes(profile))dec.forEach(e=>{if(["arch","eroded_monolith","stele"].includes(e[0]))e[1]=Math.min(e[1],1);});
    // limit fauna to one or two types per map

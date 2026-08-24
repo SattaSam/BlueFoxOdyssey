@@ -716,13 +716,10 @@
         Object.freeze({
           at: 0.66,
           text: "Cette espèce pousse donc aussi ici. Une seule correspondance pourrait être un hasard ; il m’en faut une seconde."
-        }),
-        Object.freeze({
-          at: 1,
-          text: "Deux espèces connues dans une nouvelle zone. Leur présence dépasse probablement les environs immédiats du crash."
         })
       ]),
       completed: Object.freeze([
+        "Deux espèces connues dans une nouvelle zone. Leur présence dépasse probablement les environs immédiats du crash.",
         "Ces plantes semblent capables d’occuper plusieurs territoires. Pour comprendre leur répartition, je dois maintenant comparer un environnement plus vaste."
       ])
     })

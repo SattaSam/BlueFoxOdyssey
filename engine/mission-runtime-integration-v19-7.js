@@ -4,6 +4,18 @@
   const Missions = BF.Missions = BF.Missions || {};
   if (BF.mount?.__missionRuntimeIntegrationV19_7) return;
 
+  // ObjectM0 porte désormais la transaction canonique étude(s) -> acquisition
+  // et le propriétaire spatial reste WorldEngine. Cette intégration V19 ne
+  // demeure qu'en secours pour une distribution ancienne dépourvue d'ObjectM0.
+  if (BF.mount?.__objectM0Wrapped) {
+    BF.MissionRuntimeIntegrationV19_7 = Object.freeze({
+      active: false,
+      mode: "compatibility-fallback",
+      owner: "object-m0-bridge"
+    });
+    return;
+  }
+
   const ACQUISITION = new Set(["collect", "extract"]);
 
   function resolve(object) {

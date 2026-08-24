@@ -90,8 +90,40 @@
 
 /* Intro nouvelle partie. Aucun nouveau module UI : l'overlay appartient au Save UI. */
 html.bluefox-intro-open,
-html.bluefox-intro-open body {
+html.bluefox-intro-open body,
+html.bluefox-first-launch-open,
+html.bluefox-first-launch-open body {
   overflow: hidden !important;
+}
+
+.bluefox-first-launch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+.bluefox-first-launch-button {
+  min-width: min(320px, calc(100vw - 40px));
+  min-height: 52px;
+  padding: 12px 22px;
+  border: 1px solid rgba(125, 220, 255, .72);
+  border-radius: 9px;
+  color: #effcff;
+  background: rgba(14, 55, 84, .78);
+  box-shadow: 0 0 28px rgba(81, 203, 255, .18);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.bluefox-first-launch-button:hover,
+.bluefox-first-launch-button:focus-visible {
+  background: rgba(18, 75, 108, .92);
+  outline: 2px solid rgba(125, 220, 255, .7);
+  outline-offset: 3px;
 }
 
 .bluefox-intro-overlay {

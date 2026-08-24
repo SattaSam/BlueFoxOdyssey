@@ -561,11 +561,19 @@
         (Number.isFinite(mapNumber) && mapNumber >= 1 && mapNumber <= 3) ||
         (Number.isFinite(discoveryIndex) && discoveryIndex >= 0 && discoveryIndex <= 3)
       );
+      const tutorialAllowsType = (type) =>
+        !tutorialProtected || BF.ObjectLibrary.get(type)?.rarity !== "rare";
       const effectiveLandmarkTemplate = tutorialProtected
-        ? landmarkTemplate.filter(([type]) => !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type))
+        ? landmarkTemplate.filter(([type]) =>
+            !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type) &&
+            tutorialAllowsType(type)
+          )
         : landmarkTemplate;
       const effectiveLandmarks = tutorialProtected
-        ? landmarks.filter(([type]) => !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type))
+        ? landmarks.filter(([type]) =>
+            !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type) &&
+            tutorialAllowsType(type)
+          )
         : landmarks;
       if (tutorialProtected && !allowCustomRange) {
         resourceCount = Math.max(resourceCount, TUTORIAL_REQUIRED_RESOURCES.length);
@@ -794,7 +802,10 @@
       const knownResourceType = (type) => Boolean(type && BF.ObjectLibrary.get(type));
       const pickResourceKind = () => {
         const entries = (population.resourceWeights || [])
-          .filter((entry) => knownResourceType(entry?.family))
+          .filter((entry) =>
+            knownResourceType(entry?.family) &&
+            tutorialAllowsType(entry.family)
+          )
           .map((entry) => ({
             definition: { type: entry.family },
             weight: entry.weight
@@ -841,13 +852,16 @@
         }
       }
 
-      const decorationWeightTotal = population.decorations.reduce(
+      const effectiveDecorations = population.decorations.filter(([type]) =>
+        tutorialAllowsType(type)
+      );
+      const decorationWeightTotal = effectiveDecorations.reduce(
         (sum, [, weight]) => sum + Math.max(0, Number(weight) || 0),
         0
       );
       let allocatedDecorations = 0;
-      population.decorations.forEach(([type, count], familyIndex) => {
-        const isLastFamily = familyIndex === population.decorations.length - 1;
+      effectiveDecorations.forEach(([type, count], familyIndex) => {
+        const isLastFamily = familyIndex === effectiveDecorations.length - 1;
         const denseCount = isLastFamily
           ? Math.max(0, decorationBudget - allocatedDecorations)
           : Math.max(0, Math.floor(
@@ -960,6 +974,7 @@
       }
 
       const ensureCount = (type, target, minDistance = 5, maxDistance = 22, guardMultiplier = 16) => {
+        if (!tutorialAllowsType(type)) return;
         let guard = 0;
         while ((placedTypeCounts.get(type) || 0) < target && guard < target * guardMultiplier) {
           guard += 1;
@@ -1024,7 +1039,10 @@
             ? specialScene.objects.map((entry) => [entry.type, entry.offset[0], entry.offset[2], entry.variant || 0])
             : effectiveLandmarkTemplate;
           activeLandmark
-            .filter(([type]) => !tutorialProtected || !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type))
+            .filter(([type]) =>
+              (!tutorialProtected || !TUTORIAL_FORBIDDEN_LANDMARK_TYPES.has(type)) &&
+              tutorialAllowsType(type)
+            )
             .forEach(([type, offsetX, offsetZ, variant]) => {
             if (type === "electrostatic_storm" && (placedTypeCounts.get(type) || 0) >= 6) return;
             const x = center.x + offsetX * cosine - offsetZ * sine;
