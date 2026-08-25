@@ -91,6 +91,11 @@
     };
   };
 
+  const acquisitionObservationDue = (definition, state) => {
+    if (definition?.interaction?.observeBeforeAcquire !== true) return false;
+    return state.acquisitionObservationSatisfied !== true;
+  };
+
   const resolveManualAction = (resolved) => {
     const { definition } = resolved;
     if (!definition) return null;
@@ -103,7 +108,10 @@
       Number(state.analysisCount || 0) === 0;
     // La première rencontre d'un objet étudiable est toujours une observation
     // physique. Le geste d'acquisition CUO ne devient disponible qu'ensuite.
-    if (neverStudied && (caps.observable || caps.inspectable || caps.analyzable)) {
+    if (
+      (neverStudied || acquisitionObservationDue(definition, state)) &&
+      (caps.observable || caps.inspectable || caps.analyzable)
+    ) {
       return "observe";
     }
     if (caps.requiresInspection && caps.inspectable && caps.collectable) {
@@ -222,7 +230,10 @@
         Number(state.observationCount || 0) === 0 &&
         Number(state.inspectionCount || 0) === 0 &&
         Number(state.analysisCount || 0) === 0;
-      if (neverStudied && canStudy(resolved.definition)) return "observe";
+      if (
+        (neverStudied || acquisitionObservationDue(resolved.definition, state)) &&
+        canStudy(resolved.definition)
+      ) return "observe";
       if (caps.requiresInspection && !state.inspected && !state.identified) return "inspect";
       if (requested === "extract" && !caps.extractable) {
         return allowed.has("collect") ? "collect" : null;
@@ -816,11 +827,13 @@
         const resolved = resolveMissionCandidate(target);
         const identity = identityOf(resolved);
         const state = interactionState(resolved);
-        const needsInitialStudy =
+        const neverStudied =
           !state.observed && !state.inspected && !state.analyzed && !state.identified &&
           Number(state.observationCount || 0) === 0 &&
           Number(state.inspectionCount || 0) === 0 &&
-          Number(state.analysisCount || 0) === 0 &&
+          Number(state.analysisCount || 0) === 0;
+        const needsInitialStudy =
+          (neverStudied || acquisitionObservationDue(resolved.definition, state)) &&
           canStudy(resolved.definition);
         action.instanceId = identity.instanceId || null;
         target.userData.requestedInteraction = needsInitialStudy
@@ -1407,7 +1420,7 @@
           : BF.ObjectEvents.types.RESOURCE_COLLECTED;
         BF.ObjectEvents.emit(eventType, object, {
           ...detail,
-          label: definition.label,
+          label: definition.resource?.inventoryLabel || definition.label,
           inventoryKey
         });
         clearAcquisitionTransaction(this, object);
@@ -1424,6 +1437,9 @@
               anchor.visible = true;
               object.userData.active = true;
               state.collected = false;
+              if (definition.interaction?.observeBeforeAcquire === true) {
+                state.acquisitionObservationSatisfied = false;
+              }
               object.userData.requestedInteraction = null;
               object.userData.requestedInteractionSource = null;
               this.resourceCooldowns.delete(object);
@@ -1436,6 +1452,9 @@
         if (mode === "observe") {
           state.observed = true;
           state.observationCount += 1;
+          if (definition.interaction?.observeBeforeAcquire === true) {
+            state.acquisitionObservationSatisfied = true;
+          }
         }
         if (mode === "inspect") {
           state.inspected = true;
