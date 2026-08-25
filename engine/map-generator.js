@@ -5,6 +5,7 @@
   const STORAGE_KEY = "bluefox_generated_maps_v1";
   const PLANET_SEED_KEY = "bluefox_planet_seed_v1";
   const GENERATOR_VERSION = 1;
+  const VISUAL_IDENTITY_VERSION = 2;
   const fallbackTerrainUrls = () => [
     ...(global.BLUEFOX_MAP_ASSETS?.fallbackTerrainUrls || [])
   ].filter(Boolean);
@@ -20,16 +21,55 @@
     alien: Object.freeze({ ground: 0x5b526f, accent: 0xc795ff })
   });
 
-  class Random {
-    constructor(seed) {
-      this.seed = seed >>> 0;
-    }
+  const BLUEFOX_DUPLICATE_NAMES = Object.freeze({
+    forest: Object.freeze([
+      "Le Sous-Bois des Murmures", "La Clairière Patiente",
+      "Les Racines du Souvenir", "Le Jardin des Silences",
+      "La Canopée qui Respire", "Le Bois des Lueurs Douces"
+    ]),
+    aquatic: Object.freeze([
+      "Les Eaux qui Écoutent", "Le Miroir des Roseaux",
+      "La Lagune des Reflets", "Les Rives du Calme",
+      "Le Marais des Lumières Lentes", "La Nappe aux Échos"
+    ]),
+    desert: Object.freeze([
+      "La Plaine du Souffle Chaud", "Les Dunes de l'Attente",
+      "Le Désert des Traces Fines", "La Ligne des Mirages",
+      "Les Pierres du Grand Silence", "L'Horizon Pâle"
+    ]),
+    crystalline: Object.freeze([
+      "Le Champ des Éclats", "La Vallée qui Résonne",
+      "Les Cristaux du Lointain", "Le Jardin des Reflets",
+      "La Plaine aux Mille Lueurs", "Le Seuil de Verre"
+    ]),
+    ruins: Object.freeze([
+      "Les Murs qui se Souviennent", "Le Quartier Endormi",
+      "Les Vestiges du Passage", "La Place Sans Voix",
+      "Les Pierres de l'Avant", "Le Chemin des Absents"
+    ]),
+    frozen: Object.freeze([
+      "Le Silence Blanc", "La Plaine du Souffle Froid",
+      "Les Glaces Immobiles", "Le Bord du Ciel Pâle",
+      "La Neige des Échos", "Le Plateau du Givre Bleu"
+    ]),
+    volcanic: Object.freeze([
+      "La Terre qui Gronde", "Les Braises du Lointain",
+      "Le Sol au Cœur Rouge", "La Plaine des Cendres",
+      "Le Bord du Feu", "Les Roches de la Chaleur Sourde"
+    ]),
+    alien: Object.freeze([
+      "L'Endroit qui Intrigue", "La Plaine de l'Étrange",
+      "Le Pays des Signes", "L'Horizon Inattendu",
+      "Le Jardin Inconnu", "La Terre qui me Regarde"
+    ])
+  });
 
+  class Random {
+    constructor(seed) { this.seed = seed >>> 0; }
     next() {
       this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0;
       return this.seed / 4294967296;
     }
-
     integer(maximum) {
       return maximum > 0 ? Math.floor(this.next() * maximum) : 0;
     }
@@ -118,12 +158,17 @@
     if (biomeId === "floating_islands" && traits.has("floating")) return 4;
     if (biomeId === "curiosity" && traits.has("mystery")) return 4;
     if (template.profile === legacyProfile) return 2;
+    if ((COMPATIBLE_PROFILES[biomeId] || []).includes(template.profile)) return 1.5;
     return 1;
   };
 
-  const pickTemplate = (random, biomeId, legacyProfile) => {
+  const pickTemplate = (random, biomeId, legacyProfile, preferredId = null) => {
     const candidates = catalogTemplates();
     if (!candidates.length) return null;
+    if (preferredId) {
+      const explicit = candidates.find((template) => template.id === preferredId);
+      if (explicit) return explicit;
+    }
     const scored = candidates.map((template) => ({
       template,
       score: templateScore(template, biomeId, legacyProfile)
@@ -134,9 +179,33 @@
   };
 
   const terrainUrlsOf = (template) => [...new Set(
-    (template.terrainUrls?.length ? template.terrainUrls : [template.terrainUrl])
+    (template?.terrainUrls?.length ? template.terrainUrls : [template?.terrainUrl])
       .filter(Boolean)
   )];
+
+  const themedTerrainCandidates = (template, biomeId, legacyProfile) => {
+    const preferred = new Set(terrainUrlsOf(template));
+    return catalogTemplates()
+      .filter((candidate) => candidate.id !== template?.id)
+      .map((candidate) => ({
+        candidate,
+        score: templateScore(candidate, biomeId, legacyProfile)
+      }))
+      .filter((entry) => entry.score > 1)
+      .sort((left, right) =>
+        right.score - left.score ||
+        Number(left.candidate.number || 0) - Number(right.candidate.number || 0)
+      )
+      .flatMap((entry) => terrainUrlsOf(entry.candidate).map((url) => ({
+        url,
+        templateId: entry.candidate.id,
+        score: entry.score
+      })))
+      .filter((entry, index, list) =>
+        !preferred.has(entry.url) &&
+        list.findIndex((candidate) => candidate.url === entry.url) === index
+      );
+  };
 
   const terrainSelection = (
     template,
@@ -145,61 +214,256 @@
     biomeId,
     legacyProfile
   ) => {
-    const preferred = [...new Set(
-      (template.terrainUrls?.length ? template.terrainUrls : [template.terrainUrl])
-        .filter(Boolean)
-    )];
+    const preferred = terrainUrlsOf(template);
+    const themed = themedTerrainCandidates(template, biomeId, legacyProfile);
     const fallback = fallbackTerrainUrls();
     const selected = [];
     const sources = [];
-    const associatedCount = Math.min(preferred.length, plateauCount);
-    const fallbackCount = Math.max(0, plateauCount - associatedCount);
-    let associatedIndex = 0;
-    let fallbackIndex = 0;
-    while (selected.length < plateauCount) {
-      const remainingAssociated = associatedCount - associatedIndex;
-      const remainingFallback = fallbackCount - fallbackIndex;
-      const useFallback = remainingFallback > 0 && (
-        remainingAssociated <= 0 ||
-        (selected.length > 0 &&
-          Math.floor((selected.length + 1) * associatedCount / plateauCount) <= associatedIndex)
-      );
-      let role = useFallback ? "default-fallback" : "associated";
-      let url = useFallback
-        ? fallback[fallbackIndex % fallback.length]
-        : preferred[associatedIndex % preferred.length];
-      if (useFallback) fallbackIndex += 1;
-      else associatedIndex += 1;
-      if (!url) {
-        url = preferred[0] || fallback[selected.length % fallback.length] ||
-          template.sceneUrl;
-        role = preferred[0] ? "associated-repeat" : "default-fallback";
-      }
+    const usage = new Map();
+
+    const canUse = (url, maximum = 2) =>
+      Boolean(url) && (usage.get(url) || 0) < maximum;
+
+    const add = (url, role, meta = {}) => {
+      if (!url) return false;
       selected.push(url);
-      sources.push({ url, role });
+      usage.set(url, (usage.get(url) || 0) + 1);
+      sources.push({ url, role, ...meta });
+      return true;
+    };
+
+    // 1) Chaque texture réellement associée au décor une première fois.
+    preferred.forEach((url) => {
+      if (selected.length < plateauCount) add(url, "associated");
+    });
+
+    // 2) Puis une deuxième fois au maximum, avant tout fallback.
+    preferred.forEach((url) => {
+      if (selected.length < plateauCount && canUse(url, 2)) {
+        add(url, "associated-repeat");
+      }
+    });
+
+    // 3) Seulement ensuite, textures d'un template du même thème/biome.
+    for (const entry of themed) {
+      if (selected.length >= plateauCount) break;
+      if (canUse(entry.url, 2)) {
+        add(entry.url, "themed-fallback", {
+          sourceTemplateId: entry.templateId,
+          affinityScore: entry.score
+        });
+      }
     }
-    return { urls: selected, sources };
+    for (const entry of themed) {
+      if (selected.length >= plateauCount) break;
+      if (canUse(entry.url, 2)) {
+        add(entry.url, "themed-fallback-repeat", {
+          sourceTemplateId: entry.templateId,
+          affinityScore: entry.score
+        });
+      }
+    }
+
+    // 4) Les 028_x ne sont qu'un dernier recours.
+    let fallbackIndex = 0;
+    while (selected.length < plateauCount && fallback.length) {
+      const url = fallback[fallbackIndex % fallback.length];
+      fallbackIndex += 1;
+      if (canUse(url, 2) || fallback.every((item) => !canUse(item, 2))) {
+        add(url, "default-fallback");
+      }
+      if (fallbackIndex > plateauCount * Math.max(1, fallback.length) * 3) break;
+    }
+
+    // Garde ultime : une définition doit toujours avoir exactement N terrains.
+    while (selected.length < plateauCount) {
+      const url = preferred[selected.length % Math.max(1, preferred.length)] ||
+        fallback[selected.length % Math.max(1, fallback.length)] ||
+        template?.sceneUrl;
+      add(url, "emergency-repeat");
+    }
+
+    return { urls: selected.slice(0, plateauCount), sources: sources.slice(0, plateauCount) };
   };
 
-  const generatedName = (template, ordinal) =>
-    template?.name ? `${template.name} · ${String(ordinal).padStart(2, "0")}` : `Territoire ${String(ordinal).padStart(2, "0")}`;
+  const usedGeneratedNames = (excludeId = null) => new Set(
+    readDefinitions()
+      .filter((entry) => entry?.id !== excludeId)
+      .map((entry) => String(entry?.name || "").trim())
+      .filter(Boolean)
+  );
+
+  const duplicateVisualIdentity = (template, excludeId = null) =>
+    readDefinitions().some((entry) =>
+      entry?.id !== excludeId &&
+      (
+        entry?.generator?.templateId === template?.id ||
+        String(entry?.generator?.templateNumber || "") === String(template?.number || "") ||
+        String(entry?.generator?.baseTemplateName || "") === String(template?.name || "")
+      )
+    );
+
+  const blueFoxName = (template, profile, seed, excludeId = null) => {
+    const used = usedGeneratedNames(excludeId);
+    const names = BLUEFOX_DUPLICATE_NAMES[profile] || BLUEFOX_DUPLICATE_NAMES.alien;
+    const start = hash(seed, template?.id, template?.name, profile) % names.length;
+    for (let offset = 0; offset < names.length; offset += 1) {
+      const candidate = names[(start + offset) % names.length];
+      if (!used.has(candidate)) return candidate;
+    }
+    // Cas exceptionnel : garder un nom humain, jamais un ID/nom de fichier.
+    return `${names[start]} — ${["Nord", "Sud", "Aube", "Crépuscule"][hash(seed, "name") % 4]}`;
+  };
+
+  const resolvedMapName = (definition, template, profile, seed, options = {}) => {
+    const source = definition?.generator?.nameSource;
+    const explicitCustom =
+      options.preserveName === true ||
+      source === "custom" ||
+      source === "bluefox" ||
+      definition?.customName === true ||
+      definition?.nameLocked === true;
+    if (explicitCustom && definition?.name) {
+      return { name: definition.name, source: source || "custom" };
+    }
+    if (!duplicateVisualIdentity(template, definition?.id)) {
+      return { name: template?.name || "Territoire inconnu", source: "template" };
+    }
+    return {
+      name: blueFoxName(template, profile, seed, definition?.id),
+      source: "bluefox"
+    };
+  };
+
+  const resolveVisualIdentity = (definition, options = {}) => {
+    if (!definition) return definition;
+    const rules = BF.MapGenerationRules;
+    if (!rules) return definition;
+
+    const biomeId = options.biomeId && options.biomeId !== "random"
+      ? options.biomeId
+      : definition?.generator?.biomeId;
+    const draft = rules.toLegacyBiomeDraft?.(biomeId);
+    if (!draft) return definition;
+
+    const plateauCount = Math.max(
+      1,
+      Math.min(6, Math.round(Number(options.plateauCount ?? definition.plateauCount) || 1))
+    );
+    const seed = Number(definition.seed) || Number(definition.generator?.ordinal) || 1;
+    const random = new Random(hash(seed, biomeId, plateauCount, "visual"));
+    const preferredTemplateId =
+      options.templateId ||
+      options.predefinedMapId ||
+      options.mapId ||
+      null;
+    const template = options.template ||
+      pickTemplate(random, biomeId, draft.profile, preferredTemplateId);
+    if (!template) return definition;
+
+    const terrainPlan = terrainSelection(
+      template,
+      plateauCount,
+      random,
+      biomeId,
+      draft.profile
+    );
+    const naming = resolvedMapName(
+      definition,
+      template,
+      draft.profile,
+      seed,
+      options
+    );
+
+    definition.name = naming.name;
+    definition.profile = draft.profile;
+    definition.traits = clone(draft.traits);
+    definition.palette = clone(template.palette || PALETTES[draft.profile] || PALETTES.alien);
+    definition.sceneUrl = template.sceneUrl;
+    definition.sceneVariants = clone(template.sceneVariants || []);
+    definition.plateauCount = plateauCount;
+    definition.terrainUrls = terrainPlan.urls;
+    definition.terrainUrl = terrainPlan.urls[0];
+    definition.zones = Array.from(
+      { length: plateauCount },
+      (_, index) => definition.zones?.[index] || `Plateau ${index + 1}`
+    );
+
+    definition.generator ||= {};
+    definition.generator.biomeId = biomeId;
+    definition.generator.resourceFamilies = [...draft.resourceFamilies];
+    definition.generator.microSceneIds = [...draft.microSceneIds];
+    definition.generator.templateId = template.id;
+    definition.generator.templateNumber = template.number;
+    definition.generator.baseTemplateName = template.name || null;
+    definition.generator.nameSource = naming.source;
+    definition.generator.visualIdentityVersion = VISUAL_IDENTITY_VERSION;
+    definition.generator.terrainPolicy =
+      "associated-max2_then-themed-max2_then-default-028";
+    definition.generator.terrainSources = clone(terrainPlan.sources);
+    return definition;
+  };
 
   const restore = () => {
     const restored = [];
-    readDefinitions().forEach((saved) => {
+    const savedDefinitions = readDefinitions();
+    let migrated = false;
+    const healed = [];
+
+    savedDefinitions.forEach((saved) => {
       if (!saved?.id || saved.id === "crystal" || !saved.sceneUrl) return;
-      const terrainUrls = Array.isArray(saved.terrainUrls)
-        ? saved.terrainUrls.filter(Boolean).slice(0, 6)
+      const definition = clone(saved);
+      const terrainUrls = Array.isArray(definition.terrainUrls)
+        ? definition.terrainUrls.filter(Boolean).slice(0, 6)
         : [];
       if (!terrainUrls.length) return;
-      BF.maps[saved.id] = {
-        ...clone(saved),
-        terrainUrls,
-        terrainUrl: terrainUrls[0],
-        exits: saved.exits && typeof saved.exits === "object" ? saved.exits : {}
-      };
-      restored.push(saved.id);
+
+      definition.terrainUrls = terrainUrls;
+      definition.terrainUrl = terrainUrls[0];
+      definition.exits =
+        definition.exits && typeof definition.exits === "object"
+          ? definition.exits
+          : {};
+
+      // Migration des anciennes définitions générées : une map déjà persistée
+      // ne doit pas rester nom03/scene10/terrains03 après installation du correctif.
+      if (
+        definition.generated === true &&
+        definition.generator?.biomeId &&
+        Number(definition.generator?.visualIdentityVersion || 0) < VISUAL_IDENTITY_VERSION
+      ) {
+        const before = JSON.stringify({
+          name: definition.name,
+          sceneUrl: definition.sceneUrl,
+          terrainUrls: definition.terrainUrls,
+          templateId: definition.generator?.templateId
+        });
+        resolveVisualIdentity(definition, {
+          biomeId: definition.generator.biomeId,
+          plateauCount: definition.plateauCount || definition.terrainUrls.length,
+          templateId: definition.generator.templateId || null,
+          preserveName:
+            definition.generator?.nameSource === "bluefox" ||
+            definition.generator?.nameSource === "custom" ||
+            definition.customName === true ||
+            definition.nameLocked === true
+        });
+        const after = JSON.stringify({
+          name: definition.name,
+          sceneUrl: definition.sceneUrl,
+          terrainUrls: definition.terrainUrls,
+          templateId: definition.generator?.templateId
+        });
+        migrated = migrated || before !== after;
+      }
+
+      BF.maps[definition.id] = definition;
+      healed.push(clone(definition));
+      restored.push(definition.id);
     });
+
+    if (migrated) saveDefinitions(healed);
     return restored;
   };
 
@@ -317,25 +581,19 @@
       }
     }
     if (!featuredScenes.length && preferMissionOpportunity) appendScene("mission");
+
     const template = pickTemplate(random, biomeDefinition.id, draft.profile);
     if (!template) throw new Error("Aucun décor local compatible avec le générateur.");
-    const terrainPlan = terrainSelection(
-      template,
-      plateauCount,
-      random,
-      biomeDefinition.id,
-      draft.profile
-    );
-    const terrainUrls = terrainPlan.urls;
+
     const id = `generated-${planetSeed.toString(16)}-${String(ordinal).padStart(4, "0")}`;
     const definition = {
       id,
       number: 1000 + ordinal,
-      name: generatedName(template, ordinal),
-      zones: terrainUrls.map((_, index) => `Plateau ${index + 1}`),
+      name: template.name || "Territoire inconnu",
+      zones: [],
       plateauCount,
-      terrainUrls,
-      terrainUrl: terrainUrls[0],
+      terrainUrls: [],
+      terrainUrl: null,
       sceneUrl: template.sceneUrl,
       sceneVariants: clone(template.sceneVariants || []),
       entry: { x: 0, z: 20 },
@@ -374,13 +632,16 @@
           discoveriesSinceRareBeforeGeneration: sinceRare,
           discoveriesSinceDecorativeBeforeGeneration: sinceDecorative,
           discoveriesSinceRemarkableBeforeGeneration: sinceRemarkable
-        },
-        templateId: template.id,
-        templateNumber: template.number,
-        terrainPolicy: "associated_then_default-028_alternated",
-        terrainSources: clone(terrainPlan.sources)
+        }
       }
     };
+
+    resolveVisualIdentity(definition, {
+      biomeId: biomeDefinition.id,
+      plateauCount,
+      template
+    });
+
     BF.maps[id] = definition;
     const next = existing.filter((entry) => entry?.id !== id);
     next.push(clone(definition));
@@ -390,12 +651,17 @@
 
   BF.MapGenerator = Object.freeze({
     version: GENERATOR_VERSION,
+    visualIdentityVersion: VISUAL_IDENTITY_VERSION,
     storageKey: STORAGE_KEY,
     planetSeedKey: PLANET_SEED_KEY,
     restore,
     generate,
     getPlanetSeed: ensurePlanetSeed,
     listSaved: () => clone(readDefinitions()),
+    resolveVisualIdentity,
+    terrainSelection,
+    terrainUrlsOf,
+    templateScore,
     validate() {
       const errors = [];
       if (!BF.MapGenerationRules?.validate?.().valid) errors.push("Tables de génération invalides.");

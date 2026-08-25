@@ -26,91 +26,95 @@
     return count === 5 ? 6 : count;
   };
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
-  const mapPalette = (profile) => ({
-    volcanic: { ground: 0x4c2928, accent: 0xff7247 }, frozen: { ground: 0x718b9d, accent: 0xbcefff },
-    forest: { ground: 0x47644f, accent: 0x79f0b2 }, ruins: { ground: 0x4c5e58, accent: 0x72e5bd },
-    aquatic: { ground: 0x386476, accent: 0x63dcff }, desert: { ground: 0x806451, accent: 0xffbd75 },
-    crystalline: { ground: 0x586b82, accent: 0x75e8ff }, alien: { ground: 0x5b526f, accent: 0xc795ff }
-  })[profile] || { ground: 0x5b526f, accent: 0xc795ff };
-  const mapTraits = (map) => new Set((map?.traits || []).map((trait) => trait?.id).filter(Boolean));
 
   const templateForBiome = (biomeId, seed = 1) => {
     const rules = BF.MapGenerationRules;
     const draft = rules?.toLegacyBiomeDraft?.(biomeId);
     if (!draft) return null;
-    const candidates = Object.values(BF.maps || {}).filter((map) => map?.id && map.id !== "crystal" && !map.generated && map.sceneUrl && (map.terrainUrls?.length || map.terrainUrl));
+    const candidates = Object.values(BF.maps || {}).filter((map) =>
+      map?.id && map.id !== "crystal" && !map.generated &&
+      map.sceneUrl && (map.terrainUrls?.length || map.terrainUrl)
+    );
     if (!candidates.length) return null;
-    const scored = candidates.map((map) => {
-      const traits = mapTraits(map);
-      let score = 1;
-      if (traits.has(biomeId)) score = 6;
-      else if (map.profile === draft.profile) score = 3;
-      return { map, score };
-    });
-    const best = Math.max(...scored.map((entry) => entry.score));
-    const pool = scored.filter((entry) => entry.score === best);
-    return pool[Math.abs(Number(seed) || 1) % pool.length]?.map || null;
+    const score = (map) => {
+      const traits = new Set((map.traits || []).map((trait) => trait?.id).filter(Boolean));
+      if (traits.has(biomeId)) return 6;
+      if (map.profile === draft.profile) return 3;
+      return 1;
+    };
+    const best = Math.max(...candidates.map(score));
+    const pool = candidates.filter((candidate) => score(candidate) === best);
+    return pool[Math.abs(Number(seed) || 1) % pool.length] || null;
   };
-
-  const sourcesOf = (definition, template) => [
-    ...(definition?.terrainUrls || []), definition?.terrainUrl,
-    ...(template?.terrainUrls || []), template?.terrainUrl
-  ].filter(Boolean);
 
   const prepareDefinition = (definition, options = {}) => {
     if (!definition) return definition;
     const requestedCount = options.plateauCount === "random" || options.plateauCount == null
       ? (definition.plateauCount || definition.terrainUrls?.length || 1)
       : options.plateauCount;
-    const count = options.preserveLegacyFive === true ? clampCount(requestedCount) : normalizeGeneratedCount(requestedCount);
-    let template = null;
+    const count = options.preserveLegacyFive === true
+      ? clampCount(requestedCount)
+      : normalizeGeneratedCount(requestedCount);
+    const requestedBiome =
+      options.biome && options.biome !== "random" ? options.biome : null;
 
-    if (options.biome && options.biome !== "random") {
-      const rules = BF.MapGenerationRules;
-      const draft = rules?.toLegacyBiomeDraft?.(options.biome);
-      if (draft) {
-        template = templateForBiome(options.biome, definition.seed);
-        definition.profile = draft.profile;
-        definition.traits = clone(draft.traits);
-        definition.palette = clone(template?.palette || mapPalette(draft.profile));
-        definition.description = `${rules.getBiome?.(options.biome)?.label || options.biome} généré pour une mission.`;
-        definition.generator ||= {};
-        definition.generator.biomeId = options.biome;
-        definition.generator.resourceFamilies = [...draft.resourceFamilies];
-        definition.generator.microSceneIds = [...draft.microSceneIds];
-        if (template?.sceneUrl) {
-          definition.sceneUrl = template.sceneUrl;
-          definition.sceneVariants = clone(template.sceneVariants || []);
-          definition.generator.templateId = template.id;
-          definition.generator.templateNumber = template.number;
-        }
-      }
-    }
-
-    const resolvedTerrains = Array.isArray(definition.terrainUrls)
-      ? definition.terrainUrls.filter(Boolean).slice(0, count)
-      : [];
-    const hasResolvedTerrainPlan = resolvedTerrains.length === count;
-    const associatedTerrains = [...new Set(sourcesOf(definition, template))];
-    const terrainCycle = associatedTerrains.length ? associatedTerrains : [...HARD_FALLBACKS];
-
-    definition.plateauCount = count;
-    if (hasResolvedTerrainPlan) {
-      definition.terrainUrls = resolvedTerrains;
+    // Une prescription qui change biome/template/taille repasse par le propriétaire
+    // de l'identité visuelle. MapIntegrity ne remplace plus le panorama seul.
+    if (
+      BF.MapGenerator?.resolveVisualIdentity &&
+      (
+        requestedBiome ||
+        options.templateId ||
+        options.predefinedMapId ||
+        options.mapId ||
+        Number(definition.plateauCount) !== count ||
+        !Array.isArray(definition.terrainUrls) ||
+        definition.terrainUrls.length !== count
+      )
+    ) {
+      BF.MapGenerator.resolveVisualIdentity(definition, {
+        biomeId: requestedBiome || definition.generator?.biomeId,
+        plateauCount: count,
+        templateId: options.templateId,
+        predefinedMapId: options.predefinedMapId,
+        mapId: options.mapId,
+        preserveName:
+          options.preserveName === true ||
+          definition.generator?.nameSource === "bluefox" ||
+          definition.generator?.nameSource === "custom" ||
+          definition.customName === true ||
+          definition.nameLocked === true
+      });
     } else {
-      definition.terrainUrls = Array.from({ length: count }, (_, index) => terrainCycle[index % terrainCycle.length]);
+      definition.plateauCount = count;
+      definition.terrainUrls = Array.isArray(definition.terrainUrls)
+        ? definition.terrainUrls.filter(Boolean).slice(0, count)
+        : [];
+      if (!definition.terrainUrls.length) {
+        definition.terrainUrls = Array.from(
+          { length: count },
+          (_, index) => HARD_FALLBACKS[index % HARD_FALLBACKS.length]
+        );
+      }
+      while (definition.terrainUrls.length < count) {
+        definition.terrainUrls.push(
+          definition.terrainUrls[
+            definition.terrainUrls.length % Math.max(1, definition.terrainUrls.length)
+          ] || HARD_FALLBACKS[definition.terrainUrls.length % HARD_FALLBACKS.length]
+        );
+      }
+      definition.terrainUrl = definition.terrainUrls[0];
+      definition.zones = Array.from(
+        { length: count },
+        (_, index) => definition.zones?.[index] || `Plateau ${index + 1}`
+      );
     }
-    definition.terrainUrl = definition.terrainUrls[0];
-    definition.zones = Array.from({ length: count }, (_, index) => definition.zones?.[index] || `Plateau ${index + 1}`);
+
     definition.generator ||= {};
     definition.generator.integrityVersion = "20.0-test";
-    definition.generator.topologyContract = "plateauCount=terrainUrls=zones=walkableRegions";
+    definition.generator.topologyContract =
+      "plateauCount=terrainUrls=zones=walkableRegions";
     definition.generator.hardTerrainFallbacks = [...HARD_FALLBACKS];
-    if (!hasResolvedTerrainPlan) {
-      definition.generator.terrainPolicy = associatedTerrains.length
-        ? "associated-textures-repeat-then-hard-fallback-on-load-error"
-        : "hard-fallback-no-associated-texture";
-    }
     return definition;
   };
 
@@ -131,7 +135,10 @@
     const assets = global.BLUEFOX_MAP_ASSETS;
     const originalCandidates = assets.imageUrlCandidates.bind(assets);
     assets.imageUrlCandidates = (source) => {
-      const result = [...originalCandidates(source), ...HARD_FALLBACKS.flatMap((fallback) => originalCandidates(fallback))];
+      const result = [
+        ...originalCandidates(source),
+        ...HARD_FALLBACKS.flatMap((fallback) => originalCandidates(fallback))
+      ];
       return [...new Set(result.filter(Boolean))];
     };
     assets.__hardFallbackV20 = true;
@@ -148,11 +155,17 @@
       const insideAnyRegion = (record) => {
         const x = Number(record?.position?.x); const z = Number(record?.position?.z);
         if (!Number.isFinite(x) || !Number.isFinite(z)) return true;
-        const radius = Math.max(0.1, Number(BF.ObjectLibrary?.getMapPlacement?.(record.type)?.radius) || 0.5);
+        const radius = Math.max(
+          0.1,
+          Number(BF.ObjectLibrary?.getMapPlacement?.(record.type)?.radius) || 0.5
+        );
         const margin = radius + 0.2;
         return regions.some((region) => {
-          const half = Number(region.halfSize) || 27; const cx = Number(region.center?.x) || 0; const cz = Number(region.center?.z) || 0;
-          return x >= cx - half + margin && x <= cx + half - margin && z >= cz - half + margin && z <= cz + half - margin;
+          const half = Number(region.halfSize) || 27;
+          const cx = Number(region.center?.x) || 0;
+          const cz = Number(region.center?.z) || 0;
+          return x >= cx - half + margin && x <= cx + half - margin &&
+            z >= cz - half + margin && z <= cz + half - margin;
         });
       };
       const created = this.instances.slice(before);
@@ -160,13 +173,25 @@
       invalid.forEach((record) => {
         record.root?.removeFromParent?.();
         if (Array.isArray(options.interactables) && record.instance?.hitbox) {
-          const at = options.interactables.indexOf(record.instance.hitbox); if (at >= 0) options.interactables.splice(at, 1);
+          const at = options.interactables.indexOf(record.instance.hitbox);
+          if (at >= 0) options.interactables.splice(at, 1);
         }
-        if (Array.isArray(options.colliders)) for (let i = options.colliders.length - 1; i >= 0; i -= 1) if (options.colliders[i]?.owner === record.root) options.colliders.splice(i, 1);
-        if (Array.isArray(options.animatedObjects)) for (let i = options.animatedObjects.length - 1; i >= 0; i -= 1) if (options.animatedObjects[i]?.root === record.root) options.animatedObjects.splice(i, 1);
-        const index = this.instances.indexOf(record); if (index >= 0) this.instances.splice(index, 1);
+        if (Array.isArray(options.colliders)) {
+          for (let i = options.colliders.length - 1; i >= 0; i -= 1) {
+            if (options.colliders[i]?.owner === record.root) options.colliders.splice(i, 1);
+          }
+        }
+        if (Array.isArray(options.animatedObjects)) {
+          for (let i = options.animatedObjects.length - 1; i >= 0; i -= 1) {
+            if (options.animatedObjects[i]?.root === record.root) options.animatedObjects.splice(i, 1);
+          }
+        }
+        const index = this.instances.indexOf(record);
+        if (index >= 0) this.instances.splice(index, 1);
       });
-      if (result && typeof result === "object") result.removedOutsidePlateaus = invalid.length;
+      if (result && typeof result === "object") {
+        result.removedOutsidePlateaus = invalid.length;
+      }
       return result;
     };
     Spawner.prototype.__plateauGuardV20 = true;
@@ -191,8 +216,14 @@
   }
 
   BF.MapIntegrity = Object.freeze({
-    version: "20.0-test", hardFallbacks: HARD_FALLBACKS, layouts: LAYOUTS, clampCount,
-    generationCounts: GENERATION_COUNTS, normalizeGeneratedCount, prepareDefinition,
-    templateForBiome, persistGeneratedDefinition
+    version: "20.0-test",
+    hardFallbacks: HARD_FALLBACKS,
+    layouts: LAYOUTS,
+    clampCount,
+    generationCounts: GENERATION_COUNTS,
+    normalizeGeneratedCount,
+    prepareDefinition,
+    templateForBiome,
+    persistGeneratedDefinition
   });
 })(window);

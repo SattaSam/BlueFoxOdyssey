@@ -20,21 +20,77 @@
     if (!allowed.length) return "random";
     const current = definition?.generator?.biomeId;
     if (current && allowed.includes(current)) return current;
-    const seed = Math.abs(Number(definition?.seed) || Number(definition?.generator?.ordinal) || 0);
+    const seed = Math.abs(
+      Number(definition?.seed) ||
+      Number(definition?.generator?.ordinal) ||
+      0
+    );
     return allowed[seed % allowed.length];
+  };
+
+  const identityPrescription = (definition, prescription) => {
+    const biome = compatibleBiome(definition, prescription);
+    const size = prescription.size ?? "random";
+    const requestedCount = size === "random"
+      ? definition.plateauCount
+      : Number(size);
+    const templateId =
+      prescription.templateId ||
+      prescription.predefinedMapId ||
+      prescription.mapId ||
+      null;
+    const biomeChanges =
+      biome !== "random" &&
+      String(biome) !== String(definition.generator?.biomeId || "");
+    const sizeChanges =
+      Number.isFinite(requestedCount) &&
+      Number(requestedCount) !== Number(definition.plateauCount);
+    const templateChanges =
+      Boolean(templateId) &&
+      String(templateId) !== String(definition.generator?.templateId || "");
+
+    return {
+      changesIdentity: biomeChanges || sizeChanges || templateChanges,
+      biome,
+      size,
+      templateId
+    };
   };
 
   const applyPrescription = (definition, prescription) => {
     if (!definition || !prescription) return definition;
 
-    BF.MapIntegrity?.prepareDefinition?.(definition, {
-      plateauCount: prescription.size ?? "random",
-      biome: compatibleBiome(definition, prescription)
-    });
+    const identity = identityPrescription(definition, prescription);
 
+    // Une mission peut ajouter une MSC sans toucher au décor. La re-résolution
+    // visuelle n'est déclenchée que si biome/taille/template changent réellement.
+    if (identity.changesIdentity) {
+      BF.MapIntegrity?.prepareDefinition?.(definition, {
+        plateauCount: identity.size,
+        biome: identity.biome,
+        templateId: identity.templateId,
+        predefinedMapId: prescription.predefinedMapId,
+        mapId: prescription.mapId,
+        preserveName:
+          definition.generator?.nameSource === "bluefox" ||
+          definition.generator?.nameSource === "custom" ||
+          definition.customName === true ||
+          definition.nameLocked === true
+      });
+    } else {
+      BF.MapIntegrity?.prepareDefinition?.(definition, {
+        plateauCount: definition.plateauCount,
+        biome: "random"
+      });
+    }
+
+    // Les enrichissements de contenu restent tardifs et indépendants
+    // de l'identité visuelle de la map.
     (prescription.requiredMicroScenes || []).forEach((scene) => {
       BF.PersistentMicroScenes?.ensure?.(definition, {
-        missionId: prescription.missionId || "BIBLE-V01-RECONNAISSANCE",
+        missionId:
+          prescription.missionId ||
+          "BIBLE-V01-RECONNAISSANCE",
         microSceneId: scene.id,
         persistent: scene.persistent !== false,
         spawnOnce: scene.spawnOnce !== false,
@@ -59,8 +115,6 @@
   };
 
   const generate = (options = {}) => {
-    // Résoudre avant la génération afin que la prescription reste liée à
-    // l'état missionnel qui a déclenché cette nouvelle map.
     const prescription = resolvePrescription();
     const definition = originalGenerate(options);
 
@@ -69,9 +123,6 @@
       : BF.MapIntegrity?.prepareDefinition?.(definition) || definition;
   };
 
-  // MAP_Test uses exactly the production generator but restores its persistent
-  // storage immediately afterwards. This gives a production-faithful preview
-  // without polluting the player's generated-map list.
   const preview = (options = {}, customization = {}) => {
     const key = base.storageKey;
     const savedStorage = global.localStorage.getItem(key);
@@ -91,7 +142,11 @@
     definition = clone(definition);
     BF.MapIntegrity?.prepareDefinition?.(definition, {
       plateauCount: customization.plateauCount ?? "random",
-      biome: customization.biome ?? "random"
+      biome: customization.biome ?? "random",
+      templateId: customization.templateId,
+      predefinedMapId: customization.predefinedMapId,
+      mapId: customization.mapId,
+      preserveName: customization.preserveName === true
     });
     definition.preview = true;
     return definition;
