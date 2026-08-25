@@ -242,7 +242,10 @@
     const wind = clamp(weatherWind, 0.15, 2.5);
     registry.forEach((root) => {
       const state = states.get(root);
-      if (state && (!BF.RuntimeBudget || BF.RuntimeBudget.shouldUpdate(root, "passive", elapsed))) updateState(state, elapsed, wind * state.profile.windResponse);
+      if (!state || !state.enabled) return;
+      if (!BF.RuntimeBudget || BF.RuntimeBudget.shouldUpdate(root, "passive", elapsed)) {
+        updateState(state, elapsed, wind * state.profile.windResponse);
+      }
     });
     if (now - lastCleanup > 10000) {
       lastCleanup = now;

@@ -247,7 +247,10 @@
     const elapsed = nowSeconds() - startedAt;
     registry.forEach((root) => {
       const state = states.get(root);
-      if (state && (!BF.RuntimeBudget || BF.RuntimeBudget.shouldUpdate(root, "flora", elapsed))) update(state, elapsed);
+      if (!state || !state.enabled) return;
+      if (!BF.RuntimeBudget || BF.RuntimeBudget.shouldUpdate(root, "flora", elapsed)) {
+        update(state, elapsed);
+      }
     });
     if (elapsed - lastCleanupAt > 8) {
       lastCleanupAt = elapsed;

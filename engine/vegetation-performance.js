@@ -85,14 +85,14 @@
     const latticeMaterial = material(THREE, {
       color: 0x9b82c8,
       emissive: 0x4b267b,
-      emissiveIntensity: 0.85,
+      emissiveIntensity: 1.15,
       roughness: 0.42,
       wireframe: true
     });
     const glowMaterial = material(THREE, {
       color: 0xe5b9ff,
       emissive: 0xb85cff,
-      emissiveIntensity: 1.6,
+      emissiveIntensity: 2.4,
       roughness: 0.24
     });
     const sporeMaterial = new THREE.MeshBasicMaterial({
@@ -146,12 +146,6 @@
       core.scale.y = 1.12;
       mushroom.add(core);
 
-      if (index === 1) {
-        const light = new THREE.PointLight(0xb95cff, 1.0, 3.0, 2);
-        light.name = "LanternLight";
-        light.position.y = spec.h + 0.04;
-        mushroom.add(light);
-      }
     });
 
     // Trois spores seulement.
