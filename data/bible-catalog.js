@@ -725,6 +725,187 @@
     })
   });
 
+  const T10 = Object.freeze({
+    id: "T10",
+    title: "Comparer les ressources d’un territoire plus vaste",
+    description: "Rejoindre un territoire de six plateaux, en explorer au moins 15 % puis comparer trois familles de ressources distinctes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T09",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T09"]),
+    priority: 400,
+    autoPrimaryEligible: true,
+    primaryOnActivation: true,
+    passivePriorityAxis: "exploration",
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachSixPlateauMap",
+        title: "Rejoindre un territoire plus vaste",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          toDiscoveryIndex: 3,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "surface",
+        title: "Explorer 15 % du territoire",
+        action: "explore-zone",
+        target: 15,
+        requires: Object.freeze(["reachSixPlateauMap"]),
+        params: Object.freeze({
+          scope: "map",
+          metric: "surfacePercent",
+          threshold: 15,
+          requiredMapFact: "tutorialExcursion:T10",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "resourceFamilies",
+        title: "Observer 3 familles de ressources distinctes",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["reachSixPlateauMap"]),
+        params: Object.freeze({
+          tagsAny: Object.freeze(["resource"]),
+          excludeCuoTypes: Object.freeze(["tree_fallen"]),
+          distinctBy: "family",
+          requiredMapFact: "tutorialExcursion:T10",
+          requiredMapField: "generatedTargetMapId"
+        })
+      })
+    ]),
+    mapGeneration: Object.freeze({
+      size: 6,
+      compatibleBiomes: Object.freeze([
+        "forest",
+        "aquatic"
+      ])
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Deux plantes connues dans une nouvelle zone, c’est un indice. Pour savoir si cette répétition concerne toute la planète, je dois comparer un territoire plus vaste."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "surface",
+          atCount: 15,
+          text: "Je commence à distinguer la structure de cette zone. Quinze pour cent suffiront pour une première comparaison, pas pour prétendre la connaître entièrement."
+        }),
+        Object.freeze({
+          slot: "resourceFamilies",
+          atCount: 1,
+          text: "Première famille confirmée. Je cherche maintenant une ressource d’une autre nature."
+        }),
+        Object.freeze({
+          slot: "resourceFamilies",
+          atCount: 2,
+          text: "Deux familles différentes apparaissent dans le même territoire. Il me manque encore un troisième point de comparaison."
+        }),
+        Object.freeze({
+          slot: "resourceFamilies",
+          atCount: 3,
+          text: "Trois familles de ressources coexistent ici. La répartition du vivant et des matériaux semble suivre des règles plus larges que chaque zone isolée."
+        })
+      ]),
+      completed: Object.freeze([
+        "Je peux maintenant formuler une hypothèse : les zones diffèrent, mais certaines ressources traversent leurs frontières. Il faudra cartographier cette continuité plus précisément."
+      ])
+    })
+  });
+
+  const LOC05 = Object.freeze({
+    id: "LOC-05",
+    title: "Cartographier 60 % du territoire actuel",
+    description: "Explorer au moins 60 % de la map liée à cette mission locale.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    priority: 35,
+    passivePriorityAxis: "exploration",
+    localExploration: Object.freeze({
+      unlockMissionId: "T10",
+      activationThreshold: 15,
+      completionThreshold: 60,
+      nextMissionId: "LOC-06"
+    }),
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Explorer 60 % de cette map",
+        target: 60,
+        params: Object.freeze({
+          scope: "map",
+          metric: "surfacePercent",
+          threshold: 60
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Quinze pour cent suffisent pour comparer, mais pas pour connaître ce territoire. Je peux poursuivre sa cartographie pendant nos autres recherches."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "explore",
+          at: 0.5,
+          text: "Les zones isolées commencent à former un ensemble cohérent."
+        })
+      ]),
+      completed: Object.freeze([
+        "J’en connais maintenant la majorité. Il reste possible d’en établir une cartographie complète."
+      ])
+    })
+  });
+
+  const LOC06 = Object.freeze({
+    id: "LOC-06",
+    title: "Cartographier 100 % du territoire actuel",
+    description: "Atteindre 100 % d’exploration réelle sur la map liée à cette mission locale.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    priority: 30,
+    passivePriorityAxis: "exploration",
+    localExploration: Object.freeze({
+      unlockMissionId: "T10",
+      activationThreshold: 60,
+      completionThreshold: 100,
+      previousMissionId: "LOC-05"
+    }),
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Explorer 100 % de cette map",
+        target: 100,
+        params: Object.freeze({
+          scope: "map",
+          metric: "surfacePercent",
+          threshold: 100
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La plus grande partie de cette zone est connue. Il reste quelques secteurs à relier pour obtenir une carte complète."
+      ]),
+      completed: Object.freeze([
+        "Cette map ne contient plus de territoire inconnu. Elle fait maintenant partie de notre environnement maîtrisé."
+      ])
+    })
+  });
+
   /*
    * Bible Catalog — BASE PROPRE.
    *
@@ -886,6 +1067,9 @@
     T07,
     T08,
     T09,
+    T10,
+    LOC05,
+    LOC06,
     rationDiscovery
   ]);
 

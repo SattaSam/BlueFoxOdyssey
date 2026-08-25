@@ -1,4 +1,4 @@
-﻿(function (global) {
+(function (global) {
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
@@ -143,8 +143,8 @@
       lifecycle.source = options.source || lifecycle.source || "system";
       lifecycle.discoveryReason = options.reason || lifecycle.discoveryReason ||
         `Mission découverte par ${lifecycle.source}.`;
-      if (options.autoPrimaryEligible === false) {
-        lifecycle.autoPrimaryEligible = false;
+      if (typeof options.autoPrimaryEligible === "boolean") {
+        lifecycle.autoPrimaryEligible = options.autoPrimaryEligible;
       }
       if (!lifecycle.activatedAt) lifecycle.activatedAt = Date.now();
       lifecycle.updatedAt = Date.now();
@@ -747,11 +747,30 @@
       global.dispatchEvent(new CustomEvent("bluefox:mission-state", { detail }));
     }
 
+    displayTreeSnapshot(tree) {
+      if (!tree) return null;
+      const snapshot = tree.toJSON();
+      const normalizeProgress = (node) => {
+        if (node?.params?.metric === "surfacePercent") {
+          node.progress = Math.floor(Math.max(0, Number(node.progress) || 0));
+        }
+        (node?.children || []).forEach(normalizeProgress);
+      };
+      normalizeProgress(snapshot.root);
+      return snapshot;
+    }
+
     getState() {
       const missionIds = [...(this.activeMissionIds || [])]
         .filter((id) => this.trees?.has(id));
       const missionStateIds = [...this.trees.keys()]
-        .filter((id) => ["active", "completed"].includes(this.ensureLifecycle(id).status));
+        .filter((id) => ["active", "completed"].includes(this.ensureLifecycle(id).status))
+        .filter((id) => {
+          const definition = this.definition(id);
+          if (definition?.localVisibility !== "current-map") return true;
+          return String(definition.scopeId || "") ===
+            String(this.engine?.currentMapId || "");
+        });
       const missionStates = missionStateIds
         .sort((left, right) =>
           Number(right === this.primaryMissionId) -
@@ -771,7 +790,7 @@
               `J’ai ouvert cette mission parce que ${this.ensureLifecycle(id).discoveryReason || "mes observations indiquent qu’elle est désormais réalisable"}.`,
             discoveryReason: this.ensureLifecycle(id).discoveryReason,
             isPrimary: id === this.primaryMissionId,
-            tree: tree.toJSON()
+            tree: this.displayTreeSnapshot(tree)
           };
         });
 
@@ -822,7 +841,7 @@
               target: node.target
             }))
           : [],
-        tree: displayTree ? displayTree.toJSON() : null,
+        tree: this.displayTreeSnapshot(displayTree),
         missions: missionStates,
         catalog: Object.keys(Missions.definitions)
           .filter((id) => id !== "foundation")

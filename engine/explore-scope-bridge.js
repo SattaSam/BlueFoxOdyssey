@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions = BF.Missions || {};
-  const VERSION = "explore-scope-v2-surface-absolute";
+  const VERSION = "explore-scope-v3-sequence-map-binding";
 
   const normalize = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -22,7 +22,21 @@
     return null;
   };
 
-  const scopeMatches = (node, detail, engine) => {
+  const requiredMapId = (node, manager) => {
+    const factKey = String(node?.params?.requiredMapFact || "").trim();
+    if (!factKey) return null;
+    const fact = manager?.memory?.getFact?.(factKey, null);
+    if (!fact || typeof fact !== "object") return "";
+    const field = String(node.params?.requiredMapField || "mapId").trim();
+    return String(fact[field] || "");
+  };
+
+  const scopeMatches = (node, detail, engine, manager) => {
+    const boundMapId = requiredMapId(node, manager);
+    if (boundMapId != null) {
+      return Boolean(boundMapId) &&
+        String(detail.mapId || "") === boundMapId;
+    }
     const scope = String(node?.params?.scope || "map").trim();
     if (scope === "global" || scope === "multi-map") return true;
     if (scope === "local") {
@@ -52,7 +66,7 @@
       const required = Math.max(1, Number.isFinite(threshold) ? threshold : Number(node.target));
       const absolute = Math.min(
         Number(node.target) || required,
-        Math.max(0, Math.round(value))
+        Math.max(0, value)
       );
       const delta = absolute - Number(node.progress || 0);
       return delta > 0 ? node.increment(delta) : false;
@@ -77,9 +91,11 @@
 
       tree.availableLeaves().forEach((node) => {
         if (node.isComplete) return;
-        if (node.params?.biblePattern !== "EXPLORE_SCOPE") return;
+        if (!["EXPLORE_SCOPE", "SEQUENCE_ACTIONS"].includes(
+          node.params?.biblePattern
+        )) return;
         if (Missions.normalizeActionType(node.type) !== Missions.ActionType.EXPLORE_ZONE) return;
-        if (!scopeMatches(node, detail, BF.currentEngine)) return;
+        if (!scopeMatches(node, detail, BF.currentEngine, manager)) return;
         if (!biomeMatches(node, detail)) return;
 
         if (progressExploreNode(node, detail)) {

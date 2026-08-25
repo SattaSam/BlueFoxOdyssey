@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const VERSION = "0.1";
-  const MAX_PROGRESS_NARRATIVES = 3;
+  const MAX_PROGRESS_NARRATIVES = 4;
 
   const TRIGGER_TYPES = Object.freeze([
     "manual",

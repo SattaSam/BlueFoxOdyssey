@@ -82,7 +82,6 @@
     instance.id = missionId;
     instance.baseMissionId = baseId;
     instance.scopeId = scopeId;
-    instance.title = `${instance.title} — ${scopeId}`;
     return instance;
   }
 

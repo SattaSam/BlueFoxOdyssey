@@ -54,6 +54,10 @@
         this.onMissionState(event.detail || BF.getMissionState?.() || {});
       this.boundMapTransition = (event) =>
         this.onMapTransition(event.detail || {});
+      this.boundExplorationChange = (event) =>
+        this.onExplorationChanged(event.detail || {});
+      this.localExplorationReconciling = false;
+      this.localExplorationSessionRestored = false;
     }
 
     defaultState() {
@@ -105,6 +109,219 @@
 
     allMissions() {
       return [...this.catalog, ...this.dynamicMissions.values()];
+    }
+
+    localExplorationTemplates() {
+      return this.catalog
+        .filter((mission) =>
+          mission?.instanceScope === "map" && mission?.localExploration
+        )
+        .sort((left, right) =>
+          Number(left.localExploration.activationThreshold) -
+          Number(right.localExploration.activationThreshold)
+        );
+    }
+
+    localExplorationInstanceId(baseId, mapId) {
+      return `${String(baseId || "")}@${String(mapId || "")}`;
+    }
+
+    localExplorationMission(instanceId) {
+      const separator = String(instanceId || "").indexOf("@");
+      if (separator < 1) return null;
+      const baseId = instanceId.slice(0, separator);
+      const mapId = instanceId.slice(separator + 1);
+      const template = this.byId.get(baseId);
+      if (!template?.localExploration || !mapId) return null;
+      return {
+        ...template,
+        id: instanceId,
+        baseMissionId: baseId,
+        scopeId: mapId,
+        title: template.title
+      };
+    }
+
+    missionsForState(state) {
+      const missions = [...this.allMissions()];
+      (state?.missions || []).forEach((entry) => {
+        const mission = this.localExplorationMission(
+          entry.missionId || entry.id
+        );
+        if (mission) missions.push(mission);
+      });
+      return missions;
+    }
+
+    suppressLocalNarrative(mission, surfacePercent) {
+      if (!mission) return;
+      let changed = false;
+      const revealedKey = `${mission.id}:revealed`;
+      if (!this.state.progressNarrative[revealedKey]) {
+        this.state.progressNarrative[revealedKey] = Date.now();
+        changed = true;
+      }
+      (mission.narrative?.progress || []).forEach((milestone, index) => {
+        const threshold = milestone.atCount != null
+          ? Number(milestone.atCount)
+          : Number(milestone.at) *
+            Number(mission.localExploration?.completionThreshold || 100);
+        if (Number(surfacePercent) >= threshold) {
+          const key = `${mission.id}:progress:${index}`;
+          if (!this.state.progressNarrative[key]) {
+            this.state.progressNarrative[key] = Date.now();
+            changed = true;
+          }
+        }
+      });
+      if (
+        Number(surfacePercent) >=
+        Number(mission.localExploration?.completionThreshold || Infinity)
+      ) {
+        const completedKey = `${mission.id}:completed`;
+        if (!this.state.progressNarrative[completedKey]) {
+          this.state.progressNarrative[completedKey] = Date.now();
+          changed = true;
+        }
+      }
+      if (changed) this.saveState();
+    }
+
+    reconcileLocalExplorationMap(mapId, surfacePercent) {
+      const manager = this.manager();
+      const targetMapId = String(mapId || "");
+      if (!manager || !targetMapId) return false;
+      const percent = Math.max(0, Math.min(100, Number(surfacePercent) || 0));
+      const currentMapId = String(BF.currentEngine?.currentMapId || "");
+      let changed = false;
+
+      for (const template of this.localExplorationTemplates()) {
+        const activationThreshold = Number(
+          template.localExploration.activationThreshold
+        ) || 0;
+        const instanceId = this.localExplorationInstanceId(
+          template.id,
+          targetMapId
+        );
+        let lifecycle = manager.memory?.state?.missionLifecycle?.[instanceId];
+        if (percent < activationThreshold && !lifecycle) continue;
+
+        const mission = this.localExplorationMission(instanceId);
+        if (targetMapId !== currentMapId) {
+          this.suppressLocalNarrative(mission, percent);
+        }
+
+        if (!lifecycle || ["available", "hidden"].includes(lifecycle.status)) {
+          changed = manager.startMission(instanceId, {
+            primary: false,
+            autoPrimaryEligible: false,
+            source: "local-exploration",
+            reason: `Seuil local atteint sur ${targetMapId}.`
+          }) === true || changed;
+          lifecycle = manager.memory?.state?.missionLifecycle?.[instanceId];
+        } else if (lifecycle.status === "paused" && targetMapId === currentMapId) {
+          changed = manager.resumeMission(instanceId, {
+            primary: false,
+            autoPrimaryEligible: false,
+            source: "local-exploration"
+          }) === true || changed;
+          lifecycle = manager.memory?.state?.missionLifecycle?.[instanceId];
+        }
+
+        if (lifecycle?.status === "active") {
+          changed = Boolean(BF.progressExploreScopeMissions?.({
+            mapId: targetMapId,
+            zoneId: null,
+            surfacePercent: percent,
+            amount: 0
+          })) || changed;
+          lifecycle = manager.memory?.state?.missionLifecycle?.[instanceId];
+        }
+
+        if (lifecycle?.status === "active" && targetMapId !== currentMapId) {
+          changed = manager.pauseMission(
+            instanceId,
+            "Mission locale masquée hors de sa map."
+          ) === true || changed;
+        }
+      }
+      return changed;
+    }
+
+    reconcileLocalExploration(state = BF.getMissionState?.() || {}) {
+      if (this.localExplorationReconciling) return false;
+      const manager = this.manager();
+      if (!manager) return false;
+      const unlockFact = "localExplorationUnlocked:v1";
+      const backfillFact = "localExplorationBackfillComplete:v1";
+      const t10Completed =
+        manager.memory?.state?.missionLifecycle?.T10?.status === "completed";
+      const unlocked = Boolean(manager.memory?.getFact?.(unlockFact, false));
+      const backfilled = Boolean(manager.memory?.getFact?.(backfillFact, false));
+      if (!unlocked && !t10Completed) return false;
+      if (unlocked && backfilled) return false;
+
+      this.localExplorationReconciling = true;
+      try {
+        if (!unlocked) {
+          manager.memory?.setFact?.(unlockFact, {
+            missionId: "T10",
+            unlockedAt: Date.now()
+          });
+        }
+        const maps = BF.getExplorationSummary?.().maps || {};
+        let changed = false;
+        Object.entries(maps).forEach(([mapId, exploration]) => {
+          changed = this.reconcileLocalExplorationMap(
+            mapId,
+            exploration?.surfacePercent
+          ) || changed;
+        });
+        manager.memory?.setFact?.(backfillFact, {
+          completedAt: Date.now(),
+          mapCount: Object.keys(maps).length
+        });
+        manager.memory?.save?.();
+        return changed;
+      } finally {
+        this.localExplorationReconciling = false;
+      }
+    }
+
+    pauseOffMapLocalExploration(currentMapId) {
+      const manager = this.manager();
+      if (!manager) return false;
+      let changed = false;
+      [...(manager.activeMissionIds || [])].forEach((missionId) => {
+        const definition = manager.definition?.(missionId);
+        if (
+          definition?.localVisibility === "current-map" &&
+          String(definition.scopeId || "") !== String(currentMapId || "")
+        ) {
+          changed = manager.pauseMission(
+            missionId,
+            "Mission locale masquée hors de sa map."
+          ) === true || changed;
+        }
+      });
+      return changed;
+    }
+
+    restoreLocalExplorationSession() {
+      if (this.localExplorationSessionRestored) return false;
+      const manager = this.manager();
+      if (!manager?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
+        return false;
+      }
+      this.localExplorationSessionRestored = true;
+      const mapId = String(BF.currentEngine?.currentMapId || "");
+      if (!mapId) return false;
+      const paused = this.pauseOffMapLocalExploration(mapId);
+      const exploration = BF.getMapExplorationState?.(mapId);
+      return this.reconcileLocalExplorationMap(
+        mapId,
+        exploration?.surfacePercent
+      ) || paused;
     }
 
     constructionTemplate(kind) {
@@ -406,6 +623,7 @@
           title: mission.title,
           description: mission.description || "",
           instanceScope: mission.instanceScope || null,
+          localVisibility: mission.localVisibility || null,
           targetMapId: mission.targetMapId || null,
           priority: Number(mission.priority) || 0,
           passivePriorityAxis:
@@ -496,6 +714,7 @@
         title: mission.title,
         description: mission.description || "",
         instanceScope: mission.instanceScope || null,
+        localVisibility: mission.localVisibility || null,
         targetMapId: mission.targetMapId || null,
         priority: Number(mission.priority) || 0,
         passivePriorityAxis:
@@ -1169,8 +1388,8 @@
       try {
         diagnostic.startResult =
           manager.startMission(mission.id, {
-            primary: false,
-            autoPrimaryEligible: false,
+            primary: mission.primaryOnActivation === true,
+            autoPrimaryEligible: mission.autoPrimaryEligible === true,
             prerequisites: asArray(mission.prerequisites),
             source: "bible-runtime-v0.1",
             reason: `Déclencheur Bible V0.1 : ${event.type || "event"}`
@@ -1331,6 +1550,17 @@
       this.bridgeMissionProgress(rawEvent);
     }
 
+    onExplorationChanged(detail) {
+      const manager = this.manager();
+      if (!manager?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
+        return false;
+      }
+      return this.reconcileLocalExplorationMap(
+        detail.mapId,
+        detail.surfacePercent
+      );
+    }
+
     onMapTransition(detail) {
       // La transition est émise après chargement de la map courante.
       this.captureObservationMap(BF.currentEngine);
@@ -1357,6 +1587,15 @@
       }
       this.reviewConstructionReadiness();
       this.scheduleCurrentSiteRestore(event.mapId);
+
+      if (this.manager()?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
+        this.pauseOffMapLocalExploration(event.mapId);
+        const exploration = BF.getMapExplorationState?.(event.mapId);
+        this.reconcileLocalExplorationMap(
+          event.mapId,
+          exploration?.surfacePercent
+        );
+      }
     }
 
     isActivationEvent(eventId) {
@@ -1387,8 +1626,15 @@
 
     nodeForSlot(entry, missionId, slot) {
       let found = null;
+      const separator = String(missionId || "").indexOf("@");
+      const scopedNodeId = separator > 0
+        ? `${missionId.slice(0, separator)}:${slot}@${missionId.slice(separator + 1)}`
+        : null;
       this.walkTree(entry?.tree?.root, (node) => {
-        if (node.id === `${missionId}:${slot}`) found = node;
+        if (
+          node.id === `${missionId}:${slot}` ||
+          (scopedNodeId && node.id === scopedNodeId)
+        ) found = node;
       });
       return found;
     }
@@ -2487,7 +2733,9 @@
       }
 
       this.migrateLegacyRationUnlock();
-      for (const mission of this.allMissions()) {
+      this.reconcileLocalExploration(state);
+      this.restoreLocalExplorationSession();
+      for (const mission of this.missionsForState(state)) {
         const entry = this.findMissionEntry(state, mission.id);
         if (entry) this.emitProgressNarrative(mission, entry);
 
@@ -2567,6 +2815,14 @@
       global.addEventListener?.(
         "bluefox:map-transition-completed",
         this.boundMapTransition
+      );
+      global.removeEventListener?.(
+        "bluefox:map-exploration-changed",
+        this.boundExplorationChange
+      );
+      global.addEventListener?.(
+        "bluefox:map-exploration-changed",
+        this.boundExplorationChange
       );
       return Boolean(this.unsubscribeObjectEvents);
     }

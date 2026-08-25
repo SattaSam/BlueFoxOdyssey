@@ -421,6 +421,16 @@
     return Boolean(sameType || sameDefinition || sameMissionScene);
   };
 
+  const requiredMapMatches = (manager, node, mapId) => {
+    const factKey = String(node?.params?.requiredMapFact || "").trim();
+    if (!factKey) return true;
+    const fact = manager?.memory?.getFact?.(factKey, null);
+    if (!fact || typeof fact !== "object") return false;
+    const field = String(node.params?.requiredMapField || "mapId").trim();
+    const expectedMapId = String(fact[field] || "");
+    return Boolean(expectedMapId) && String(mapId || "") === expectedMapId;
+  };
+
   const applyObjectEventProgress = (manager, event) => {
     if (!manager || manager.memory?.hasProcessedObjectEvent?.(event.id)) {
       return { changed: 0, currentMatched: false };
@@ -442,6 +452,7 @@
       if (!eventMatchesBoundTarget(manager, missionId, event)) return;
       let treeChanged = false;
       tree.availableLeaves().forEach((node) => {
+        if (!requiredMapMatches(manager, node, event.mapId)) return;
         if (node.isComplete || !eventMatchesNode(event, node, missionId)) return;
         if (progressNodeFromEvent(node, event)) {
           changed += 1;
@@ -653,6 +664,9 @@
     if (!mode || mode === "none") return null;
     if (mode === "instanceId") return String(event?.instanceId || "");
     if (mode === "objectId") return String(event?.objectId || "").toLowerCase();
+    if (mode === "family") {
+      return lower(eventMissionMetadata(event).family);
+    }
     return null;
   };
 
@@ -662,6 +676,13 @@
     const identity = identityOf(resolved);
     if (mode === "instanceId") return identity.instanceId;
     if (mode === "objectId") return identity.objectId;
+    if (mode === "family") {
+      return lower(
+        resolved?.definition?.resource?.family ||
+        resolved?.definition?.knowledge?.family ||
+        resolved?.definition?.category
+      );
+    }
     return null;
   };
 
@@ -698,6 +719,7 @@
         const resolved = resolveMissionCandidate(object);
         const definition = resolved.definition;
         const node = engine?.missionManager?.trees?.get?.(action.missionId)?.find?.(action.nodeId);
+        if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return false;
         const distinctValue = node ? distinctValueFromResolved(node, resolved) : null;
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return false;
         return definition &&
@@ -759,6 +781,7 @@
       const tree = manager.trees.get(missionId);
       for (const node of tree.availableLeaves()) {
         if (!isStudyAction(node.type)) continue;
+        if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
         if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;

@@ -19,6 +19,14 @@
     restoreOrCreate(missionId) {
       const restored = this.memory.restoreTree(missionId);
       const tree = restored || this.createTree(missionId);
+      if (restored) {
+        const definition = Missions.getDefinition?.(missionId) ||
+          Missions.definitions?.[missionId] || null;
+        if (definition) {
+          tree.title = definition.title || tree.title;
+          tree.description = definition.description || tree.description;
+        }
+      }
       tree.refresh();
       return tree;
     }
