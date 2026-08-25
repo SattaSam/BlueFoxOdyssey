@@ -2,10 +2,10 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},music=BF.music,cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!music||!cat){console.warn("[BlueFox Music Bridge] moteur musical absent");return;}
-const VERSION="1.3.0",leases=new Map(),listeners=[],objectTimes=[],activityHistory=[];
+const VERSION="1.4.0",leases=new Map(),listeners=[],objectTimes=[],activityHistory=[];
 const ACTIVITY_WINDOW_MS=5*60*1000,STREAK_REQUIRED=3,DOMINANCE_MIN_ACTIONS=6,DOMINANCE_SHARE=.5,DOMINANCE_LEASE_MS=150000;
 const SPECIAL_MAP_LEASE_MS=4*60*1000,SPECIAL_INTEREST_LEASE_MS=3*60*1000;
-let current=null,timer=null,lastMission=null,lastReason="initialization",lastSignalKey=null,currentMapId=null,lastActivity=null,lastMissionCueKey=null,specialMapId=null;
+let current=null,timer=null,lastMission=null,lastReason="initialization",lastSignalKey=null,currentMapId=null,lastActivity=null,specialMapId=null;
 const now=()=>Date.now(),lower=v=>String(v||"").toLowerCase();
 const priorities={ambient:10,mission:40,interaction:55,action:75,danger:90,narrative:100};
 
@@ -27,7 +27,7 @@ function activityProfile(kind){
 function cue(id,reason,force=false){return music.playCue?.(id,{reason,force})||false;}
 function hasAny(labels,pattern){return labels.some(value=>pattern.test(value));}
 function collectionCue(labels){
- if(hasAny(labels,/plant|flora|fiber|fibre|spore|moss|mousse|mushroom|champignon|fern|fougere|vine|liane|cactus|tree|arbre|wood|bois/))return"collection.plant";
+ if(hasAny(labels,/plant|flora|fiber|fibre|spore|moss|mousse|mushroom|champignon|fern|fougere|vine|liane|cactus|tree|arbre/))return"collection.plant";
  if(hasAny(labels,/mineral|minerai|ore|crystal|cristal|rock|roche|basalt|ferrite|iridium|magnet/))return"collection.mineral";
  return"collection.generic";
 }
@@ -103,38 +103,38 @@ function evaluate(){
 }
 function tags(event){return[...(event.tags||[]),event.category,event.family,event.knowledgeFamily,event.objectId,event.inventoryKey,event.detail?.kind,event.detail?.subject,event.detail?.cuoType,event.detail?.label,event.detail?.microSceneId].map(lower).filter(Boolean);}
 function onObject(event){
- const e=event.detail||{},type=e.type,labels=tags(e);
+ const e=event.detail||{},type=e.type,detail=e.detail||{},labels=tags(e);
+ if(detail.offline===true||/offline-reconciliation/.test(lower(detail.source)))return;
  objectTimes.push(now());while(objectTimes.length&&objectTimes[0]<now()-8000)objectTimes.shift();
  const relic=labels.some(v=>/ruin|relic|artefact|artifact|technology|ancient|civilization|micro.?scene/.test(v));
  const civilization=labels.some(v=>/civilization|civilisation|contact|ancient.?city|cite|cité/.test(v));
- const phenomenon=type==="PHENOMENON_OBSERVED"||labels.some(v=>/phenomen|phénom|anomal|danger|storm|cyclone/.test(v));
+ const phenomenon=labels.some(v=>/phenomen|phénom|anomal|danger|storm|cyclone/.test(v));
+ const studyVerb=lower(detail.missionNarrativeVerb||detail.interactionMode);
+ const acquisitionPending=["collect","extract"].includes(lower(detail.acquisitionIntent));
  if(["RESOURCE_COLLECTED","RESOURCE_EXTRACTED"].includes(type)){cue(collectionCue(labels),"resource-collection");registerActivity("collection",e);}
- else if(relic&&["OBJECT_SEEN","OBJECT_INSPECTED","OBJECT_ANALYZED","PHENOMENON_OBSERVED","KNOWLEDGE_ACQUIRED"].includes(type)){
-  const cueId=civilization&&type==="KNOWLEDGE_ACQUIRED"?"civilization.major":type==="OBJECT_SEEN"?"relic.detected":type==="OBJECT_INSPECTED"?"relic.intermediate":type==="KNOWLEDGE_ACQUIRED"?"research.complete":"relic.active";
+ else if(acquisitionPending&&["OBJECT_SEEN","OBJECT_INSPECTED","OBJECT_ANALYZED","PHENOMENON_OBSERVED"].includes(type)){
+  registerActivity(relic?"relic":"observation",e);
+ }
+ else if(type==="KNOWLEDGE_ACQUIRED"){cue(civilization?"civilization.major":"research.complete","knowledge-acquired");registerActivity(civilization?"relic":"research",e);}
+ else if(relic&&["OBJECT_SEEN","OBJECT_INSPECTED","OBJECT_ANALYZED","PHENOMENON_OBSERVED"].includes(type)){
+  const cueId=type==="OBJECT_ANALYZED"||studyVerb==="analyze"?"relic.active":type==="OBJECT_INSPECTED"||studyVerb==="inspect"?"relic.intermediate":"relic.detected";
   cue(cueId,"relic-interaction");registerActivity("relic",e);
  }
- else if(type==="OBJECT_ANALYZED"||type==="KNOWLEDGE_ACQUIRED"){cue(type==="KNOWLEDGE_ACQUIRED"?"research.complete":"research.notes","research-interaction");registerActivity("research",e);}
+ else if(type==="OBJECT_ANALYZED"||studyVerb==="analyze"){cue("research.notes","research-interaction");registerActivity("research",e);}
  else if(["OBJECT_SEEN","OBJECT_INSPECTED","PHENOMENON_OBSERVED"].includes(type)){cue(phenomenon?"curiosity.subtle":"observation.quiet","observation");registerActivity("observation",e);}
  else if(["OBJECT_CRAFTED","OBJECT_BUILT","OBJECT_REPAIRED"].includes(type))lease("craft",cat.contexts.CRAFT,priorities.interaction,60000,"craft-interaction");
  if(phenomenon||relic)renewSpecialMapInterest(labels);
 }
 function onMission(event){
- lastMission=event.detail||null;const action=lower(lastMission?.currentAction?.type),key=[lastMission?.id||lastMission?.missionId||"",action].join("|");
- if(action&&key!==lastMissionCueKey){
-  lastMissionCueKey=key;
-  if(/run|escape|danger|fight/.test(action))cue("dynamic.priority","mission-priority");
-  else if(/analy|research/.test(action))cue("research.notes","mission-priority");
-  else if(/inspect|observe|scan/.test(action))cue("relic.intermediate","mission-priority");
-  else if(/collect|extract/.test(action))cue("collection.generic","mission-priority");
- }
+ lastMission=event.detail||null;
  evaluate();
 }
 function onTransition(event){
  const detail=event.detail||{};
  activityHistory.length=0;lastActivity=null;currentMapId=detail.mapId||detail.toMapId||detail.destinationMapId||null;release("activity-streak");release("activity-dominant");
  const special=mapSpecialProfile(currentMapId);
- if(special.special){specialMapId=currentMapId;cue("dynamic.priority","special-map-arrival",true);lease("special-map",cat.contexts.DANGER,priorities.action+3,SPECIAL_MAP_LEASE_MS,"special-map-dynamics");}
- else{specialMapId=null;release("special-map");if(detail.isNew)cue("curiosity.subtle","new-map-arrival",true);}
+ if(special.special){specialMapId=currentMapId;lease("special-map",cat.contexts.DANGER,priorities.action+3,SPECIAL_MAP_LEASE_MS,"special-map-dynamics");}
+ else{specialMapId=null;release("special-map");}
  lease("map-arrival",detail.isNew?cat.contexts.MAP_DISCOVERY:cat.contexts.EXPLORATION_SIGNIFICANT,detail.isNew?88:60,detail.isNew?24000:14000,detail.isNew?"new-map-discovery":"known-map-arrival");
 }
 function onMilestone(event){

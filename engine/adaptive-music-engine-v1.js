@@ -2,7 +2,11 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!cat){console.warn("[BlueFox Music] catalogue absent");return;}
-const VERSION="1.3.6",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const VERSION="1.3.8",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const introOwnsAudio=()=>{
+ const root=global.document?.documentElement;
+ return Boolean(root?.classList?.contains("bluefox-first-launch-open")||root?.classList?.contains("bluefox-intro-open"));
+};
 
 const ACTIVE_PENDING_HOLD_SEC=20;
 const THEME_HOLD_BASE_MS=75000;
@@ -78,7 +82,8 @@ class AdaptiveMusicEngine{
   this.sequenceId=null;this.sequence=[];this.index=0;this.repeats=0;this.history=[];this.pending=null;this.started=false;this.unlocked=false;this.disposed=false;
   this.signal={axis:"exploration",activation:0,event:null,decisionAt:0};this.lastSignalChange=0;this.activityStreak={axis:"exploration",count:0,lastAt:0};this.themeHold={theme:null,axis:null,until:0,strength:0};
   this.timer=null;this.fadeTimer=null;this.pendingTimer=null;this.retryTimer=null;this.retryCount=0;this.transitioningAudio=false;this.playGeneration=0;this.segmentStartedAt=0;this.sequenceStartedAt=0;this.lastTransition=null;this.lastError=null;this.settings=this.loadSettings();
-  this.cueAudio=this.audioFactory();this.cueAudio.preload="auto";this.cueAudio.loop=false;this.cueAudio.volume=0;this.cueBusyUntil=0;this.cueHistory=[];this.lastCueFile=new Map();this.lastCue=null;
+  this.cueAudio=this.audioFactory();this.cueAudio.preload="auto";this.cueAudio.loop=false;this.cueAudio.volume=0;this.cueBusyUntil=0;this.cueHistory=[];this.lastCueFile=new Map();this.lastCue=null;this.cueEnvelopeTimer=null;this.cueEnvelopeGeneration=0;
+  this.cueAudio.addEventListener?.("ended",()=>this.clearCueEnvelope());
   this.onUnlock=()=>this.unlock();this.onContext=e=>this.setContext(e.detail?.context,e.detail||{});this.onSoundVolume=()=>{if(this.lastCue)this.cueAudio.volume=this.cueVolume(this.lastCue.entry,this.lastCue.variationDb||0);};
   global.addEventListener?.("pointerdown",this.onUnlock,{once:true,passive:true});global.addEventListener?.("keydown",this.onUnlock,{once:true});
   global.addEventListener?.("bluefox:music-context",this.onContext);global.addEventListener?.("bluefox:sound-volume",this.onSoundVolume);
@@ -107,8 +112,21 @@ class AdaptiveMusicEngine{
  }
  targetVolume(step){if(!step)return 0;const intensity=cat.computeIntensity(this.context,step.track.family,this.bacSnapshot()),level=.86+intensity*.08,gain=.94+((step.segment.gain||1)-1)*.25;return clamp(this.settings.volume*level*gain);}
  cueVolume(entry,variationDb=0){const soundVolume=clamp(BF.getSoundVolume?.()??BF.AudioSettings?.soundVolume??.8);return clamp(soundVolume*Number(entry?.gain||.7)*Math.pow(10,variationDb/20));}
+ clearCueEnvelope(){if(this.cueEnvelopeTimer)global.clearInterval(this.cueEnvelopeTimer);this.cueEnvelopeTimer=null;this.cueEnvelopeGeneration++;}
+ scheduleCueEnvelope(entry,file,baseVolume){
+  const envelope=entry.fileEnvelopes?.[file],fadeStart=Number(envelope?.fadeOutStartSec),end=Number(envelope?.endSec);
+  if(!Number.isFinite(fadeStart)||!Number.isFinite(end)||fadeStart<0||end<=fadeStart)return false;
+  this.clearCueEnvelope();const generation=this.cueEnvelopeGeneration;
+  this.cueEnvelopeTimer=global.setInterval(()=>{
+   if(generation!==this.cueEnvelopeGeneration)return;
+   const position=Number(this.cueAudio.currentTime)||0;
+   if(position>=end){this.clearCueEnvelope();this.cueAudio.pause?.();this.cueAudio.volume=0;return;}
+   if(position>=fadeStart)this.cueAudio.volume=clamp(baseVolume*((end-position)/(end-fadeStart)));
+  },40);
+  return true;
+ }
  async playCue(id,detail={}){
-  const entry=cat.cues?.[id],time=Date.now();if(!entry||!this.started||!this.unlocked||!this.settings.enabled||this.disposed)return false;
+  const entry=cat.cues?.[id],time=Date.now();if(!entry||introOwnsAudio()||!this.started||!this.unlocked||!this.settings.enabled||this.disposed)return false;
   this.cueHistory=this.cueHistory.filter(item=>item.at>=time-60000);
   const last=this.cueHistory[this.cueHistory.length-1],familyCount=this.cueHistory.filter(item=>item.family===entry.family).length;
   const globalCooldown=Number(cat.transitions.cueGlobalCooldownMs)||8000,familyCooldown=Number(entry.cooldownMs||cat.transitions.cueFamilyCooldownMs)||12000;
@@ -116,12 +134,12 @@ class AdaptiveMusicEngine{
   if(!detail.force&&(time<this.cueBusyUntil||time-(last?.at||0)<globalCooldown||time-(lastFamily?.at||0)<familyCooldown||familyCount>=3))return false;
   const alternatives=entry.files.filter(file=>file!==this.lastCueFile.get(id)),files=alternatives.length?alternatives:entry.files;
   const file=files[Math.floor(Math.random()*files.length)],variationDb=(Math.random()*2)-1;
-  this.cueAudio.pause?.();this.cueAudio.src=file;this.cueAudio.currentTime=0;this.cueAudio.volume=this.cueVolume(entry,variationDb);
+  this.clearCueEnvelope();this.cueAudio.pause?.();this.cueAudio.src=file;this.cueAudio.currentTime=0;this.cueAudio.volume=this.cueVolume(entry,variationDb);const baseVolume=this.cueAudio.volume;
   try{await Promise.resolve(this.cueAudio.play());}catch(error){this.lastError="cue-audio-error:"+String(error?.message||error);return false;}
-  this.cueBusyUntil=time+5000;this.lastCueFile.set(id,file);this.cueHistory.push({id,family:entry.family,file,at:time});this.lastCue={id,file,entry,variationDb,at:time,reason:detail.reason||null};return true;
+  this.scheduleCueEnvelope(entry,file,baseVolume);this.cueBusyUntil=time+5000;this.lastCueFile.set(id,file);this.cueHistory.push({id,family:entry.family,file,at:time});this.lastCue={id,file,entry,variationDb,at:time,reason:detail.reason||null};return true;
  }
- async unlock(){if(this.unlocked||this.disposed)return;this.unlocked=true;if(this.settings.enabled)await this.start();}
- async start(){if(this.started||!this.unlocked||!this.settings.enabled||this.disposed)return false;this.started=true;this.selectSequence(true);return this.playCurrent(0);}
+ async unlock(){if(this.unlocked||this.disposed||introOwnsAudio())return false;this.unlocked=true;if(this.settings.enabled)await this.start();return true;}
+ async start(){if(introOwnsAudio()||this.started||!this.unlocked||!this.settings.enabled||this.disposed)return false;this.started=true;this.selectSequence(true);return this.playCurrent(0);}
  activeCandidates(recent){
   const supported=[cat.contexts.EXPLORATION_CALM,cat.contexts.EXPLORATION_SIGNIFICANT,cat.contexts.ACTION_DYNAMIC,cat.contexts.MAP_DISCOVERY];
   if(!supported.includes(this.context))return[];
@@ -269,7 +287,7 @@ class AdaptiveMusicEngine{
   this.playCurrent();
  }
  clearTimer(){if(this.timer)global.clearTimeout(this.timer);this.timer=null;}
- stop(){this.started=false;this.playGeneration++;this.transitioningAudio=false;this.clearTimer();if(this.pendingTimer)global.clearTimeout(this.pendingTimer);this.pendingTimer=null;global.clearTimeout(this.retryTimer);this.retryTimer=null;if(this.fadeTimer)global.clearInterval(this.fadeTimer);this.fadeTimer=null;this.decks.forEach(d=>{d.token++;d.audio.pause();d.audio.volume=0;});this.cueAudio.pause?.();this.cueAudio.volume=0;this.cueBusyUntil=0;}
+ stop(){this.started=false;this.playGeneration++;this.transitioningAudio=false;this.clearTimer();if(this.pendingTimer)global.clearTimeout(this.pendingTimer);this.pendingTimer=null;global.clearTimeout(this.retryTimer);this.retryTimer=null;if(this.fadeTimer)global.clearInterval(this.fadeTimer);this.fadeTimer=null;this.clearCueEnvelope();this.decks.forEach(d=>{d.token++;d.audio.pause();d.audio.volume=0;});this.cueAudio.pause?.();this.cueAudio.volume=0;this.cueBusyUntil=0;}
  diagnostics(){const d=this.active>=0?this.decks[this.active]:null;return{version:VERSION,enabled:this.settings.enabled,unlocked:this.unlocked,started:this.started,context:this.context,priority:this.priority,pending:this.pending,signal:this.signal,sequence:this.sequenceId,index:this.index,track:d?.step?.track?.id||null,segment:d?.step?.segment?.id||null,volume:d?.audio?.volume||0,cue:this.lastCue?{id:this.lastCue.id,file:this.lastCue.file,at:this.lastCue.at,reason:this.lastCue.reason}:null,bac:this.bacSnapshot(),controlMode:this.bacControlMode(),themePersistence:{activityStreak:this.activityStreak,hold:this.themeHold,remainingMs:Math.max(0,this.themeHold.until-Date.now())},activeLibrary:{tracks:Object.keys(ACTIVE_TRACKS),sequences:Object.keys(ACTIVE_SEQUENCES)},selection:this.lastSelection||null,lastTransition:this.lastTransition,lastError:this.lastError};}
  dispose(){this.disposed=true;this.stop();global.removeEventListener?.("pointerdown",this.onUnlock);global.removeEventListener?.("keydown",this.onUnlock);global.removeEventListener?.("bluefox:music-context",this.onContext);global.removeEventListener?.("bluefox:sound-volume",this.onSoundVolume);}
 }

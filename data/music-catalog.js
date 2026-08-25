@@ -11,7 +11,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  var VERSION = "1.3.0";
+  var VERSION = "1.3.1";
 
   var CONTEXTS = Object.freeze({
     EXPLORATION_CALM: "exploration_calm",
@@ -248,7 +248,9 @@
     "collection.mineral":cue("collection.mineral","collection",[
       "audio/music/cues/drift_note_D2_18-3s.mp3",
       "audio/music/cues/relique_C_evolution_35-7s.mp3"
-    ],.72),
+    ],.72,{fileEnvelopes:Object.freeze({
+      "audio/music/cues/drift_note_D2_18-3s.mp3":Object.freeze({fadeOutStartSec:2.35,endSec:2.82})
+    })}),
     "collection.generic":cue("collection.generic","collection",[
       "audio/music/cues/relique_A_descente_intermediaire.mp3"
     ],.68),

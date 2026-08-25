@@ -28,6 +28,19 @@
     const root = source?.userData?.worldAnchor || source?.userData?.worldRoot || source;
     const data = source?.userData || root?.userData || {};
     const definition = data.functional || root?.userData?.functional || {};
+    const acquisitionIntent =
+      detail.acquisitionIntent ??
+      data.acquisitionIntent ??
+      root?.userData?.acquisitionIntent ??
+      null;
+    const acquisitionPhase =
+      detail.acquisitionPhase ??
+      data.acquisitionPhase ??
+      root?.userData?.acquisitionPhase ??
+      null;
+    const normalizedDetail = acquisitionIntent != null || acquisitionPhase != null
+      ? { ...detail, acquisitionIntent, acquisitionPhase }
+      : detail;
     return Object.freeze({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type,
@@ -49,7 +62,7 @@
       progression: Object.freeze(clone(definition.progression || detail.progression || {}) || {}),
       researchDomains: Object.freeze([...(definition.research?.domains || detail.researchDomains || [])]),
       tags: Object.freeze([...(definition.spawn?.tags || []), ...(detail.tags || [])]),
-      detail: Object.freeze(clone(detail) || {})
+      detail: Object.freeze(clone(normalizedDetail) || {})
     });
   };
 
