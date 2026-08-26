@@ -7,7 +7,10 @@
   // ObjectM0 porte désormais la transaction canonique étude(s) -> acquisition
   // et le propriétaire spatial reste WorldEngine. Cette intégration V19 ne
   // demeure qu'en secours pour une distribution ancienne dépourvue d'ObjectM0.
-  if (BF.mount?.__objectM0Wrapped) {
+  const objectM0OwnerAvailable =
+    typeof BF.installObjectM0Bridge === "function" &&
+    typeof BF.resolveObjectInteraction === "function";
+  if (BF.mount?.__objectM0Wrapped || objectM0OwnerAvailable) {
     BF.MissionRuntimeIntegrationV19_7 = Object.freeze({
       active: false,
       mode: "compatibility-fallback",
