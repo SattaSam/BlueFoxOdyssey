@@ -125,12 +125,91 @@
       map.revealRadius = Math.max(0, Number(map.revealRadius) || DEFAULT_REVEAL_RADIUS);
       map.visitedSectors = map.visitedSectors || {};
       map.visitedZones = map.visitedZones || {};
-      map.totalSectors = map.gridSize * map.gridSize;
+      this.syncPlayableGeometry(map);
       return map;
     }
 
+    runtimeWalkableRegions(mapId) {
+      const engine = BF.currentEngine;
+      if (!engine || String(engine.currentMapId || "") !== String(mapId || "")) return null;
+      const source = Array.isArray(engine.currentMap?.__bluefoxSourceWalkableRegions) &&
+        engine.currentMap.__bluefoxSourceWalkableRegions.length
+        ? engine.currentMap.__bluefoxSourceWalkableRegions
+        : engine.currentMap?.walkableRegions;
+      return (Array.isArray(source) ? source : [])
+        .map((region) => ({
+          minX: Number(region?.minX),
+          maxX: Number(region?.maxX),
+          minZ: Number(region?.minZ),
+          maxZ: Number(region?.maxZ)
+        }))
+        .filter((region) => Object.values(region).every(Number.isFinite));
+    }
+
+    explorationGeometry(map) {
+      const regions = this.runtimeWalkableRegions(map.mapId);
+      if (regions == null) {
+        const bounds = Math.max(1, Number(map.bounds) || 27);
+        return { available: false, regions: [], bounds, validKeys: null };
+      }
+      if (!regions.length) {
+        const bounds = Math.max(1, Number(map.bounds) || 27);
+        return { available: true, regions: [], bounds, validKeys: null };
+      }
+      const bounds = Math.max(
+        1,
+        ...regions.flatMap((region) => [
+          Math.abs(region.minX), Math.abs(region.maxX),
+          Math.abs(region.minZ), Math.abs(region.maxZ)
+        ])
+      );
+      const gridSize = Math.max(4, Number(map.gridSize) || DEFAULT_GRID);
+      const cellSize = (bounds * 2) / gridSize;
+      const validKeys = new Set();
+      for (let column = 0; column < gridSize; column += 1) {
+        const x = -bounds + (column + 0.5) * cellSize;
+        for (let row = 0; row < gridSize; row += 1) {
+          const z = -bounds + (row + 0.5) * cellSize;
+          if (regions.some((region) =>
+            x >= region.minX && x <= region.maxX &&
+            z >= region.minZ && z <= region.maxZ
+          )) {
+            validKeys.add(`${column}:${row}`);
+          }
+        }
+      }
+      return { available: true, regions, bounds, validKeys };
+    }
+
+    syncPlayableGeometry(map) {
+      const geometry = this.explorationGeometry(map);
+      if (!geometry.available) {
+        map.totalSectors = Math.max(1, Number(map.totalSectors) || map.gridSize * map.gridSize);
+        map.sectorCount = Math.max(0, Number(map.sectorCount) || Object.keys(map.visitedSectors || {}).length);
+        map.surfacePercent = Math.min(
+          100,
+          Math.max(0, Number(map.surfacePercent) || 0)
+        );
+        return geometry;
+      }
+      if (!geometry.validKeys?.size) {
+        map.totalSectors = map.gridSize * map.gridSize;
+        map.sectorCount = Object.keys(map.visitedSectors || {}).length;
+      } else {
+        map.totalSectors = geometry.validKeys.size;
+        map.sectorCount = Object.keys(map.visitedSectors || {})
+          .filter((key) => geometry.validKeys.has(key)).length;
+      }
+      map.surfacePercent = Math.min(
+        100,
+        Number(((map.sectorCount / Math.max(1, map.totalSectors)) * 100).toFixed(2))
+      );
+      return geometry;
+    }
+
     sectorFor(map, x, z) {
-      const bounds = Math.max(1, Number(map.bounds) || 27);
+      const geometry = this.explorationGeometry(map);
+      const bounds = geometry.bounds;
       const normalizedX = clamp((Number(x) + bounds) / (bounds * 2), 0, 0.999999);
       const normalizedZ = clamp((Number(z) + bounds) / (bounds * 2), 0, 0.999999);
       const column = Math.floor(normalizedX * map.gridSize);
@@ -139,7 +218,8 @@
     }
 
     sectorsWithinRadius(map, x, z, radius = DEFAULT_REVEAL_RADIUS) {
-      const bounds = Math.max(1, Number(map.bounds) || 27);
+      const geometry = this.explorationGeometry(map);
+      const bounds = geometry.bounds;
       const gridSize = Math.max(4, Number(map.gridSize) || DEFAULT_GRID);
       const cellSize = (bounds * 2) / gridSize;
       const safeRadius = Math.max(0, Number(radius) || 0);
@@ -153,11 +233,13 @@
         const cellMaxX = cellMinX + cellSize;
         const nearestX = clamp(x, cellMinX, cellMaxX);
         for (let row = minimumRow; row <= maximumRow; row += 1) {
+          const key = `${column}:${row}`;
+          if (geometry.validKeys && !geometry.validKeys.has(key)) continue;
           const cellMinZ = -bounds + row * cellSize;
           const cellMaxZ = cellMinZ + cellSize;
           const nearestZ = clamp(z, cellMinZ, cellMaxZ);
           if (Math.hypot(x - nearestX, z - nearestZ) <= safeRadius) {
-            sectors.push({ column, row, key: `${column}:${row}` });
+            sectors.push({ column, row, key });
           }
         }
       }
@@ -166,7 +248,8 @@
 
     nextUnexploredTarget(mapId, origin = {}) {
       const map = this.ensureMap(mapId);
-      const bounds = Math.max(1, Number(map.bounds) || 27);
+      const geometry = this.syncPlayableGeometry(map);
+      const bounds = geometry.bounds;
       const cellSize = (bounds * 2) / map.gridSize;
       const originX = Number(origin.x) || 0;
       const originZ = Number(origin.z) || 0;
@@ -174,6 +257,7 @@
       for (let column = 0; column < map.gridSize; column += 1) {
         for (let row = 0; row < map.gridSize; row += 1) {
           const key = `${column}:${row}`;
+          if (geometry.validKeys && !geometry.validKeys.has(key)) continue;
           if (map.visitedSectors[key]) continue;
           const x = -bounds + (column + 0.5) * cellSize;
           const z = -bounds + (row + 0.5) * cellSize;
@@ -224,6 +308,7 @@
 
       map.bounds = Math.max(1, Number(detail.bounds) || map.bounds || 27);
       map.planetId = detail.planetId ?? map.planetId;
+      const geometry = this.syncPlayableGeometry(map);
       const x = Number(detail.x);
       const z = Number(detail.z);
       const sector = this.sectorFor(map, x, z);
@@ -252,8 +337,13 @@
         newlyVisited.forEach((candidate) => {
           map.visitedSectors[candidate.key] = { at: Date.now(), zoneId: detail.zoneId ?? null };
         });
-        map.sectorCount = Object.keys(map.visitedSectors).length;
-        map.surfacePercent = Math.min(100, Number(((map.sectorCount / map.totalSectors) * 100).toFixed(2)));
+        if (geometry.validKeys) {
+          map.sectorCount = Object.keys(map.visitedSectors)
+            .filter((key) => geometry.validKeys.has(key)).length;
+        } else {
+          map.sectorCount = Object.keys(map.visitedSectors).length;
+        }
+        map.surfacePercent = Math.min(100, Number(((map.sectorCount / Math.max(1, map.totalSectors)) * 100).toFixed(2)));
         changed = true;
       }
       if (previousPlanetId !== map.planetId ||
@@ -314,6 +404,7 @@
 
     getSummary() {
       const maps = Object.values(this.state.maps);
+      maps.forEach((map) => this.syncPlayableGeometry(map));
       return {
         mapCount: maps.length,
         exploredMaps: maps.filter((map) => map.surfacePercent > 0).length,
