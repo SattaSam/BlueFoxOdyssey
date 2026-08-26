@@ -308,11 +308,76 @@
       }
     }
 
+    primaryEventDrivenTravel() {
+      if (!this.primaryMissionId) return null;
+      const tree = this.trees.get(this.primaryMissionId);
+      const lifecycle = this.memory.state.missionLifecycle?.[this.primaryMissionId];
+      if (!tree || lifecycle?.status !== "active") return null;
+      const node = tree.availableLeaves().find((candidate) =>
+        !candidate.isComplete &&
+        candidate.params?.eventDriven === true &&
+        Missions.normalizeActionType(candidate.type) === Missions.ActionType.TRAVEL
+      );
+      if (!node) return null;
+      return { missionId: this.primaryMissionId, mission: this.definition(this.primaryMissionId), node };
+    }
+
+    isMissionExclusiveToCurrentMap(missionId) {
+      const definition = this.definition(missionId) || {};
+      if (definition.instanceScope !== "map") return false;
+      const currentMapId = String(this.engine?.currentMapId || "");
+      if (!currentMapId) return false;
+      const separator = String(missionId || "").indexOf("@");
+      const scopedMapId = separator >= 0
+        ? String(missionId).slice(separator + 1)
+        : String(definition.scopeId || definition.targetMapId || "");
+      return scopedMapId === currentMapId;
+    }
+
+    shouldDeferMissionReturn(missionId, context = this.bridge.context(), now = Date.now()) {
+      const definition = this.definition(missionId) || {};
+      const policy = definition.returnPolicy || {};
+      if (policy.mode !== "bac-discretion" || policy.deferForCurrentMapExclusiveMissions !== true) return false;
+      const runnableLocal = this.activeMissionIds
+        .filter((id) => id !== missionId)
+        .filter((id) => this.ensureLifecycle(id).status === "active")
+        .filter((id) => this.isMissionExclusiveToCurrentMap(id))
+        .some((id) => {
+          const tree = this.trees.get(id);
+          return Boolean(tree && !tree.root.isComplete && this.planner.nextAction(tree, context));
+        });
+      const key = `missionReturnDeferral:${missionId}`;
+      const previous = this.memory.getFact?.(key, null) || null;
+      if (!runnableLocal) {
+        if (previous) { this.memory.setFact?.(key, null); this.memory.save?.(); }
+        return false;
+      }
+      const startedAt = Number(previous?.startedAt) || now;
+      if (!previous) {
+        this.memory.setFact?.(key, { startedAt, mapId: this.engine?.currentMapId || null });
+        this.memory.save?.();
+      }
+      const maxDeferMs = Math.max(0, Number(policy.maxDeferMs) || 45000);
+      return now - startedAt < maxDeferMs;
+    }
+
+    travelAllowsSecondaryMission(missionId, context) {
+      const travel = this.primaryEventDrivenTravel();
+      if (!travel || missionId === travel.missionId) return true;
+      const policy = travel.mission?.returnPolicy || {};
+      if (policy.mode !== "bac-discretion") return true;
+      if (!this.isMissionExclusiveToCurrentMap(missionId)) return false;
+      return this.shouldDeferMissionReturn(travel.missionId, context);
+    }
+
     assessMission(missionId, context) {
       const tree = this.trees.get(missionId);
       const definition = this.definition(missionId);
       const lifecycle = this.ensureLifecycle(missionId, "active");
-      const action = tree?.root.isComplete ? null : this.planner.nextAction(tree, context);
+      let action = tree?.root.isComplete ? null : this.planner.nextAction(tree, context);
+      if (action && missionId !== this.primaryMissionId && !this.travelAllowsSecondaryMission(missionId, context)) {
+        action = null;
+      }
       const progress = tree ? this.treeProgress(tree) : 0;
       let score = Number(definition?.priority) || 0;
       const reasons = [];

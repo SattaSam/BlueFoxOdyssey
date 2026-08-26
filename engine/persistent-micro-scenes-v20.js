@@ -180,6 +180,53 @@
     return candidate?.point || null;
   };
 
+  const missionFallbackCandidates = (built, definition, preferred = null) => {
+    const regions = (built.walkableRegions || []).filter((region) =>
+      Number(region.maxX) - Number(region.minX) >= 4 &&
+      Number(region.maxZ) - Number(region.minZ) >= 4
+    );
+    const candidates = [];
+    if (preferred) candidates.push({ point: preferred, preferred: true });
+    regions.forEach((region) => {
+      const cx = (Number(region.minX) + Number(region.maxX)) / 2;
+      const cz = (Number(region.minZ) + Number(region.maxZ)) / 2;
+      const dx = Math.max(0, (Number(region.maxX) - Number(region.minX)) * 0.22);
+      const dz = Math.max(0, (Number(region.maxZ) - Number(region.minZ)) * 0.22);
+      [
+        [0, 0], [dx, 0], [-dx, 0], [0, dz], [0, -dz],
+        [dx, dz], [-dx, dz], [dx, -dz], [-dx, -dz]
+      ].forEach(([ox, oz]) => candidates.push({
+        region,
+        point: { x: cx + ox, y: 0, z: cz + oz }
+      }));
+    });
+    return candidates;
+  };
+
+  const findMissionFallbackAnchor = (built, definition, preferred = null) => {
+    const regions = built.walkableRegions || [];
+    if (!regions.length) return null;
+    const candidates = missionFallbackCandidates(built, definition, preferred);
+
+    const withColliderClearance = candidates.find(({ point }) =>
+      regions.some((region) => pointInside(region, point, 2)) &&
+      clearOfReserved(definition, point, 2) &&
+      clearOfColliders(built, point, 2)
+    );
+    if (withColliderClearance) {
+      const point = withColliderClearance.point;
+      return { x: Number(point.x) || 0, y: Number(point.y) || 0, z: Number(point.z) || 0 };
+    }
+
+    const walkableOnly = candidates.find(({ point }) =>
+      regions.some((region) => pointInside(region, point, 1.5)) &&
+      clearOfReserved(definition, point, 1)
+    );
+    if (!walkableOnly) return null;
+    const point = walkableOnly.point;
+    return { x: Number(point.x) || 0, y: Number(point.y) || 0, z: Number(point.z) || 0 };
+  };
+
   const alreadySpawned = (built, id) =>
     Boolean(built?.group?.getObjectByProperty?.("name", `PersistentMicroScene:${id}`));
 
@@ -199,13 +246,24 @@
 
     const radius = Math.max(1, Number(template.radius) || Number(record.radius) || 7);
     const preferred = record.anchor || null;
-    const anchor = record.fixedAnchor === true
+    let anchor = record.fixedAnchor === true
       ? preferred && {
           x: Number(preferred.x) || 0,
           y: Number(preferred.y) || 0,
           z: Number(preferred.z) || 0
         }
       : findSafeAnchor(built, definition, radius, preferred);
+
+    if (!anchor && record.missionId && record.fixedAnchor !== true) {
+      anchor = findMissionFallbackAnchor(built, definition, preferred);
+      if (anchor) {
+        console.warn("[BlueFox] Placement de secours utilisé pour une micro-scène missionnelle persistante.", {
+          mapId: definition.id,
+          missionId: record.missionId,
+          microSceneId: record.microSceneId
+        });
+      }
+    }
 
     if (!anchor) {
       console.warn("[BlueFox] Aucun emplacement sûr pour la micro-scène persistante.", {

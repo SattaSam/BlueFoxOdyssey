@@ -906,52 +906,88 @@
     })
   });
 
-  /*
-   * Bible Catalog — BASE PROPRE.
-   *
-   * Les anciennes missions de preuve restent retirées du runtime.
-   * La première fiche réintroduite ci-dessous correspond au chantier
-   * tutoriel des rations. Son déclencheur reste manuel jusqu'au raccord
-   * complet de la chaîne tutorielle ; sa recette est déjà canonique ici.
-   */
-  const rationDiscovery = Object.freeze({
-    id: "BIBLE-TUTORIAL-RATION-DISCOVERY",
-    title: "Comprendre les rations",
+  const T11 = Object.freeze({
+    id: "T11",
+    title: "Comprendre comment préparer une ration",
     description:
-      "BlueFox revient au camp avec les plantes nécessaires, confirme qu'elles sont comestibles et comprend comment préparer des rations.",
-    pattern: "COLLECT_THEN_REWARD",
-    trigger: Object.freeze({ type: "manual" }),
-    priority: 80,
-    passivePriorityAxis: "survival",
-    slots: Object.freeze({
-      collect: Object.freeze({
-        title: "Réunir les plantes nécessaires",
-        requirements: Object.freeze([
-          Object.freeze({
-            title: "Fibres végétales",
-            target: 2,
-            params: Object.freeze({
-              kind: "fiber"
-            })
-          }),
-          Object.freeze({
-            title: "Biomasse adaptative",
-            target: 1,
-            params: Object.freeze({
-              kind: "adaptive_biomass"
-            })
-          })
-        ])
-      })
+      "Réunir des fibres végétales et de la biomasse adaptative, puis revenir au Site du crash pour préparer une première ration.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T10",
+      count: 1
     }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T10"]),
+    priority: 390,
+    autoPrimaryEligible: true,
+    primaryOnActivation: true,
+    passivePriorityAxis: "survival",
+    navigation: Object.freeze({
+      autonomousKnownReturn: true
+    }),
+    returnPolicy: Object.freeze({
+      mode: "bac-discretion",
+      deferForCurrentMapExclusiveMissions: true,
+      maxDeferMs: 45000
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "fibers",
+        title: "Réunir 2 fibres végétales",
+        action: "collect",
+        target: 2,
+        requires: Object.freeze([]),
+        params: Object.freeze({ kind: "fiber" })
+      }),
+      Object.freeze({
+        slot: "adaptiveBiomass",
+        title: "Réunir 1 biomasse adaptative",
+        action: "collect",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ kind: "adaptive_biomass" })
+      }),
+      Object.freeze({
+        slot: "returnHome",
+        title: "Revenir au Site du crash",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["fibers", "adaptiveBiomass"]),
+        params: Object.freeze({
+          eventDriven: true,
+          toMapId: "crystal",
+          distinctBy: "transition"
+        })
+      })
+    ]),
     completionGate: Object.freeze({
       type: "proximity.shelter",
+      mapId: "crystal",
       shelterKinds: Object.freeze(["camp", "refuge", "base"]),
-      radius: 8
+      radius: 8,
+      scope: "any-established"
     }),
     narrative: Object.freeze({
       revealed: Object.freeze([
-        "Ces plantes pourraient peut-être servir à autre chose qu'à renforcer l'abri. Je veux les examiner au calme, près du camp."
+        "Ces plantes pourraient peut-être servir à autre chose qu'à renforcer l'abri. Je vais réunir ce qu'il faut, puis revenir au Site du crash pour essayer."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "fibers",
+          atCount: 2,
+          text: "J'ai assez de fibres. Il me faut encore la biomasse adaptative si je ne l'ai pas déjà trouvée."
+        }),
+        Object.freeze({
+          slot: "adaptiveBiomass",
+          atCount: 1,
+          text: "J'ai la biomasse. Dès que mes collectes sont terminées, je peux rentrer au Site du crash."
+        }),
+        Object.freeze({
+          slot: "returnHome",
+          atCount: 1,
+          text: "Je reconnais le territoire du crash. Il ne me reste qu'à rejoindre l'abri pour préparer ça correctement."
+        })
       ]),
       completed: Object.freeze([
         "Ça fonctionne. C'est comestible, compact, et je peux le conserver. Je sais maintenant préparer des rations."
@@ -966,24 +1002,17 @@
         description:
           "Une ration simple préparée à partir de fibres végétales et de biomasse adaptative.",
         requirements: Object.freeze([
-          Object.freeze({
-            inventoryKey: "fiber",
-            quantity: 2
-          }),
-          Object.freeze({
-            inventoryKey: "adaptive_biomass",
-            quantity: 1
-          })
+          Object.freeze({ inventoryKey: "fiber", quantity: 2 }),
+          Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 1 })
         ]),
-        output: Object.freeze({
-          objectId: "ration",
-          quantity: 1
-        }),
-        autoCraft: true,
+        output: Object.freeze({ objectId: "ration", quantity: 1 }),
+        autoCraft: false,
         requiresShelter: true
       })
     ])
   });
+
+
 
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
@@ -1070,7 +1099,7 @@
     T10,
     LOC05,
     LOC06,
-    rationDiscovery
+    T11
   ]);
 
   BF.BibleRuntimeReference = Object.freeze({

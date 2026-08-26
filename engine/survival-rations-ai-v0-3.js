@@ -573,21 +573,7 @@
     }
 
     if (survival?.state) {
-      let guard = 0;
-      while (
-        survival.state.food < 65 &&
-        rationCount() > 0 &&
-        guard < 4
-      ) {
-        survival.completeRoutine?.(
-          "food",
-          {
-            offline: true,
-            automatic: true
-          }
-        );
-        guard += 1;
-      }
+      // Consommation automatique suspendue jusqu’au futur jalon T12.
       survival.save?.();
     }
   };

@@ -95,6 +95,8 @@
   };
 
   const consume = (count = 1, options = {}) => {
+    if (options.automatic === true) return 0;
+
     const requested = Math.max(
       1,
       Math.floor(Number(count) || 1)
