@@ -2224,8 +2224,72 @@
     document.head.appendChild(style);
   }
 
+  const menuPanelIdentity = (panel) => String(
+    panel?.getAttribute?.("aria-label") ||
+    panel?.querySelector?.("h2")?.textContent ||
+    ""
+  ).trim().toLocaleLowerCase("fr");
+
+  const isResearchPanel = (panel) => {
+    const identity = menuPanelIdentity(panel);
+    return (
+      identity.includes("recherche") ||
+      identity.includes("laboratoire") ||
+      Boolean(panel?.querySelector?.(".research-layout"))
+    );
+  };
+
+  const isInventoryPanel = (panel) =>
+    menuPanelIdentity(panel).includes("inventaire");
+
+  function bindResearchInventoryExclusivity() {
+    document.querySelectorAll(
+      ".tool-rail button:not([data-bluefox-research-inventory-exclusive])"
+    ).forEach((button) => {
+      const label = String(
+        button.querySelector("small")?.textContent ||
+        button.getAttribute("aria-label") ||
+        button.title ||
+        ""
+      ).trim().toLocaleLowerCase("fr");
+      const opensResearch =
+        label.includes("recherche") || label.includes("laboratoire");
+      const opensInventory = label.includes("inventaire");
+      if (!opensResearch && !opensInventory) return;
+      if (button.dataset.bluefoxResearchInventoryExclusive) return;
+      button.dataset.bluefoxResearchInventoryExclusive = "true";
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".drawer, .full-screen-panel").forEach((panel) => {
+          const competing = opensResearch
+            ? isInventoryPanel(panel)
+            : isResearchPanel(panel);
+          if (competing) panel.querySelector(".drawer-close")?.click();
+        });
+      }, true);
+    });
+  }
+
+  let researchRefreshPending = true;
+
+  function requestResearchRefresh() {
+    researchRefreshPending = true;
+    scheduleScan();
+  }
+
+  function refreshResearchPanels(force = false) {
+    const panels = [...document.querySelectorAll(".drawer, .full-screen-panel")]
+      .filter(isResearchPanel);
+    if (!panels.length) return;
+    const needsInitialRender = panels.some((panel) =>
+      !panel.querySelector(".bluefox-research-runtime")
+    );
+    if (!force && !researchRefreshPending && !needsInitialRender) return;
+    researchRefreshPending = false;
+    panels.forEach(enhanceResearch);
+  }
+
   function enhanceResearch(panel) {
-    if (!panel?.textContent?.includes("Laboratoire de BlueFox")) return;
+    if (!isResearchPanel(panel)) return;
     const research = global.BlueFox3D?.Research;
     if (!research?.list) return;
     const mapId = currentMapId(panel);
@@ -2235,10 +2299,17 @@
       entry.id,
       research.constructionState?.(entry.constructionKind, mapId) || null
     ]);
+    const craftStates = entries
+      .filter((entry) => entry.type !== "research.blueprint")
+      .map((entry) => [
+        entry.id,
+        research.canCraft?.(entry.id, 1) === true
+      ]);
     const signature = JSON.stringify({
       mapId,
       entries: entries.map((entry) => entry.id),
-      states: states.map(([id, state]) => [id, state?.allowed, state?.active, state?.completed, state?.reason])
+      states: states.map(([id, state]) => [id, state?.allowed, state?.active, state?.completed, state?.reason]),
+      craftStates
     });
     let section = panel.querySelector(".bluefox-research-runtime");
     if (!section) {
@@ -2281,7 +2352,7 @@
           );
           if (!missionId) return;
           panel.querySelector(".drawer-close")?.click();
-          scheduleScan();
+          requestResearchRefresh();
         });
       } else {
         const requirements = (entry.requirements || [])
@@ -2292,7 +2363,7 @@
         button.disabled = research.canCraft?.(entry.id, 1) !== true;
         button.addEventListener("click", () => {
           research.craft?.(entry.id, 1, { source: "research-menu" });
-          scheduleScan();
+          requestResearchRefresh();
         });
       }
       card.append(title, description, status, button);
@@ -2410,6 +2481,7 @@
 
   function scan() {
     regulateSpeechBubbles();
+    bindResearchInventoryExclusivity();
     const activeMap = global.BlueFox3D?.currentEngine?.currentMapId;
     const activeDefinition = global.BlueFox3D?.maps?.[activeMap];
     const location = document.querySelector(".brand-block strong");
@@ -2436,8 +2508,8 @@
     document.querySelectorAll(".full-screen-panel").forEach((panel) => {
       if (panel.querySelector(".planet-layout")) enhancePlanet(panel);
       if (panel.querySelector(".journal-layout")) enhanceJournal(panel);
-      if (panel.textContent?.includes("Laboratoire de BlueFox")) enhanceResearch(panel);
     });
+    refreshResearchPanels();
   }
 
   let scanFrame = 0;
@@ -2455,16 +2527,30 @@
     characterData: true,
     subtree: true
   });
-  global.addEventListener("bluefox:map-state", scheduleScan);
+  global.addEventListener("bluefox:map-state", () => {
+    researchRefreshPending = true;
+    scheduleScan();
+  });
   global.addEventListener("bluefox:scene-images", refreshSceneImages);
   global.addEventListener("bluefox:image-catalog", scheduleScan);
   global.addEventListener("bluefox:discovery-changed", scheduleScan);
   global.addEventListener("bluefox:zone-discovery-changed", scheduleScan);
-  global.addEventListener("bluefox:research-unlocked", scheduleScan);
-  global.addEventListener("bluefox:construction-mission-started", scheduleScan);
-  global.addEventListener("bluefox:site-established", scheduleScan);
-  global.addEventListener("bluefox:mission-state", scheduleScan);
-  window.setInterval(scheduleScan, 350);
+  global.addEventListener("bluefox:research-unlocked", requestResearchRefresh);
+  global.addEventListener("bluefox:progression-changed", requestResearchRefresh);
+  global.addEventListener("bluefox:construction-mission-started", () => {
+    researchRefreshPending = true;
+    scheduleScan();
+  });
+  global.addEventListener("bluefox:site-established", () => {
+    researchRefreshPending = true;
+    scheduleScan();
+  });
+  global.addEventListener("bluefox:mission-state", () => {
+    researchRefreshPending = true;
+    scheduleScan();
+  });
+  // Filet de sécurité uniquement : les changements normaux restent événementiels.
+  window.setInterval(scheduleScan, 1200);
   scan();
 
   function closeSitePlacementFinalize(missionId = null, notifyCancel = false) {

@@ -44,9 +44,36 @@
   const currentMapId = () => BF.currentEngine?.currentMapId || null;
   const currentSite = () => {
     const mapId = currentMapId();
-    return mapId
-      ? BF.currentEngine?.missionManager?.memory?.state?.siteProgression?.[mapId]
-      : null;
+    if (!mapId) return null;
+    const sites =
+      BF.currentEngine?.missionManager?.memory?.state?.siteProgression || {};
+
+    // Compatibilité avec le site primaire historique indexé directement par map.
+    if (sites[mapId]) return sites[mapId];
+
+    // Les constructions persistantes récentes sont stockées par instanceId
+    // et portent leur map d'appartenance dans site.mapId.
+    const candidates = Object.values(sites)
+      .filter((site) =>
+        site &&
+        String(site.mapId || "") === String(mapId) &&
+        site.persistent !== false &&
+        (
+          ["camp", "refuge", "base"].includes(
+            String(site.kind || "").toLocaleLowerCase("fr")
+          ) ||
+          /camp|refuge|base/i.test(
+            `${site.microSceneId || ""} ${site.missionId || ""} ${site.id || ""}`
+          )
+        )
+      )
+      .sort((left, right) =>
+        (Number(right.stage) || 0) - (Number(left.stage) || 0) ||
+        (Number(right.establishedAt || right.createdAt) || 0) -
+          (Number(left.establishedAt || left.createdAt) || 0)
+      );
+
+    return candidates[0] || null;
   };
 
   // Source de vérité UI : un stage mémorisé n'est PAS suffisant.
@@ -57,7 +84,9 @@
     const group = map?.group;
     if (!group) return null;
     const site = currentSite();
+    if (!site) return null;
     let found = null;
+    let fallback = null;
 
     group.traverse?.((node) => {
       if (found || !node) return;
@@ -71,25 +100,51 @@
       const microSceneId = String(data.microSceneId || "");
       const persistentId = String(data.persistentMicroSceneId || "");
 
+      const exactSiteRoot =
+        Boolean(site.id) &&
+        name === `BlueFoxSite:${String(site.id)}`;
+
       const belongsToCurrentSite =
         Boolean(site?.missionId) &&
         missionId === String(site.missionId);
+
+      const matchesCurrentMicroScene =
+        Boolean(site?.microSceneId) &&
+        microSceneId === String(site.microSceneId);
+
+      if (
+        exactSiteRoot ||
+        (belongsToCurrentSite && matchesCurrentMicroScene)
+      ) {
+        found = node;
+        return;
+      }
+
+      const currentMicroSceneRoot =
+        matchesCurrentMicroScene &&
+        name === `MSCInstance:${String(site.microSceneId)}`;
 
       const looksLikeBuiltSite =
         /camp|refuge|base/i.test(
           `${name} ${microSceneId} ${persistentId}`
         );
 
-      const persistent =
+      const legacyPersistent =
         data.persistent === true ||
         Boolean(persistentId) ||
         name.startsWith("PersistentMicroScene:");
 
-      if (persistent && (belongsToCurrentSite || looksLikeBuiltSite)) {
-        found = node;
+      if (
+        !fallback &&
+        (
+          currentMicroSceneRoot ||
+          (legacyPersistent && (belongsToCurrentSite || looksLikeBuiltSite))
+        )
+      ) {
+        fallback = node;
       }
     });
-    return found;
+    return found || fallback;
   };
 
   const campExistsInScene = () =>

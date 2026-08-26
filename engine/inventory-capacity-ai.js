@@ -56,10 +56,31 @@
   const currentSite = () => {
     const engine = BF.currentEngine;
     const mapId = engine?.currentMapId;
-    return mapId
-      ? engine?.missionManager?.memory?.state
-          ?.siteProgression?.[mapId]
-      : null;
+    if (!mapId) return null;
+    const sites =
+      engine?.missionManager?.memory?.state?.siteProgression || {};
+
+    if (sites[mapId]) return sites[mapId];
+
+    return Object.values(sites)
+      .filter((site) =>
+        site &&
+        String(site.mapId || "") === String(mapId) &&
+        site.persistent !== false &&
+        (
+          ["camp", "refuge", "base"].includes(
+            String(site.kind || "").toLocaleLowerCase("fr")
+          ) ||
+          /camp|refuge|base/i.test(
+            `${site.microSceneId || ""} ${site.missionId || ""} ${site.id || ""}`
+          )
+        )
+      )
+      .sort((left, right) =>
+        (Number(right.stage) || 0) - (Number(left.stage) || 0) ||
+        (Number(right.establishedAt || right.createdAt) || 0) -
+          (Number(left.establishedAt || left.createdAt) || 0)
+      )[0] || null;
   };
 
   const moveToLocalCamp = () => {
