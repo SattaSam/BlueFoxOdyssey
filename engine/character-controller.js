@@ -82,6 +82,8 @@
     static withoutRootMotion(sourceClips) {
       return sourceClips.map((source) => {
         const clip = source.clone();
+        const preserveHarvestLightVertical =
+          /harvest[_\s-]*(light|small)|harvers[_\s-]*samall/i.test(clip.name);
         clip.tracks.forEach((track) => {
           if (!/(^|[./\[])Root\]?\.position$/i.test(track.name)) return;
           const size = track.getValueSize();
@@ -89,10 +91,16 @@
           const anchor = Array.from(track.values.slice(0, size));
           for (let index = 0; index < track.values.length; index += size) {
             track.values[index] = anchor[0];
-            track.values[index + 1] = anchor[1];
+            if (!preserveHarvestLightVertical) {
+              track.values[index + 1] = anchor[1];
+            }
             track.values[index + 2] = anchor[2];
           }
-          track.userData = { ...(track.userData || {}), bluefoxRootMotionRemoved: true };
+          track.userData = {
+            ...(track.userData || {}),
+            bluefoxRootMotionRemoved: true,
+            bluefoxVerticalRootMotionPreserved: preserveHarvestLightVertical
+          };
         });
         return clip;
       });
