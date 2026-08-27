@@ -18,10 +18,36 @@
 
 .inventory-transfer-grid {
   padding: 0 10px 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .inventory-transfer-grid article {
+  min-width: 0;
+  padding: 8px 4px;
+  border-radius: 10px;
   cursor: grab;
+}
+
+.inventory-transfer-grid article > span {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.inventory-transfer-grid article > b {
+  margin: 2px;
+  font-size: 14px;
+}
+
+.inventory-transfer-grid article > small {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.inventory-transfer-grid .inventory-empty-state {
+  grid-column: 1 / -1;
 }
 
 .inventory-transfer-grid article:active {
@@ -112,6 +138,24 @@
 
 @media (max-width: 650px) {
   .inventory-transfer-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    padding-inline: 6px;
+  }
+
+  .inventory-transfer-grid article {
+    padding: 7px 2px;
+  }
+
+  .inventory-transfer-grid article > span {
+    font-size: 18px;
+  }
+
+  .inventory-transfer-grid article > b {
+    font-size: 13px;
+  }
+
+  .inventory-transfer-grid article > small {
+    font-size: 9px;
   }
 }

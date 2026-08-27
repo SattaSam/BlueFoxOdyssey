@@ -2211,15 +2211,19 @@
     const style = document.createElement("style");
     style.id = "bluefox-research-enhancement-styles";
     style.textContent = `
-      .bluefox-research-runtime { margin: 18px 0; padding: 16px; border: 1px solid rgba(92,220,255,.28); border-radius: 14px; background: rgba(4,22,38,.76); }
-      .bluefox-research-runtime > span { display:block; margin-bottom:10px; color:#77dff7; font-size:10px; font-weight:800; letter-spacing:.12em; }
-      .bluefox-research-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
-      .bluefox-research-card { display:flex; flex-direction:column; gap:7px; min-height:145px; padding:12px; border:1px solid rgba(124,226,255,.2); border-radius:11px; background:rgba(4,18,32,.72); }
-      .bluefox-research-card h3 { margin:0; font-size:14px; }
-      .bluefox-research-card p { margin:0; color:rgba(225,242,246,.78); font-size:11px; line-height:1.35; }
-      .bluefox-research-card small { color:rgba(180,220,228,.7); font-size:10px; }
-      .bluefox-research-card button { margin-top:auto; padding:8px 10px; border:1px solid rgba(96,224,255,.45); border-radius:999px; color:#eafcff; background:rgba(12,64,82,.82); cursor:pointer; }
+      .bluefox-research-runtime { margin:12px 0; padding:10px; border:1px solid rgba(92,220,255,.28); border-radius:12px; background:rgba(4,22,38,.76); }
+      .bluefox-research-runtime > span { display:block; margin-bottom:8px; color:#77dff7; font-size:9px; font-weight:800; letter-spacing:.1em; }
+      .bluefox-research-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+      .bluefox-research-card { grid-column:span 2; display:flex; min-width:0; min-height:108px; flex-direction:column; gap:5px; padding:9px; border:1px solid rgba(124,226,255,.2); border-radius:10px; background:rgba(4,18,32,.72); }
+      .bluefox-research-card h3 { margin:0; overflow-wrap:anywhere; font-size:12px; line-height:1.2; }
+      .bluefox-research-card p { margin:0; overflow-wrap:anywhere; color:rgba(225,242,246,.78); font-size:10px; line-height:1.25; }
+      .bluefox-research-card small { overflow-wrap:anywhere; color:rgba(180,220,228,.7); font-size:9px; line-height:1.2; }
+      .bluefox-research-card button { margin-top:auto; padding:6px 8px; border:1px solid rgba(96,224,255,.45); border-radius:999px; color:#eafcff; background:rgba(12,64,82,.82); font-size:10px; cursor:pointer; }
       .bluefox-research-card button:disabled { opacity:.42; cursor:not-allowed; filter:grayscale(.4); }
+      @media (max-width:650px) {
+        .bluefox-research-grid { gap:5px; }
+        .bluefox-research-card { min-height:100px; padding:7px 6px; }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -2238,36 +2242,6 @@
       Boolean(panel?.querySelector?.(".research-layout"))
     );
   };
-
-  const isInventoryPanel = (panel) =>
-    menuPanelIdentity(panel).includes("inventaire");
-
-  function bindResearchInventoryExclusivity() {
-    document.querySelectorAll(
-      ".tool-rail button:not([data-bluefox-research-inventory-exclusive])"
-    ).forEach((button) => {
-      const label = String(
-        button.querySelector("small")?.textContent ||
-        button.getAttribute("aria-label") ||
-        button.title ||
-        ""
-      ).trim().toLocaleLowerCase("fr");
-      const opensResearch =
-        label.includes("recherche") || label.includes("laboratoire");
-      const opensInventory = label.includes("inventaire");
-      if (!opensResearch && !opensInventory) return;
-      if (button.dataset.bluefoxResearchInventoryExclusive) return;
-      button.dataset.bluefoxResearchInventoryExclusive = "true";
-      button.addEventListener("click", () => {
-        document.querySelectorAll(".drawer, .full-screen-panel").forEach((panel) => {
-          const competing = opensResearch
-            ? isInventoryPanel(panel)
-            : isResearchPanel(panel);
-          if (competing) panel.querySelector(".drawer-close")?.click();
-        });
-      }, true);
-    });
-  }
 
   let researchRefreshPending = true;
 
@@ -2312,6 +2286,10 @@
       craftStates
     });
     let section = panel.querySelector(".bluefox-research-runtime");
+    if (!entries.length) {
+      section?.remove();
+      return;
+    }
     if (!section) {
       section = document.createElement("section");
       section.className = "bluefox-research-runtime";
@@ -2342,7 +2320,7 @@
 
       if (entry.type === "research.blueprint") {
         const state = research.constructionState?.(entry.constructionKind, mapId);
-        status.textContent = state?.reason || "État indisponible.";
+        status.hidden = true;
         button.textContent = entry.label || "Lancer le projet";
         button.disabled = state?.allowed !== true;
         button.addEventListener("click", () => {
@@ -2358,7 +2336,8 @@
         const requirements = (entry.requirements || [])
           .map((item) => `${item.quantity || 0} ${item.inventoryKey || item.resource || "ressource"}`)
           .join(" · ");
-        status.textContent = requirements || "Recette disponible.";
+        status.textContent = requirements;
+        status.hidden = !requirements;
         button.textContent = "Fabriquer";
         button.disabled = research.canCraft?.(entry.id, 1) !== true;
         button.addEventListener("click", () => {
@@ -2370,11 +2349,6 @@
       grid.appendChild(card);
     });
 
-    if (!entries.length) {
-      const empty = document.createElement("p");
-      empty.textContent = "Aucun plan ou recette débloqué pour le moment.";
-      section.appendChild(empty);
-    }
   }
 
   const speechBubbleTimers = new WeakMap();
@@ -2481,7 +2455,6 @@
 
   function scan() {
     regulateSpeechBubbles();
-    bindResearchInventoryExclusivity();
     const activeMap = global.BlueFox3D?.currentEngine?.currentMapId;
     const activeDefinition = global.BlueFox3D?.maps?.[activeMap];
     const location = document.querySelector(".brand-block strong");
@@ -2549,8 +2522,6 @@
     researchRefreshPending = true;
     scheduleScan();
   });
-  // Filet de sécurité uniquement : les changements normaux restent événementiels.
-  window.setInterval(scheduleScan, 1200);
   scan();
 
   function closeSitePlacementFinalize(missionId = null, notifyCancel = false) {
