@@ -728,7 +728,7 @@
   const T10 = Object.freeze({
     id: "T10",
     title: "Comparer les ressources d’un territoire plus vaste",
-    description: "Rejoindre un territoire de six plateaux, en explorer au moins 15 % puis comparer trois familles de ressources distinctes.",
+    description: "Poursuivre l’étude sur le territoire de quatre plateaux atteint pendant T09, en explorer au moins 15 % puis comparer trois familles de ressources distinctes.",
     pattern: "SEQUENCE_ACTIONS",
     trigger: Object.freeze({
       type: "progression.mission_completed",
@@ -741,33 +741,18 @@
     autoPrimaryEligible: true,
     primaryOnActivation: true,
     passivePriorityAxis: "exploration",
-    navigation: Object.freeze({
-      autonomousUnknownTravel: true,
-      singleUnknownTransition: true
-    }),
     sequence: Object.freeze([
-      Object.freeze({
-        slot: "reachSixPlateauMap",
-        title: "Rejoindre un territoire plus vaste",
-        action: "travel",
-        target: 1,
-        params: Object.freeze({
-          eventDriven: true,
-          toDiscoveryIndex: 3,
-          distinctBy: "mapId"
-        })
-      }),
       Object.freeze({
         slot: "surface",
         title: "Explorer 15 % du territoire",
         action: "explore-zone",
         target: 15,
-        requires: Object.freeze(["reachSixPlateauMap"]),
+        requires: Object.freeze([]),
         params: Object.freeze({
           scope: "map",
           metric: "surfacePercent",
           threshold: 15,
-          requiredMapFact: "tutorialExcursion:T10",
+          requiredMapFact: "tutorialExcursion:T09",
           requiredMapField: "generatedTargetMapId"
         })
       }),
@@ -776,23 +761,16 @@
         title: "Observer 3 familles de ressources distinctes",
         action: "observe",
         target: 3,
-        requires: Object.freeze(["reachSixPlateauMap"]),
+        requires: Object.freeze([]),
         params: Object.freeze({
           tagsAny: Object.freeze(["resource"]),
           excludeCuoTypes: Object.freeze(["tree_fallen"]),
           distinctBy: "family",
-          requiredMapFact: "tutorialExcursion:T10",
+          requiredMapFact: "tutorialExcursion:T09",
           requiredMapField: "generatedTargetMapId"
         })
       })
     ]),
-    mapGeneration: Object.freeze({
-      size: 6,
-      compatibleBiomes: Object.freeze([
-        "forest",
-        "aquatic"
-      ])
-    }),
     narrative: Object.freeze({
       revealed: Object.freeze([
         "Deux plantes connues dans une nouvelle zone, c’est un indice. Pour savoir si cette répétition concerne toute la planète, je dois comparer un territoire plus vaste."
@@ -910,7 +888,7 @@
     id: "T11",
     title: "Comprendre comment préparer une ration",
     description:
-      "Réunir des fibres végétales et de la biomasse adaptative, puis revenir au Site du crash pour préparer une première ration.",
+      "Rejoindre la prochaine grande map tutorielle de six plateaux, y réunir des fibres végétales et de la biomasse adaptative, puis revenir au Site du crash pour préparer une première ration.",
     pattern: "SEQUENCE_ACTIONS",
     trigger: Object.freeze({
       type: "progression.mission_completed",
@@ -924,6 +902,8 @@
     primaryOnActivation: true,
     passivePriorityAxis: "survival",
     navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true,
       autonomousKnownReturn: true
     }),
     returnPolicy: Object.freeze({
@@ -933,20 +913,40 @@
     }),
     sequence: Object.freeze([
       Object.freeze({
+        slot: "reachSixPlateauMap",
+        title: "Rejoindre la prochaine grande map tutorielle",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          toDiscoveryIndex: 3,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
         slot: "fibers",
         title: "Réunir 2 fibres végétales",
         action: "collect",
         target: 2,
-        requires: Object.freeze([]),
-        params: Object.freeze({ kind: "fiber" })
+        requires: Object.freeze(["reachSixPlateauMap"]),
+        params: Object.freeze({
+          kind: "fiber",
+          requiredMapFact: "tutorialExcursion:T11",
+          requiredMapField: "generatedTargetMapId"
+        })
       }),
       Object.freeze({
         slot: "adaptiveBiomass",
         title: "Réunir 1 biomasse adaptative",
         action: "collect",
         target: 1,
-        requires: Object.freeze([]),
-        params: Object.freeze({ kind: "adaptive_biomass" })
+        requires: Object.freeze(["reachSixPlateauMap"]),
+        params: Object.freeze({
+          kind: "adaptive_biomass",
+          requiredMapFact: "tutorialExcursion:T11",
+          requiredMapField: "generatedTargetMapId"
+        })
       }),
       Object.freeze({
         slot: "returnHome",
@@ -961,6 +961,13 @@
         })
       })
     ]),
+    mapGeneration: Object.freeze({
+      size: 6,
+      compatibleBiomes: Object.freeze([
+        "forest",
+        "aquatic"
+      ])
+    }),
     completionGate: Object.freeze({
       type: "proximity.shelter",
       mapId: "crystal",
@@ -1010,6 +1017,336 @@
         requiresShelter: true
       })
     ])
+  });
+
+
+  const T12 = Object.freeze({
+    id: "T12",
+    title: "Utiliser une ration pour récupérer de l’énergie",
+    description:
+      "Utiliser manuellement une ration lorsque les réserves ont diminué et vérifier un gain réel d’énergie.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T11",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T11"]),
+    priority: 410,
+    autoPrimaryEligible: true,
+    primaryOnActivation: true,
+    passivePriorityAxis: "survival",
+    tutorialSurvivalUnlocks: Object.freeze([
+      "ration-craft",
+      "ration-consume",
+      "micro-rest"
+    ]),
+    runtimeValidation: Object.freeze({
+      type: "manual-ration-energy-gain",
+      consumeSlot: "consumeRation",
+      gainSlot: "recoverEnergy"
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "consumeRation",
+        title: "Utiliser une ration depuis le sac d’expédition",
+        action: "eat",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          automatic: false,
+          proof: "ration-consumed"
+        })
+      }),
+      Object.freeze({
+        slot: "recoverEnergy",
+        title: "Constater un gain réel d’énergie",
+        action: "eat",
+        target: 1,
+        requires: Object.freeze(["consumeRation"]),
+        params: Object.freeze({
+          eventDriven: true,
+          proof: "survival-energy-gain"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La recette existe. Il reste à vérifier qu’elle m’aide réellement lorsque mes réserves diminuent."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "consumeRation",
+          atCount: 1,
+          text: "J’utilise une ration. Je vais comparer mon état avant et après."
+        })
+      ]),
+      completed: Object.freeze([
+        "L’énergie revient assez vite pour poursuivre l’exploration. La ration ne remplace pas le repos, mais elle augmente clairement mon autonomie."
+      ])
+    })
+  });
+
+  const T13 = Object.freeze({
+    id: "T13",
+    title: "Préparer une excursion prolongée",
+    description:
+      "Préparer dix rations puis découvrir deux nouvelles maps distinctes avant d’ouvrir l’exploration du monde.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T12",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T12"]),
+    priority: 405,
+    autoPrimaryEligible: true,
+    primaryOnActivation: true,
+    passivePriorityAxis: "exploration",
+    allowsAutonomousRationCraft: true,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      repeatUnknownTravelUntilComplete: true
+    }),
+    runtimeCounters: Object.freeze([
+      Object.freeze({
+        slot: "craftRations",
+        source: "rations.craftedTotal",
+        baselineOnActivation: true
+      })
+    ]),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "craftRations",
+        title: "Fabriquer 10 rations après le début de la mission",
+        action: "craft",
+        target: 10,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          recipeId: "ration-basic-v2"
+        })
+      }),
+      Object.freeze({
+        slot: "newMaps",
+        title: "Découvrir 2 nouvelles maps distinctes",
+        action: "travel",
+        target: 2,
+        requires: Object.freeze(["craftRations"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          mapGenerationOnCount: Object.freeze({
+            2: Object.freeze({
+              size: "random",
+              biome: "random",
+              requiredMicroScenes: Object.freeze([
+                Object.freeze({
+                  id: "MSC-CUSTOM-BOSQUET-BIO",
+                  persistent: true,
+                  spawnOnce: true,
+                  contextRole: "triggerContext"
+                })
+              ])
+            })
+          }),
+          completionArrivalFact: "tutorialExcursion:FLO-01",
+          completionArrivalField: "toMapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Une ration m’aide à prolonger un trajet. Dix rations me permettraient de préparer une véritable excursion au-delà des territoires familiers."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "craftRations",
+          atCount: 10,
+          text: "Les réserves sont prêtes. Je peux maintenant partir assez loin pour que le retour ne soit plus la seule décision raisonnable."
+        }),
+        Object.freeze({
+          slot: "newMaps",
+          atCount: 1,
+          text: "Premier territoire inconnu enregistré. Mes réserves restent suffisantes ; je peux poursuivre."
+        })
+      ]),
+      completed: Object.freeze([
+        "L’excursion est prête à devenir autre chose qu’un exercice. À partir d’ici, les découvertes pourront orienter progressivement nos prochaines missions."
+      ])
+    })
+  });
+
+  const FLO01 = Object.freeze({
+    id: "FLO-01",
+    title: "Inventaire vivant",
+    description:
+      "Explorer une nouvelle map marquée par un bosquet biologique et distinguer plusieurs fonctions de sa flore.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "T13",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["T13"]),
+    priority: 330,
+    autoPrimaryEligible: true,
+    primaryOnActivation: true,
+    passivePriorityAxis: "research",
+    proximityContexts: Object.freeze([
+      Object.freeze({
+        id: "bosquet-bio-world-open",
+        microSceneId: "MSC-CUSTOM-BOSQUET-BIO",
+        fact: "worldContext:bosquet-bio",
+        useSceneRadius: true
+      })
+    ]),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "studyFlora",
+        title: "Analyser 3 espèces végétales différentes",
+        action: "analyze",
+        target: 3,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "flora",
+          distinctBy: "objectId",
+          requiredMapFact: "tutorialExcursion:FLO-01",
+          requiredMapField: "toMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "exploreBosquetMap",
+        title: "Explorer au moins 40 % de cette map",
+        action: "explore-zone",
+        target: 40,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          scope: "map",
+          metric: "surfacePercent",
+          threshold: 40,
+          requiredMapFact: "tutorialExcursion:FLO-01",
+          requiredMapField: "toMapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La flore ne forme pas un décor uniforme. Chaque espèce occupe une fonction."
+      ]),
+      completed: Object.freeze([
+        "Cette première classification me donne enfin une lecture biologique cohérente du territoire."
+      ])
+    })
+  });
+
+  const SUR03 = Object.freeze({
+    id: "SUR-03",
+    title: "Composer une ration stable",
+    description:
+      "Comparer plusieurs plantes du Bosquet et confirmer une préparation alimentaire stable.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "interaction.observe",
+      count: 1,
+      subject: "flora"
+    }),
+    requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
+    priority: 190,
+    passivePriorityAxis: "survival",
+    runtimeCounters: Object.freeze([
+      Object.freeze({
+        slot: "craftStableRation",
+        source: "rations.craftedTotal",
+        baselineOnActivation: true
+      })
+    ]),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "studyPlants",
+        title: "Analyser 2 plantes différentes",
+        action: "analyze",
+        target: 2,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "flora",
+          distinctBy: "objectId"
+        })
+      }),
+      Object.freeze({
+        slot: "craftStableRation",
+        title: "Fabriquer une ration stable",
+        action: "craft",
+        target: 1,
+        requires: Object.freeze(["studyPlants"]),
+        params: Object.freeze({
+          eventDriven: true,
+          recipeId: "ration-basic-v2"
+        })
+      })
+    ])
+  });
+
+  const COL_PLANT_20 = Object.freeze({
+    id: "COL-PLANT-20",
+    title: "Premiers échantillons — Plantes 20",
+    description:
+      "Collecter historiquement 20 unités de plantes afin d’ouvrir les connaissances avancées liées à la survie et à la recherche.",
+    pattern: "COLLECT_THEN_REWARD",
+    trigger: Object.freeze({
+      type: "interaction.collect",
+      count: 1,
+      subject: "flora"
+    }),
+    requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
+    priority: 150,
+    passivePriorityAxis: "survival",
+    slots: Object.freeze({
+      collect: Object.freeze({
+        title: "Collecter 20 unités de plantes",
+        requirements: Object.freeze([
+          Object.freeze({
+            target: 20,
+            params: Object.freeze({
+              subject: "flora",
+              excludeKinds: Object.freeze(["wood"])
+            })
+          })
+        ])
+      })
+    })
+  });
+
+  const COL_FIBER_20 = Object.freeze({
+    id: "COL-FIBER-20",
+    title: "Premiers échantillons — Fibres 20",
+    description:
+      "Collecter historiquement 20 unités de fibres afin d’ouvrir les connaissances avancées liées au tissage et à la conservation.",
+    pattern: "COLLECT_THEN_REWARD",
+    trigger: Object.freeze({
+      type: "interaction.collect",
+      count: 1,
+      kind: "fiber"
+    }),
+    requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
+    priority: 149,
+    passivePriorityAxis: "collection",
+    slots: Object.freeze({
+      collect: Object.freeze({
+        title: "Collecter 20 unités de fibres",
+        requirements: Object.freeze([
+          Object.freeze({
+            target: 20,
+            params: Object.freeze({ kind: "fiber" })
+          })
+        ])
+      })
+    })
   });
 
 
@@ -1099,7 +1436,13 @@
     T10,
     LOC05,
     LOC06,
-    T11
+    T11,
+    T12,
+    T13,
+    FLO01,
+    SUR03,
+    COL_PLANT_20,
+    COL_FIBER_20
   ]);
 
   BF.BibleRuntimeReference = Object.freeze({

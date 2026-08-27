@@ -50,6 +50,9 @@
       );
       if (discoveryIndex !== Number(params.toDiscoveryIndex)) return false;
     }
+    if (params.newOnly === true && detail.isNew !== true) {
+      return false;
+    }
     return true;
   };
 
@@ -159,6 +162,25 @@
     return changed;
   };
 
+  const bindCompletionArrivalFact = (manager, node, detail) => {
+    if (!node?.isComplete || !detail?.toMapId) return 0;
+    const key = String(node?.params?.completionArrivalFact || "");
+    if (!key) return 0;
+    const field = String(node?.params?.completionArrivalField || "toMapId");
+    const previous = manager?.memory?.getFact?.(key, {}) || {};
+    if (normalize(previous?.[field]) === normalize(detail.toMapId)) return 0;
+    manager?.memory?.setFact?.(key, {
+      ...previous,
+      [field]: detail.toMapId,
+      mapId: detail.toMapId,
+      toMapId: detail.toMapId,
+      arrived: true,
+      updatedAt: Date.now()
+    });
+    manager?.memory?.save?.();
+    return 1;
+  };
+
   const reconcileCurrentArrivalBindings = () => {
     const manager = BF.currentEngine?.missionManager;
     const currentMapId = BF.currentEngine?.currentMapId;
@@ -210,6 +232,7 @@
           changed += 1;
           treeChanged = true;
           bindArrivalFacts(manager, missionId, node, detail);
+          bindCompletionArrivalFact(manager, node, detail);
           if (node.isComplete) {
             const key = `missionReturnIntent:${missionId}`;
             const intent = manager.memory?.getFact?.(key, null);
@@ -244,7 +267,8 @@
       fromMapId: detail.fromMapId || null,
       toMapId,
       mapId: toMapId,
-      direction: detail.direction || null
+      direction: detail.direction || null,
+      isNew: detail.isNew === true
     });
   };
 

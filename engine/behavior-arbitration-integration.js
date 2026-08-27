@@ -1000,8 +1000,24 @@
           survivalDecision.routine === "critical-rest"
         )
       );
+      const tutorialMicroRestUnlocked = Boolean(
+        survivalDecision?.routine === "micro-rest" &&
+        BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true
+      );
+      const tutorialRationConsumeUnlocked = Boolean(
+        survivalDecision?.routine === "food" &&
+        BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") === true
+      );
 
-      if (survivalDecision && (!primaryMissionOwnsAction || criticalSurvivalDecision)) {
+      if (
+        survivalDecision &&
+        (
+          !primaryMissionOwnsAction ||
+          criticalSurvivalDecision ||
+          tutorialMicroRestUnlocked ||
+          tutorialRationConsumeUnlocked
+        )
+      ) {
         // OFF / pause runtime / fenêtre de grâce restent propriétaires dans WorldEngine.
         if (!this.autonomyAllowed?.(now)) {
           return originalAutonomy(now);

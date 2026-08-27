@@ -56,6 +56,14 @@
         this.onMapTransition(event.detail || {});
       this.boundExplorationChange = (event) =>
         this.onExplorationChanged(event.detail || {});
+      this.boundRationConsumed = (event) =>
+        this.onRationConsumed(event.detail || {});
+      this.boundSurvivalChanged = (event) =>
+        this.onSurvivalChanged(event.detail || {});
+      this.boundRationsChanged = () =>
+        this.reconcileRuntimeCounters();
+      this.pendingManualRationProof = null;
+      this.proximityContextTimer = null;
       this.localExplorationReconciling = false;
       this.localExplorationSessionRestored = false;
     }
@@ -1250,9 +1258,248 @@
     }
 
     prerequisitesSatisfied(mission) {
-      return asArray(mission?.prerequisites).every((missionId) =>
+      const missionPrerequisites = asArray(mission?.prerequisites).every((missionId) =>
         this.missionLifecycle(missionId).completed
       );
+      if (!missionPrerequisites) return false;
+      const memory = this.manager()?.memory;
+      return asArray(mission?.requiredFacts).every((factKey) =>
+        Boolean(memory?.getFact?.(factKey, false))
+      );
+    }
+
+    survivalCapabilityUnlocked(capability) {
+      const key = String(capability || "").trim();
+      if (!key) return false;
+      return this.catalog.some((mission) =>
+        asArray(mission?.tutorialSurvivalUnlocks).includes(key) &&
+        this.missionLifecycle(mission.id).completed
+      );
+    }
+
+    runtimeCounterValue(source) {
+      if (source === "rations.craftedTotal") {
+        return Math.max(
+          0,
+          Number(BF.getRationState?.().craftedTotal) || 0
+        );
+      }
+      return null;
+    }
+
+    runtimeCounterBaselineKey(missionId, slot) {
+      return `runtimeCounterBaseline:${missionId}:${slot}`;
+    }
+
+    initializeRuntimeCounters(mission) {
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      asArray(mission?.runtimeCounters).forEach((counter) => {
+        if (!counter?.slot || !counter?.source) return;
+        const key = this.runtimeCounterBaselineKey(mission.id, counter.slot);
+        if (manager.memory.getFact?.(key, null) != null) return;
+        const current = this.runtimeCounterValue(counter.source);
+        if (current == null) return;
+        manager.memory.setFact?.(key, {
+          source: counter.source,
+          value: counter.baselineOnActivation === false ? 0 : current,
+          capturedAt: Date.now()
+        });
+        changed = true;
+      });
+      if (changed) manager.memory.save?.();
+      return changed;
+    }
+
+    reconcileRuntimeCounters(missionFilter = null) {
+      const manager = this.manager();
+      if (!manager?.memory) return 0;
+      let changed = 0;
+      this.catalog.forEach((mission) => {
+        if (missionFilter && mission.id !== missionFilter) return;
+        if (!this.missionLifecycle(mission.id).active) return;
+        const counters = asArray(mission?.runtimeCounters);
+        if (!counters.length) return;
+        this.initializeRuntimeCounters(mission);
+        const tree = manager.trees?.get?.(mission.id);
+        if (!tree) return;
+        let treeChanged = false;
+        counters.forEach((counter) => {
+          const node = tree.find?.(`${mission.id}:${counter.slot}`);
+          if (!node || node.isComplete) return;
+          const current = this.runtimeCounterValue(counter.source);
+          if (current == null) return;
+          const baselineRecord = manager.memory.getFact?.(
+            this.runtimeCounterBaselineKey(mission.id, counter.slot),
+            { value: 0 }
+          );
+          const baseline = Math.max(0, Number(baselineRecord?.value) || 0);
+          const value = Math.max(0, current - baseline);
+          const absolute = Math.min(Number(node.target) || value, value);
+          const delta = absolute - Number(node.progress || 0);
+          if (delta > 0 && node.increment?.(delta)) {
+            changed += 1;
+            treeChanged = true;
+          }
+        });
+        if (treeChanged) {
+          tree.refresh?.();
+          manager.memory.saveTree?.(tree);
+        }
+      });
+      if (changed) {
+        manager.syncLifecycleFromTrees?.();
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+        manager.publish?.();
+      }
+      return changed;
+    }
+
+    progressRuntimeValidationSlot(missionId, slot, amount = 1) {
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(missionId);
+      const node = tree?.find?.(`${missionId}:${slot}`);
+      if (!node || node.isComplete) return false;
+      if (!tree.availableLeaves?.().includes?.(node)) return false;
+      if (!node.increment?.(Math.max(1, Number(amount) || 1))) return false;
+      tree.refresh?.();
+      manager.memory?.saveTree?.(tree);
+      manager.syncLifecycleFromTrees?.();
+      manager.reevaluatePendingActivations?.();
+      manager.catalogController?.schedule?.();
+      manager.publish?.();
+      return true;
+    }
+
+    onRationConsumed(detail = {}) {
+      if (detail.automatic === true) return false;
+      const energyBefore = Number(BF.getSurvivalState?.().energy);
+      const mission = this.catalog.find((entry) =>
+        this.missionLifecycle(entry.id).active &&
+        entry?.runtimeValidation?.type === "manual-ration-energy-gain"
+      );
+      if (!mission || !Number.isFinite(energyBefore)) return false;
+      const slot = mission.runtimeValidation.consumeSlot;
+      if (!this.progressRuntimeValidationSlot(mission.id, slot, 1)) return false;
+      this.pendingManualRationProof = {
+        missionId: mission.id,
+        energyBefore,
+        consumedAt: Date.now()
+      };
+      return true;
+    }
+
+    onSurvivalChanged(detail = {}) {
+      const proof = this.pendingManualRationProof;
+      if (!proof) return false;
+      if (String(detail.reason || "") !== "routine:food") return false;
+      const mission = this.byId.get(proof.missionId);
+      if (!mission || !this.missionLifecycle(mission.id).active) {
+        this.pendingManualRationProof = null;
+        return false;
+      }
+      const energyAfter = Number(
+        detail?.state?.energy ?? BF.getSurvivalState?.().energy
+      );
+      const gained = Number.isFinite(energyAfter) &&
+        energyAfter > Number(proof.energyBefore);
+      this.pendingManualRationProof = null;
+      if (!gained) return false;
+      return this.progressRuntimeValidationSlot(
+        mission.id,
+        mission.runtimeValidation.gainSlot,
+        1
+      );
+    }
+
+    proximityContextEntries() {
+      const manager = this.manager();
+      if (!manager?.memory) return [];
+      const entries = [];
+      this.catalog.forEach((mission) => {
+        if (!this.missionLifecycle(mission.id).active) return;
+        asArray(mission?.proximityContexts).forEach((context) => {
+          if (!context?.microSceneId || !context?.fact) return;
+          if (manager.memory.getFact?.(context.fact, false)) return;
+          entries.push({ mission, context });
+        });
+      });
+      return entries;
+    }
+
+    microSceneProximityAnchor(microSceneId) {
+      const map = BF.currentEngine?.currentMap;
+      const entries = Array.isArray(map?.group?.userData?.microScenes)
+        ? map.group.userData.microScenes
+        : [];
+      const normalized = String(microSceneId || "");
+      const entry = entries.find((item) => String(item?.id || "") === normalized);
+      if (!entry) return null;
+      return entry.instanceRoot || entry.records?.[0]?.root || null;
+    }
+
+    reviewProximityContexts() {
+      const engine = BF.currentEngine;
+      const manager = this.manager();
+      const player = engine?.character?.root?.position;
+      if (!engine || !manager?.memory || !player) return false;
+      let changed = false;
+      this.proximityContextEntries().forEach(({ mission, context }) => {
+        const anchor = this.microSceneProximityAnchor(context.microSceneId);
+        if (!anchor) return;
+        const point = this.observationPoint(anchor, engine);
+        const radius = context.useSceneRadius === true
+          ? Math.max(1, Number(BF.MicroScenes?.get?.(context.microSceneId)?.radius) || 8)
+          : Math.max(1, Number(context.radius) || 8);
+        const distance = Math.hypot(
+          Number(player.x) - Number(point.x),
+          Number(player.z) - Number(point.z)
+        );
+        if (distance > radius) return;
+        manager.memory.setFact?.(context.fact, {
+          active: true,
+          missionId: mission.id,
+          microSceneId: context.microSceneId,
+          mapId: engine.currentMapId,
+          reachedAt: Date.now()
+        });
+        manager.memory.save?.();
+        changed = true;
+        global.dispatchEvent?.(
+          new CustomEvent("bluefox:bible-context-proximity", {
+            detail: {
+              id: context.id || context.fact,
+              fact: context.fact,
+              missionId: mission.id,
+              microSceneId: context.microSceneId,
+              mapId: engine.currentMapId,
+              distance,
+              radius
+            }
+          })
+        );
+      });
+      if (changed) manager.publish?.();
+      this.refreshProximityContextMonitor();
+      return changed;
+    }
+
+    refreshProximityContextMonitor() {
+      const needed = this.proximityContextEntries().length > 0;
+      if (!needed && this.proximityContextTimer) {
+        global.clearInterval?.(this.proximityContextTimer);
+        this.proximityContextTimer = null;
+        return false;
+      }
+      if (needed && !this.proximityContextTimer) {
+        this.proximityContextTimer = global.setInterval?.(
+          () => this.reviewProximityContexts(),
+          750
+        ) || null;
+      }
+      return needed;
     }
 
     narrativeDisplayDuration(text) {
@@ -1431,6 +1678,9 @@
         );
 
         this.emitRevealedOnce(mission, event);
+        this.initializeRuntimeCounters(mission);
+        this.reconcileRuntimeCounters(mission.id);
+        this.refreshProximityContextMonitor();
         this.lastActivationAttempt = diagnostic;
 
         global.dispatchEvent?.(
@@ -2733,6 +2983,8 @@
       }
 
       this.migrateLegacyRationUnlock();
+      this.reconcileRuntimeCounters();
+      this.refreshProximityContextMonitor();
       this.reconcileLocalExploration(state);
       this.restoreLocalExplorationSession();
       for (const mission of this.missionsForState(state)) {
@@ -2823,6 +3075,30 @@
       global.addEventListener?.(
         "bluefox:map-exploration-changed",
         this.boundExplorationChange
+      );
+      global.removeEventListener?.(
+        "bluefox:ration-consumed",
+        this.boundRationConsumed
+      );
+      global.addEventListener?.(
+        "bluefox:ration-consumed",
+        this.boundRationConsumed
+      );
+      global.removeEventListener?.(
+        "bluefox:survival-changed",
+        this.boundSurvivalChanged
+      );
+      global.addEventListener?.(
+        "bluefox:survival-changed",
+        this.boundSurvivalChanged
+      );
+      global.removeEventListener?.(
+        "bluefox:rations-changed",
+        this.boundRationsChanged
+      );
+      global.addEventListener?.(
+        "bluefox:rations-changed",
+        this.boundRationsChanged
       );
       return Boolean(this.unsubscribeObjectEvents);
     }
@@ -2952,6 +3228,8 @@
     runtime.observationCoverage(mapId);
   BF.getObservationCoverageTotals = () =>
     runtime.observationTotals();
+  BF.isTutorialSurvivalCapabilityUnlocked = (capability) =>
+    runtime.survivalCapabilityUnlocked(capability);
 
 
   BF.Research = Object.freeze({

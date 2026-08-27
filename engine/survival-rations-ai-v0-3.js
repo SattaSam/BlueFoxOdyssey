@@ -87,10 +87,33 @@
     ) === true;
 
   const autoCraftEnabled = () =>
-    reward()?.autoCraft === true;
+    reward()?.autoCraft === true ||
+    BF.isTutorialSurvivalCapabilityUnlocked?.("ration-craft") === true;
 
   const campAccessible = () =>
     BF.canAccessCampInventory?.() === true;
+
+  const missionRationCraftRemaining = (engine) => {
+    const manager = engine?.missionManager;
+    const missionId = String(manager?.primaryMissionId || "");
+    const mission = manager?.definition?.(missionId);
+    if (!missionId || mission?.allowsAutonomousRationCraft !== true) return 0;
+    const counter = Array.isArray(mission?.runtimeCounters)
+      ? mission.runtimeCounters.find((entry) =>
+          entry?.source === "rations.craftedTotal" && entry?.slot
+        )
+      : null;
+    if (!counter?.slot) return 0;
+    const node = manager?.trees?.get?.(missionId)?.find?.(
+      `${missionId}:${counter.slot}`
+    );
+    if (!node || node.isComplete) return 0;
+    return Math.max(
+      0,
+      (Number(node.target) || 0) - (Number(node.progress) || 0)
+    );
+  };
+
 
   const availableFor = (key) =>
     BF.progression
@@ -269,15 +292,23 @@
 
         // La ration décrit un besoin de survie mais ne préempte jamais une
         // mission principale active et ne devient pas propriétaire d'action.
-        if (
-          this.missionManager
-            ?.hasPrimaryMissionAuthority?.()
-        ) {
+        const primaryMissionOwnsAction =
+          this.missionManager?.hasPrimaryMissionAuthority?.() === true;
+        const primaryMission = this.missionManager?.definition?.(
+          this.missionManager?.primaryMissionId
+        );
+        const missionAllowsRationCraft =
+          primaryMission?.allowsAutonomousRationCraft === true &&
+          BF.isTutorialSurvivalCapabilityUnlocked?.("ration-craft") === true;
+        const missionCraftRemaining = missionAllowsRationCraft
+          ? missionRationCraftRemaining(this)
+          : 0;
+        if (primaryMissionOwnsAction && !missionAllowsRationCraft) {
           return originalAutonomy(now);
         }
 
         if (
-          currentProfile.shouldCraft &&
+          (currentProfile.shouldCraft || missionCraftRemaining > 0) &&
           autoCraftEnabled() &&
           campAccessible() &&
           !this.transitioning &&
@@ -296,10 +327,24 @@
               this.character.target
             ) <= 0.2
         ) {
-          const missing = Math.max(
+          const survivalMissing = Math.max(
             0,
-            currentProfile.targetMin -
-              rationCount()
+            currentProfile.targetMin - rationCount()
+          );
+          const capacityRemaining = Math.max(
+            0,
+            (
+              Number(BF.Rations?.maxRations) ||
+              Number(BF.Rations?.snapshot?.().maxRations) ||
+              0
+            ) - rationCount()
+          );
+          const missing = Math.min(
+            Math.max(
+              survivalMissing,
+              missionCraftRemaining
+            ),
+            capacityRemaining
           );
           const possible =
             craftableCount(missing);

@@ -14,6 +14,24 @@
   const missionStatus = (engine, missionId) =>
     engine?.missionManager?.memory?.state?.missionLifecycle?.[missionId]?.status || null;
 
+  const resolveMissionMapGeneration = (engine, mission) => {
+    if (!mission?.id) return null;
+    const tree = engine?.missionManager?.trees?.get?.(mission.id);
+    const travelNode = tree?.availableLeaves?.().find((node) =>
+      !node.isComplete &&
+      node.params?.eventDriven === true &&
+      BF.Missions?.normalizeActionType?.(node.type) === BF.Missions?.ActionType?.TRAVEL
+    ) || null;
+    const nextCount = Math.max(0, Number(travelNode?.progress) || 0) + 1;
+    const staged = travelNode?.params?.mapGenerationOnCount?.[nextCount] ||
+      travelNode?.params?.mapGenerationOnCount?.[String(nextCount)] ||
+      null;
+    const prescription = staged || mission?.mapGeneration || null;
+    return prescription && typeof prescription === "object"
+      ? prescription
+      : null;
+  };
+
   const activeMapGenerationPrescription = () => {
     const engine = BF.currentEngine;
     const manager = engine?.missionManager;
@@ -25,8 +43,8 @@
     if (!missionId || missionStatus(engine, missionId) !== "active") return null;
 
     const mission = missionById(missionId);
-    const prescription = mission?.mapGeneration;
-    if (!prescription || typeof prescription !== "object") return null;
+    const prescription = resolveMissionMapGeneration(engine, mission);
+    if (!prescription) return null;
 
     return {
       missionId: mission.id,
@@ -322,11 +340,26 @@
     const memory = engine.missionManager?.memory;
     const key = `tutorialExcursion:${mission.id}`;
     const previous = memory?.getFact?.(key, {}) || {};
-    if (
-      previous.requesting === true ||
-      previous.generatedTargetMapId ||
-      previous.arrived === true
-    ) return false;
+    const repeatUntilComplete =
+      mission?.navigation?.repeatUnknownTravelUntilComplete === true;
+    const travelNode = repeatUntilComplete
+      ? activeEventDrivenTravelNode(engine, mission)
+      : null;
+
+    if (previous.requesting === true) return false;
+    if (repeatUntilComplete) {
+      if (!travelNode || travelNode.isComplete) return false;
+      const progress = Math.max(0, Number(travelNode.progress) || 0);
+      const requestedProgress = Math.max(
+        0,
+        Number(previous.requestedProgress) || 0
+      );
+      // Une génération déjà demandée doit produire une vraie transition et
+      // créditer la feuille TRAVEL avant qu'une seconde demande soit possible.
+      if (requestedProgress > progress) return false;
+    } else if (previous.generatedTargetMapId || previous.arrived === true) {
+      return false;
+    }
 
     const directions = unknownDirectionsFrom(engine);
     if (!directions.length) return false;
@@ -339,6 +372,9 @@
       direction,
       fromMapId: engine.currentMapId,
       requesting: true,
+      requestedProgress: repeatUntilComplete
+        ? (Math.max(0, Number(travelNode?.progress) || 0) + 1)
+        : previous.requestedProgress,
       requestedAt: Date.now()
     });
     memory?.save?.();
@@ -379,7 +415,11 @@
     if (mission?.navigation?.autonomousKnownReturn !== true) return false;
     if (missionStatus(engine, mission.id) !== "active") return false;
     if (engine?.missionManager?.primaryMissionId !== mission.id) return false;
-    if (!activeEventDrivenTravelNode(engine, mission)) return false;
+    const travelNode = activeEventDrivenTravelNode(engine, mission);
+    // Une même mission peut désormais porter un voyage inconnu entrant puis
+    // un retour connu. Le retour n'est dû que lorsque la feuille active
+    // possède une destination canonique explicite (ex. crystal).
+    if (!travelNode?.params?.toMapId) return false;
     if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") return false;
     if (engine.transitioning || engine.pendingGate || engine.pendingInteraction || engine.currentRoutine || engine.missionManager?.currentAction) return false;
     if (engine.missionManager?.shouldDeferMissionReturn?.(mission.id) === true) return false;
@@ -435,7 +475,7 @@
 
           if (!mission) return originalGenerateUnknownPassage(direction);
 
-          const prescription = mission.mapGeneration || null;
+          const prescription = resolveMissionMapGeneration(engine, mission);
 
           const manager = engine.missionManager;
           const excursionKey = `tutorialExcursion:${mission.id}`;

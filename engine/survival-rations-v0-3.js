@@ -95,7 +95,11 @@
   };
 
   const consume = (count = 1, options = {}) => {
-    if (options.automatic === true) return 0;
+    if (Number(BF.getSurvivalState?.().energy) >= 100) return 0;
+    if (
+      options.automatic === true &&
+      BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") !== true
+    ) return 0;
 
     const requested = Math.max(
       1,

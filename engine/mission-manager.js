@@ -378,11 +378,11 @@
         this.bridge.isEngineBusy()
       ) return false;
       if (this.shouldDeferMissionReturn(travel.missionId) === true) return false;
-      if (typeof this.engine?.handleNavigationSuggestion !== "function") {
+      if (typeof this.engine?.returnToBase !== "function") {
         return false;
       }
 
-      this.engine.handleNavigationSuggestion({ mapId: intent.mapId });
+      this.engine.returnToBase();
       return true;
     }
 
