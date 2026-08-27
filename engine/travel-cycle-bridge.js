@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions = BF.Missions || {};
-  const VERSION = "travel-cycle-v1";
+  const VERSION = "travel-cycle-v2";
 
   const normalize = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -122,6 +122,74 @@
     return progressCount(node, detail);
   };
 
+  const bindArrivalFacts = (manager, missionId, node, detail) => {
+    const definition = manager?.definition?.(missionId);
+    const sequence = Array.isArray(definition?.sequence)
+      ? definition.sequence
+      : [];
+    const slot = sequence.find((step) =>
+      String(node?.id || "") === `${missionId}:${step?.slot || ""}`
+    )?.slot || null;
+    if (!slot || !detail?.toMapId) return 0;
+
+    const bindings = new Map();
+    sequence
+      .filter((step) => Array.isArray(step?.requires) && step.requires.includes(slot))
+      .forEach((step) => {
+        const key = String(step?.params?.requiredMapFact || "");
+        const field = String(step?.params?.requiredMapField || "mapId");
+        if (key) bindings.set(`${key}::${field}`, { key, field });
+      });
+
+    let changed = 0;
+    bindings.forEach(({ key, field }) => {
+      const previous = manager.memory?.getFact?.(key, {}) || {};
+      if (normalize(previous?.[field]) === normalize(detail.toMapId)) return;
+      manager.memory?.setFact?.(key, {
+        ...previous,
+        [field]: detail.toMapId,
+        mapId: detail.toMapId,
+        toMapId: detail.toMapId,
+        arrived: true,
+        updatedAt: Date.now()
+      });
+      changed += 1;
+    });
+    if (changed) manager.memory?.save?.();
+    return changed;
+  };
+
+  const reconcileCurrentArrivalBindings = () => {
+    const manager = BF.currentEngine?.missionManager;
+    const currentMapId = BF.currentEngine?.currentMapId;
+    if (!manager?.trees?.size || !currentMapId) return 0;
+    let changed = 0;
+
+    manager.trees.forEach((tree, missionId) => {
+      if (manager.ensureLifecycle?.(missionId)?.status !== "active") return;
+      const definition = manager.definition?.(missionId);
+      const sequence = Array.isArray(definition?.sequence)
+        ? definition.sequence
+        : [];
+      sequence.forEach((step) => {
+        if (step?.params?.eventDriven !== true) return;
+        if (String(step?.action || "").toLowerCase() !== "travel") return;
+        const hasDestinationFilter =
+          step.params?.toMapId != null ||
+          step.params?.toDiscoveryIndex != null;
+        if (!hasDestinationFilter) return;
+        const node = tree.find?.(`${missionId}:${step.slot}`);
+        if (!node?.isComplete) return;
+        const detail = { toMapId: currentMapId, mapId: currentMapId };
+        if (!eventMatchesFilters(node, detail)) return;
+        changed += bindArrivalFacts(manager, missionId, node, detail);
+      });
+    });
+
+    if (changed) manager.publish?.();
+    return changed;
+  };
+
   const progressActiveTravel = (detail = {}) => {
     const manager = BF.currentEngine?.missionManager;
     if (!manager?.trees?.size || !detail.toMapId) return 0;
@@ -141,6 +209,15 @@
         if (progressTravelNode(node, detail)) {
           changed += 1;
           treeChanged = true;
+          bindArrivalFacts(manager, missionId, node, detail);
+          if (node.isComplete) {
+            const key = `missionReturnIntent:${missionId}`;
+            const intent = manager.memory?.getFact?.(key, null);
+            if (intent?.active === true) {
+              manager.memory?.setFact?.(key, null);
+              manager.memory?.save?.();
+            }
+          }
         }
       });
 
@@ -174,7 +251,9 @@
   const install = () => {
     if (BF.__travelCycleBridgeVersion === VERSION) return true;
     global.addEventListener?.("bluefox:map-transition-completed", onMapTransition);
+    global.addEventListener?.("bluefox:mission-state", reconcileCurrentArrivalBindings);
     BF.__travelCycleBridgeVersion = VERSION;
+    reconcileCurrentArrivalBindings();
     return true;
   };
 

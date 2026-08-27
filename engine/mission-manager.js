@@ -322,6 +322,70 @@
       return { missionId: this.primaryMissionId, mission: this.definition(this.primaryMissionId), node };
     }
 
+
+    missionReturnIntentKey(missionId) {
+      return `missionReturnIntent:${missionId}`;
+    }
+
+    ensureMissionReturnIntent() {
+      const travel = this.primaryEventDrivenTravel();
+      if (!travel?.mission?.navigation?.autonomousKnownReturn) return null;
+      const targetMapId = String(travel.node?.params?.toMapId || "");
+      if (!targetMapId) return null;
+
+      const key = this.missionReturnIntentKey(travel.missionId);
+      const previous = this.memory.getFact?.(key, null);
+      if (previous?.active === true &&
+          String(previous.mapId || "") === targetMapId) {
+        return previous;
+      }
+
+      const intent = {
+        active: true,
+        missionId: travel.missionId,
+        mapId: targetMapId,
+        createdAt: Number(previous?.createdAt) || Date.now(),
+        updatedAt: Date.now()
+      };
+      this.memory.setFact?.(key, intent);
+      this.memory.save?.();
+      return intent;
+    }
+
+    hasPendingMissionReturn(missionId = this.primaryMissionId) {
+      if (!missionId) return false;
+      return this.memory.getFact?.(
+        this.missionReturnIntentKey(missionId),
+        null
+      )?.active === true;
+    }
+
+    resumeMissionReturnIntent() {
+      const travel = this.primaryEventDrivenTravel();
+      if (!travel?.mission?.navigation?.autonomousKnownReturn) return false;
+
+      const intent = this.ensureMissionReturnIntent();
+      if (!intent?.active) return false;
+      if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") {
+        return false;
+      }
+      if (
+        this.engine?.transitioning ||
+        this.engine?.pendingGate ||
+        this.engine?.pendingInteraction ||
+        this.engine?.currentRoutine ||
+        this.currentAction ||
+        this.bridge.isEngineBusy()
+      ) return false;
+      if (this.shouldDeferMissionReturn(travel.missionId) === true) return false;
+      if (typeof this.engine?.handleNavigationSuggestion !== "function") {
+        return false;
+      }
+
+      this.engine.handleNavigationSuggestion({ mapId: intent.mapId });
+      return true;
+    }
+
     isMissionExclusiveToCurrentMap(missionId) {
       const definition = this.definition(missionId) || {};
       if (definition.instanceScope !== "map") return false;
@@ -430,6 +494,13 @@
 
     selectBestPrimary(now = performance.now(), force = false) {
       if (this.currentAction || this.bridge.isEngineBusy()) return false;
+      if (this.hasPendingMissionReturn(this.primaryMissionId)) {
+        const travel = this.primaryEventDrivenTravel();
+        if (travel?.mission?.returnPolicy?.mode === "bac-discretion") {
+          this.selectionReason = "Intention de retour persistante ; le BAC arbitre seulement son moment d’exécution.";
+          return false;
+        }
+      }
       const candidates = this.activeMissionIds
         .filter((id) => {
           const lifecycle = this.ensureLifecycle(id);
@@ -653,6 +724,7 @@
     update(now) {
       if (!this.enabled) return false;
       this.applyPendingTransitions();
+      this.ensureMissionReturnIntent();
       if (now - this.lastPriorityReviewAt > 5000) {
         this.lastPriorityReviewAt = now;
         this.selectBestPrimary(now);
@@ -694,6 +766,11 @@
       if (this.bridge.isEngineBusy()) return false;
 
       this.lastPlanAt = now;
+      if (this.resumeMissionReturnIntent()) {
+        this.retryAfter = now + 1200;
+        return true;
+      }
+
       const selected = this.chooseRunnableMissionAction(this.bridge.context());
       if (!selected?.action) {
         this.retryAfter = now + 5000;
