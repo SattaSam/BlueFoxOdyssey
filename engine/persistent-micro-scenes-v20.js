@@ -42,6 +42,7 @@
       kind: record.kind || null,
       stage: record.stage || null,
       microSceneId: record.microSceneId,
+      contextRole: record.contextRole || null,
       anchor: record.anchor ? clone(record.anchor) : null,
       rotation: Number(record.rotation) || 0,
       fixedAnchor: record.fixedAnchor === true,
@@ -280,6 +281,7 @@
     root.userData.persistentMicroSceneId = id;
     root.userData.microSceneId = record.microSceneId;
     root.userData.missionId = record.missionId || null;
+    root.userData.contextRole = record.contextRole || null;
     root.userData.persistent = true;
     built.group.add(root);
 
@@ -300,11 +302,18 @@
     records.forEach((spawned) => {
       spawned.root.userData.persistentMicroSceneId = id;
       spawned.root.userData.bibleMissionId = record.missionId || null;
+      spawned.root.userData.contextRole = record.contextRole || null;
+      if (spawned.instanceRoot?.userData) {
+        spawned.instanceRoot.userData.persistentMicroSceneId = id;
+        spawned.instanceRoot.userData.bibleMissionId = record.missionId || null;
+        spawned.instanceRoot.userData.contextRole = record.contextRole || null;
+      }
 
       const hitbox = spawned.instance?.hitbox;
       if (hitbox) {
         hitbox.userData.persistentMicroSceneId = id;
         hitbox.userData.bibleMissionId = record.missionId || null;
+        hitbox.userData.contextRole = record.contextRole || null;
         if (!built.interactables.includes(hitbox)) {
           built.interactables.push(hitbox);
         }
@@ -321,6 +330,27 @@
         });
       });
     });
+
+    built.group.userData ||= {};
+    built.group.userData.microScenes ||= [];
+    const indexEntry = {
+      id: record.microSceneId,
+      instanceId: id,
+      missionId: record.missionId || null,
+      missionOnly: false,
+      rarity: template.rarity || null,
+      contextRole: record.contextRole || null,
+      instanceRoot: root,
+      records
+    };
+    const existingIndex = built.group.userData.microScenes.findIndex(
+      (entry) => String(entry?.instanceId || "") === String(id)
+    );
+    if (existingIndex >= 0) {
+      built.group.userData.microScenes[existingIndex] = indexEntry;
+    } else {
+      built.group.userData.microScenes.push(indexEntry);
+    }
 
     record.instanceId = id;
     record.anchor = { x: anchor.x, y: anchor.y || 0, z: anchor.z };
@@ -348,6 +378,7 @@
       kind: spec.kind || null,
       stage: spec.stage || null,
       microSceneId: spec.microSceneId,
+      contextRole: spec.contextRole || null,
       anchor: canonical?.anchor || (spec.anchor ? clone(spec.anchor) : null),
       rotation: canonical?.rotation ?? (Number(spec.rotation) || 0),
       fixedAnchor: Boolean(canonical) || spec.fixedAnchor === true,

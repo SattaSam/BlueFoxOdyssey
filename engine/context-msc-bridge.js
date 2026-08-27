@@ -20,6 +20,16 @@
   const templateOf = (microSceneId) =>
     microSceneId ? BF.MicroScenes?.get?.(microSceneId) || null : null;
 
+  const contextRoleOf = (object) => {
+    let cursor = object || null;
+    while (cursor) {
+      const role = cursor.userData?.contextRole;
+      if (role) return String(role);
+      cursor = cursor.parent || null;
+    }
+    return null;
+  };
+
   const contextMatches = (node, detail) => {
     const expectedId = node?.params?.microSceneId;
     if (expectedId != null &&
@@ -126,9 +136,10 @@
       mscMissionId: template?.missionId || null,
       missionOnly: template?.missionOnly === true,
       contextRole:
-        template?.missionOnly === true
+        contextRoleOf(object) ||
+        (template?.missionOnly === true
           ? "objectiveSubject"
-          : "scenarioSupport"
+          : "scenarioSupport")
     };
   };
 
@@ -175,7 +186,9 @@
         rarity: entry.rarity || null,
         mscMissionId: entry.missionId || null,
         missionOnly: entry.missionOnly === true,
-        contextRole: entry.missionOnly === true ? "objectiveSubject" : "scenarioSupport"
+        contextRole:
+          entry.contextRole ||
+          (entry.missionOnly === true ? "objectiveSubject" : "scenarioSupport")
       });
     });
     return changed;
