@@ -106,11 +106,6 @@
       ""
     ).trim().toLowerCase();
   };
-  const scoreModifier = (axis, baseScore) => {
-    const BAC = getBAC();
-    if (!BAC || !axis || !Number.isFinite(Number(baseScore))) return 0;
-    return typeof BAC.priorityModifier === "function" ? Number(BAC.priorityModifier(axis, baseScore)?.modifier) || 0 : 0;
-  };
   const rememberPreference = (axis, kind) => {
     if (!kind) return;
     const now = Date.now();
@@ -681,23 +676,6 @@
   const installMissionOverlay = () => {
     const BAC = getBAC();
     if (!BAC) return false;
-    const Planner = Missions.MissionPlanner;
-    if (Planner?.prototype && !Planner.prototype.__bacRoutingFix2Planner) {
-      const originalScore = Planner.prototype.score;
-      Planner.prototype.score = function scoreWithBAC(node, context) {
-        const base = originalScore.call(this, node, context);
-        if (!Number.isFinite(base) || base < 0) return base;
-        const type = Missions.normalizeActionType?.(node?.type) || node?.type;
-        const vital =
-          (type === Missions.ActionType?.REST && context?.needs?.rest) ||
-          (type === Missions.ActionType?.EAT && context?.needs?.food);
-        if (vital) return base;
-        const axis = normalizeAxis(node?.params?.priorityAxis) || actionAxis(type);
-        return base + scoreModifier(axis, base);
-      };
-      Planner.prototype.__bacRoutingFix2Planner = true;
-    }
-
     const Manager = Missions.MissionManager;
     if (Manager?.prototype && !Manager.prototype.__bacPriorityQueueInstalled) {
       const ensurePriorityState = function ensurePriorityState() {
@@ -1354,7 +1332,7 @@
             )
           };
         })(),
-        missionOverlayInstalled: Boolean(base.missionOverlayInstalled || Missions.MissionPlanner?.prototype?.__bacRoutingFix2Planner || Missions.MissionManager?.prototype?.__bacRoutingFix2Manager) };
+        missionOverlayInstalled: Boolean(base.missionOverlayInstalled || Missions.MissionPlanner?.prototype?.__bluefoxBAC2ScoreInstalled || Missions.MissionManager?.prototype?.__bacRoutingFix2Manager) };
     };
     BF.__bacDiagnosticBridgeInstalled = true;
     return true;

@@ -894,6 +894,10 @@
           }
           return true;
         }
+        // ObjectM0 possède le matching missionnel riche pour les études.
+        // Une cible refusée ici ne doit jamais être réacceptée par le
+        // sélecteur générique historique d'ActionBridge.
+        return false;
       }
       return originalExecute.call(this, action, now);
     };
