@@ -76,7 +76,7 @@
       this.generatedTopology = [];
       this.mapNames = new Map();
       this.navigationRoute = [];
-      this.persistentNavigationIntent = null;
+      this.persistentNavigationIntent = this.restorePersistentNavigationIntent();
       this.returningToBase = false;
       this.__cachedInteractionApproach = null;
 
@@ -1678,6 +1678,8 @@
                 : "BlueFox abandonne ce trajet impossible et choisit une autre destination."
         );
         if (this.persistentNavigationIntent) {
+          this.persistentNavigationIntent.retryAfter = Date.now() + 5000;
+          this.persistNavigationIntent();
           window.setTimeout(() => this.resumePersistentNavigation(), 900);
         }
       };
@@ -1932,23 +1934,88 @@
       return this.mapNames?.get(mapId) || BF.maps?.[mapId]?.name || "Territoire inconnu";
     }
 
+    restorePersistentNavigationIntent() {
+      try {
+        const intent = JSON.parse(
+          localStorage.getItem("bluefox_navigation_intent_v1") || "null"
+        );
+        if (!intent || typeof intent !== "object") return null;
+        const requestedAt = Number(intent.requestedAt) || 0;
+        const newGameAt = Number(
+          localStorage.getItem("bluefox_new_game_start_v1") || 0
+        );
+        if (newGameAt > 0 && requestedAt > 0 && requestedAt < newGameAt) {
+          localStorage.removeItem("bluefox_navigation_intent_v1");
+          return null;
+        }
+        const direction = ["north", "south", "east", "west"].includes(intent.direction)
+          ? intent.direction
+          : null;
+        const mapId = typeof intent.mapId === "string" && intent.mapId
+          ? intent.mapId
+          : null;
+        const discoverUnknown = intent.discoverUnknown === true;
+        if (!mapId && !(discoverUnknown && direction)) {
+          localStorage.removeItem("bluefox_navigation_intent_v1");
+          return null;
+        }
+        return {
+          mapId,
+          direction,
+          discoverUnknown,
+          requestedAt,
+          retryAfter: Math.max(0, Number(intent.retryAfter) || 0)
+        };
+      } catch {
+        localStorage.removeItem("bluefox_navigation_intent_v1");
+        return null;
+      }
+    }
+
+    persistNavigationIntent() {
+      if (!this.persistentNavigationIntent) {
+        localStorage.removeItem("bluefox_navigation_intent_v1");
+        return false;
+      }
+      localStorage.setItem(
+        "bluefox_navigation_intent_v1",
+        JSON.stringify(this.persistentNavigationIntent)
+      );
+      return true;
+    }
+
     setPersistentNavigationIntent(detail) {
-      if (!detail) return;
+      if (!detail) return false;
       this.persistentNavigationIntent = {
         mapId: detail.mapId || null,
-        direction: detail.direction || null,
+        direction: ["north", "south", "east", "west"].includes(detail.direction)
+          ? detail.direction
+          : null,
         discoverUnknown: detail.discoverUnknown === true,
-        requestedAt: Date.now()
+        requestedAt: Date.now(),
+        retryAfter: 0
       };
+      if (
+        !this.persistentNavigationIntent.mapId &&
+        !(this.persistentNavigationIntent.discoverUnknown && this.persistentNavigationIntent.direction)
+      ) {
+        this.persistentNavigationIntent = null;
+        this.persistNavigationIntent();
+        return false;
+      }
+      this.persistNavigationIntent();
+      return true;
     }
 
     clearPersistentNavigationIntent() {
       this.persistentNavigationIntent = null;
+      this.persistNavigationIntent();
     }
 
     resumePersistentNavigation() {
       const intent = this.persistentNavigationIntent;
       if (!intent || this.transitioning) return false;
+      if (Date.now() < Math.max(0, Number(intent.retryAfter) || 0)) return false;
       if (this.pendingInteraction || this.currentRoutine || this.missionManager?.currentAction) {
         return false;
       }
@@ -2129,6 +2196,7 @@
           this.character.radius,
           0.16
         );
+        if (!Array.isArray(path) || !path.length) continue;
         const pathLength = path.reduce((total, waypoint, pathIndex) => {
           const previous = pathIndex
             ? path[pathIndex - 1]
@@ -3407,6 +3475,21 @@
       ) {
         this.noteLocalAutonomousDecision();
       }
+      // Une directive joueur persistante reprend dès que l'action atomique
+      // déjà engagée est réellement terminée, AVANT toute nouvelle décision
+      // missionnelle ou BAC. Elle ne coupe jamais l'action en cours (contrat B).
+      if (
+        this.persistentNavigationIntent &&
+        !this.runtimePaused &&
+        !this.startupCinematic &&
+        now >= this.startupQuietUntil &&
+        !this.transitioning &&
+        !this.pendingGate &&
+        !this.navigationRoute.length
+      ) {
+        this.resumePersistentNavigation();
+      }
+
       const autonomousRuntimeAllowed = this.autonomyAllowed(now);
       if (autonomousRuntimeAllowed) {
         this.missionManager?.update(now);

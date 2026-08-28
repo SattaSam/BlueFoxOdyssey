@@ -564,16 +564,28 @@
     }
 
     reevaluatePendingActivations() {
-      const pending = Object.values(this.memory.state.pendingActivations || {});
-      let changed = false;
-      pending.forEach((request) => {
-        const ready = request.prerequisites.every((id) =>
-          this.ensureLifecycle(id).status === "completed"
-        );
-        if (!ready) return;
-        changed = this.activateMission(request.missionId, request.options || {}) || changed;
-      });
-      return changed;
+      const ready = Object.values(this.memory.state.pendingActivations || {})
+        .filter((request) =>
+          request.prerequisites.every((id) =>
+            this.ensureLifecycle(id).status === "completed"
+          )
+        )
+        .sort((left, right) => {
+          const leftOptions = left.options || {};
+          const rightOptions = right.options || {};
+          const leftDefinition = this.definition(left.missionId) || {};
+          const rightDefinition = this.definition(right.missionId) || {};
+          const score = (request, options, definition) =>
+            (Number(options.narrativePriority) || 0) * 10000 +
+            (Number(options.urgency) || 0) * 1000 +
+            (Number(definition.priority) || 0) * 10 -
+            (Number(request.requestedAt) || 0) / 1e13;
+          return score(right, rightOptions, rightDefinition) -
+            score(left, leftOptions, leftDefinition);
+        });
+      const request = ready[0];
+      if (!request) return false;
+      return this.activateMission(request.missionId, request.options || {});
     }
 
     notifyMissionEvent(type, detail = {}) {
@@ -856,15 +868,58 @@
       this.trees.forEach((tree, missionId) => {
         if (!tree.root.isComplete) return;
         const lifecycle = this.ensureLifecycle(missionId);
+        const gate = BF.bibleRuntime?.completionGateState?.(missionId) || null;
+
+        if (gate?.managed === true && gate.canFinalize !== true) {
+          if (
+            lifecycle.status !== "active" ||
+            lifecycle.waitingForBibleGate !== true ||
+            lifecycle.waitingForBibleGateMessage !== gate.message
+          ) {
+            changed = true;
+          }
+          lifecycle.status = "active";
+          lifecycle.completedAt = 0;
+          lifecycle.waitingForBibleGate = true;
+          lifecycle.waitingForBibleGateMessage = gate.message ||
+            "Une validation dans le monde est encore requise.";
+          if (!this.activeMissionIds.includes(missionId)) {
+            this.activeMissionIds.push(missionId);
+          }
+          return;
+        }
+
+        const wasWaitingForBibleGate = lifecycle.waitingForBibleGate === true;
         if (lifecycle.status !== "completed") changed = true;
         lifecycle.status = "completed";
-        lifecycle.completedAt = tree.root.completedAt || Date.now();
+        lifecycle.completedAt = wasWaitingForBibleGate
+          ? Date.now()
+          : (tree.root.completedAt || Date.now());
+        delete lifecycle.waitingForBibleGate;
+        delete lifecycle.waitingForBibleGateMessage;
         this.activeMissionIds = this.activeMissionIds.filter(
           (id) => id !== missionId
         );
       });
-      this.syncMissionSelection();
+      const primaryLifecycle = this.primaryMissionId
+        ? this.memory.state.missionLifecycle?.[this.primaryMissionId]
+        : null;
+      if (
+        !this.primaryMissionId ||
+        primaryLifecycle?.status === "completed" ||
+        !this.activeMissionIds.includes(this.primaryMissionId)
+      ) {
+        this.primaryMissionId = "";
+        this.activeMissionId = "";
+        this.tree = null;
+        this.selectionReason = "Mission principale terminée ; réévaluation des missions actives.";
+        this.syncMissionSelection();
+        this.selectBestPrimary(performance.now(), true);
+      } else {
+        this.syncMissionSelection();
+      }
       if (changed) this.memory.save();
+      return changed;
     }
 
     cancelCurrentAction(reason = "cancelled") {

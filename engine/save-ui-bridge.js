@@ -90,9 +90,18 @@
       () => BF.currentEngine?.savePosition?.(),
       () => BF.currentEngine?.saveDiscovery?.(),
       () => BF.currentEngine?.saveZoneDiscovery?.(),
-      () => BF.currentEngine?.missionManager?.memory?.save?.(),
+      () => {
+        const memory = BF.currentEngine?.missionManager?.memory;
+        if (typeof memory?.flush === "function") return memory.flush(true);
+        return memory?.save?.();
+      },
       () => BF.multiProgression?.save?.(),
-      () => BF.mapExploration?.save?.(),
+      () => {
+        if (typeof BF.mapExploration?.flush === "function") {
+          return BF.mapExploration.flush(true);
+        }
+        return BF.mapExploration?.save?.();
+      },
       () => BF.survival?.save?.()
     ];
     const errors = [];

@@ -167,7 +167,7 @@
           open.push({ cell: next, score: candidateCost + heuristic(next) });
         }
       }
-      return [finalGoal];
+      return null;
     }
 
     smooth(start, points, colliders, characterRadius, padding) {

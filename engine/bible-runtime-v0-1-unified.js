@@ -1093,8 +1093,7 @@
           status === "paused" ||
           manager?.activeMissionIds?.includes?.(missionId) === true,
         completed:
-          status === "completed" ||
-          publicEntry?.tree?.root?.status === "completed"
+          status === "completed"
       };
     }
 
@@ -2074,68 +2073,22 @@
       return changed;
     }
 
-    installCompletionGate() {
-      const Manager = Missions.MissionManager;
-      if (
-        !Manager?.prototype ||
-        Manager.prototype.__bibleUnifiedGateV01
-      ) {
-        return;
+    completionGateState(missionId) {
+      const mission = this.byId.get(missionId);
+      if (!mission?.completionGate) {
+        return { managed: false, canFinalize: true, message: "" };
       }
-
-      Manager.prototype.syncLifecycleFromTrees =
-        function syncLifecycleFromTreesBibleUnified() {
-          let changed = false;
-
-          this.trees.forEach((tree, missionId) => {
-            if (!tree.root.isComplete) return;
-
-            const runtime = BF.bibleRuntime;
-            if (
-              runtime?.byId?.has?.(missionId) &&
-              !runtime.canFinalizeMission(missionId)
-            ) {
-              const lifecycle = this.ensureLifecycle(missionId);
-              lifecycle.status = "active";
-              lifecycle.completedAt = 0;
-              lifecycle.waitingForBibleGate = true;
-              const mission = runtime.byId.get(missionId);
-              const kind = runtime.constructionPlacementEffect(mission)?.kind;
-              const targetMapId = String(
-                mission?.targetMapId || mission?.completionGate?.mapId || ""
-              );
-              lifecycle.waitingForBibleGateMessage =
-                kind === "refuge"
-                  ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
-                  : `Rendez-vous sur ${targetMapId} pour établir le camp.`;
-
-              if (!this.activeMissionIds.includes(missionId)) {
-                this.activeMissionIds.push(missionId);
-              }
-              return;
-            }
-
-            const lifecycle = this.ensureLifecycle(missionId);
-            const wasWaitingForBibleGate = lifecycle.waitingForBibleGate === true;
-            if (lifecycle.status !== "completed") changed = true;
-            lifecycle.status = "completed";
-            lifecycle.completedAt = wasWaitingForBibleGate
-              ? Date.now()
-              : (tree.root.completedAt || Date.now());
-
-            delete lifecycle.waitingForBibleGate;
-            delete lifecycle.waitingForBibleGateMessage;
-
-            this.activeMissionIds =
-              this.activeMissionIds.filter((id) => id !== missionId);
-          });
-
-          this.syncMissionSelection();
-
-          if (changed) this.memory.save();
-        };
-
-      Manager.prototype.__bibleUnifiedGateV01 = true;
+      const canFinalize = this.canFinalizeMission(missionId);
+      const kind = this.constructionPlacementEffect(mission)?.kind;
+      const targetMapId = String(
+        mission.targetMapId || mission.completionGate?.mapId || ""
+      );
+      const message = kind === "refuge"
+        ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
+        : kind === "camp"
+          ? `Rendez-vous sur ${targetMapId} pour établir le camp.`
+          : "Une validation dans le monde est encore requise.";
+      return { managed: true, canFinalize, message };
     }
 
     resolveSpawnOrigin(effect) {
@@ -2995,21 +2948,10 @@
         const lifecycle =
           manager?.memory?.state?.missionLifecycle?.[mission.id];
 
-        if (
-          lifecycle?.status === "completed" &&
-          Boolean(this.constructionPlacementEffect(mission)) &&
-          !this.gateSatisfied(mission)
-        ) {
-          lifecycle.status = "active";
-          lifecycle.completedAt = 0;
-          lifecycle.waitingForBibleGate = true;
-          if (!manager.activeMissionIds.includes(mission.id)) {
-            manager.activeMissionIds.push(mission.id);
-          }
-          manager.memory?.save?.();
-          this.handleConstructionReady(mission);
-          continue;
-        }
+        // MissionManager est l'unique propriétaire de l'état lifecycle.
+        // BibleRuntime ne réactive jamais lui-même une mission terminée :
+        // completionGateState() décrit le gate et MissionManager décide si
+        // l'état reste actif jusqu'à sa validation réelle.
 
         if (lifecycle?.status === "active") {
           this.emitRevealedOnce(mission);
@@ -3181,7 +3123,6 @@
       const registration = this.registerDefinitions();
       if (!registration.ok) return registration;
 
-      this.installCompletionGate();
       this.connect();
       this.migrateLegacyRationUnlock();
       // Le chargement initial de Crystal ne garantit pas l'émission d'une

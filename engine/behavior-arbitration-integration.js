@@ -825,50 +825,8 @@
           };
       }
 
-      const originalChoose = Manager.prototype.chooseRunnableMissionAction;
-      if (typeof originalChoose === "function") {
-        Manager.prototype.chooseRunnableMissionAction =
-          function choosePrioritizedMissionAction(context) {
-            if (!this.isMissionGuidanceEnabled()) return null;
-            const queue = ensurePriorityState.call(this);
-            const candidates = queue
-              .map((missionId, rank) => {
-                const assessment = this.assessMission?.(missionId, context);
-                if (!assessment?.action) return null;
-                return {
-                  missionId,
-                  action: assessment.action,
-                  primary: rank === 0,
-                  rank
-                };
-              })
-              .filter(Boolean);
-
-            if (!candidates.length) return originalChoose.call(this, context);
-
-            const vital = candidates.find((candidate) =>
-              (candidate.action.type === Missions.ActionType?.REST &&
-                context?.needs?.rest) ||
-              (candidate.action.type === Missions.ActionType?.EAT &&
-                context?.needs?.food)
-            );
-            if (vital) return vital;
-
-            const options = candidates.map((candidate) => ({
-              id: `mission-priority-${candidate.rank + 1}:${candidate.missionId}`,
-              axis:
-                this.missionActionAxis?.(
-                  candidate.missionId,
-                  candidate.action
-                ) || "exploration",
-              baseWeight:
-                MISSION_PRIORITY_WEIGHTS[candidate.rank] || 10,
-              candidate
-            }));
-            const selected = BAC.weightedPick?.(options);
-            return selected?.candidate || candidates[0];
-          };
-      }
+      // MissionManager owns mission arbitration.
+      // The BAC integration must not rebuild a parallel shortlist here.
 
       const originalGetState = Manager.prototype.getState;
       if (typeof originalGetState === "function") {
@@ -993,17 +951,8 @@
 
       const primaryMissionOwnsAction =
         this.missionManager?.hasPrimaryMissionAuthority?.() === true;
-      const criticalSurvivalDecision = Boolean(
-        survivalDecision &&
-        (
-          survivalDecision.speech === "critical-rest" ||
-          survivalDecision.routine === "critical-rest"
-        )
-      );
-      const tutorialMicroRestUnlocked = Boolean(
-        survivalDecision?.routine === "micro-rest" &&
-        BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true
-      );
+      const rationCandidate =
+        BF.RationPolicy?.autonomyCandidate?.(this, now) || null;
       const tutorialRationConsumeUnlocked = Boolean(
         survivalDecision?.routine === "food" &&
         BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") === true
@@ -1013,8 +962,6 @@
         survivalDecision &&
         (
           !primaryMissionOwnsAction ||
-          criticalSurvivalDecision ||
-          tutorialMicroRestUnlocked ||
           tutorialRationConsumeUnlocked
         )
       ) {
@@ -1069,7 +1016,10 @@
         return;
       }
 
-      if (primaryMissionOwnsAction) return;
+      if (
+        primaryMissionOwnsAction &&
+        rationCandidate?.allowDuringPrimaryMission !== true
+      ) return;
       this.lastAutonomyAt = now;
       const interactables = (this.currentMap?.interactables || [])
         .filter((object) => this.canInteractWith(object, now));
@@ -1125,6 +1075,7 @@
       const shelterOpportunity = autonomousShelterOpportunity(this, survival);
 
       const options = [
+        ...(rationCandidate ? [rationCandidate] : []),
         {
           id: "survival-rest",
           axis: "survival",
@@ -1332,7 +1283,7 @@
       );
       return { ...base, installed: worldInstalled, worldOverlayInstalled: worldInstalled, integrationVersion: engine?.__bacRoutingVersion || INTEGRATION_VERSION, currentEngineAvailable: Boolean(engine),
         autonomyHook: engine?.updateAutonomy?.name || "",
-        autonomyUnderlyingHook: engine?.__autonomyBeforeRationAI?.name || "",
+        autonomyUnderlyingHook: "",
         rationAutonomyDecision: engine?.__lastRationAutonomyDecision || null, targetPreference: (() => { const e = preferredEntry(); return e ? { kind:e.kind, count:e.count, strength:Number(e.strength.toFixed(2)), ageMs:Date.now()-e.lastAt, lastAxis:e.lastAxis } : null; })(),
         lastTargetDecision,
         shelterOpportunity: autonomousShelterOpportunity(engine, BF.getSurvivalState?.() || {}),

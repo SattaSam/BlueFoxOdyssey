@@ -450,30 +450,12 @@ function installAutonomyGate() {
   const engine = BF.currentEngine;
   if (!engine) return false;
 
+  engine.applyAutonomyMode?.(
+    readAutonomyMode(),
+    "settings-sync"
+  );
+
   if (!engine.__bluefoxAutonomyGateInstalled) {
-    const originalUpdateAutonomy =
-      typeof engine.updateAutonomy === "function"
-        ? engine.updateAutonomy.bind(engine)
-        : null;
-    const originalEnsureActivity =
-      typeof engine.ensureActivity === "function"
-        ? engine.ensureActivity.bind(engine)
-        : null;
-
-    if (originalUpdateAutonomy) {
-      engine.updateAutonomy = function(now) {
-        if (readAutonomyMode() !== "full") return false;
-        return originalUpdateAutonomy(now);
-      };
-    }
-
-    if (originalEnsureActivity) {
-      engine.ensureActivity = function(now) {
-        if (readAutonomyMode() !== "full") return false;
-        return originalEnsureActivity(now);
-      };
-    }
-
     Object.defineProperty(engine, "__bluefoxAutonomyGateInstalled", {
       value: true,
       configurable: true
@@ -482,28 +464,13 @@ function installAutonomyGate() {
 
   const manager = engine.missionManager;
   if (manager && !manager.__bluefoxAutonomyGateInstalled) {
-    const originalMissionUpdate =
-      typeof manager.update === "function"
-        ? manager.update.bind(manager)
-        : null;
-
-    if (originalMissionUpdate) {
-      manager.update = function(now) {
-        if (readAutonomyMode() === "off") return false;
-        return originalMissionUpdate(now);
-      };
-    }
-
     Object.defineProperty(manager, "__bluefoxAutonomyGateInstalled", {
       value: true,
       configurable: true
     });
   }
 
-  return Boolean(
-    engine.__bluefoxAutonomyGateInstalled &&
-    (!engine.missionManager || engine.missionManager.__bluefoxAutonomyGateInstalled)
-  );
+  return true;
 }
 
 function findPriorityHeading(settings, firstPriorityRow) {

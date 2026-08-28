@@ -400,40 +400,6 @@
     }
   };
 
-  const activeEventDrivenTravelNode = (engine, mission) => {
-    const manager = engine?.missionManager;
-    const tree = manager?.trees?.get?.(mission?.id);
-    if (!tree || missionStatus(engine, mission?.id) !== "active") return null;
-    return tree.availableLeaves?.().find((node) =>
-      !node.isComplete &&
-      node.params?.eventDriven === true &&
-      BF.Missions?.normalizeActionType?.(node.type) === BF.Missions?.ActionType?.TRAVEL
-    ) || null;
-  };
-
-  const requestAutonomousKnownReturn = (engine, mission) => {
-    if (mission?.navigation?.autonomousKnownReturn !== true) return false;
-    if (missionStatus(engine, mission.id) !== "active") return false;
-    if (engine?.missionManager?.primaryMissionId !== mission.id) return false;
-    const travelNode = activeEventDrivenTravelNode(engine, mission);
-    // Une même mission peut désormais porter un voyage inconnu entrant puis
-    // un retour connu. Le retour n'est dû que lorsque la feuille active
-    // possède une destination canonique explicite (ex. crystal).
-    if (!travelNode?.params?.toMapId) return false;
-    if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") return false;
-    if (engine.transitioning || engine.pendingGate || engine.pendingInteraction || engine.currentRoutine || engine.missionManager?.currentAction) return false;
-    if (engine.missionManager?.shouldDeferMissionReturn?.(mission.id) === true) return false;
-    if (typeof engine.returnToBase !== "function") return false;
-    engine.returnToBase();
-    return true;
-  };
-
-  const requestKnownReturnAfterRuntimeCleanup = (engine, mission) => {
-    const run = () => requestAutonomousKnownReturn(engine, mission);
-    if (typeof global.queueMicrotask === "function") global.queueMicrotask(run);
-    else Promise.resolve().then(run);
-  };
-
   const acknowledgeMissionAutonomy = (engine, detail = {}) => {
     const mission = missionById(detail.missionId);
     if (missionStatus(engine, mission?.id) !== "active") return false;
@@ -628,16 +594,6 @@
         missionStatus(engine, primaryMission.id) === "active"
       ) {
         requestAutonomousUnknownTravel(engine, primaryMission);
-      }
-
-      if (
-        primaryMission?.navigation?.autonomousKnownReturn === true &&
-        missionStatus(engine, primaryMission.id) === "active" &&
-        activeEventDrivenTravelNode(engine, primaryMission)
-      ) {
-        // Publication missionnelle avant nettoyage de pendingInteraction :
-        // une micro-tâche unique attend seulement la fin de la pile courante.
-        requestKnownReturnAfterRuntimeCleanup(engine, primaryMission);
       }
 
       (state?.missions || []).forEach((entry) => {

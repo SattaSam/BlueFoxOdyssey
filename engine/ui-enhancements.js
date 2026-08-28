@@ -2250,7 +2250,17 @@
     scheduleScan();
   }
 
+  function cleanupResearchPanelArtifacts() {
+    document.querySelectorAll(".drawer, .full-screen-panel").forEach((panel) => {
+      if (isResearchPanel(panel)) return;
+      panel.querySelectorAll(".bluefox-research-runtime").forEach((section) =>
+        section.remove()
+      );
+    });
+  }
+
   function refreshResearchPanels(force = false) {
+    cleanupResearchPanelArtifacts();
     const panels = [...document.querySelectorAll(".drawer, .full-screen-panel")]
       .filter(isResearchPanel);
     if (!panels.length) return;

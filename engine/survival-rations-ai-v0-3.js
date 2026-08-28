@@ -162,6 +162,96 @@
     return Math.max(0, capacity);
   };
 
+  const autonomyCandidate = (engine, now = performance.now()) => {
+    if (!engine || !recipeUnlocked() || !autoCraftEnabled() || !campAccessible()) {
+      return null;
+    }
+
+    const currentProfile = profile();
+    const manager = engine.missionManager;
+    const primaryMission = manager?.definition?.(manager?.primaryMissionId);
+    const missionAllowsRationCraft =
+      primaryMission?.allowsAutonomousRationCraft === true &&
+      BF.isTutorialSurvivalCapabilityUnlocked?.("ration-craft") === true;
+    const missionCraftRemaining = missionAllowsRationCraft
+      ? missionRationCraftRemaining(engine)
+      : 0;
+
+    if (
+      manager?.hasPrimaryMissionAuthority?.() === true &&
+      !missionAllowsRationCraft
+    ) {
+      return null;
+    }
+
+    const survivalMissing = Math.max(
+      0,
+      currentProfile.targetMin - rationCount()
+    );
+    const capacityRemaining = Math.max(
+      0,
+      (
+        Number(BF.Rations?.maxRations) ||
+        Number(BF.Rations?.snapshot?.().maxRations) ||
+        0
+      ) - rationCount()
+    );
+    const missing = Math.min(
+      Math.max(survivalMissing, missionCraftRemaining),
+      capacityRemaining
+    );
+    const possible = craftableCount(missing);
+
+    if (
+      possible <= 0 ||
+      !(currentProfile.shouldCraft || missionCraftRemaining > 0)
+    ) {
+      return null;
+    }
+
+    return {
+      id: "survival-ration-craft",
+      axis: "survival",
+      baseWeight:
+        missionCraftRemaining > 0
+          ? 48
+          : currentProfile.level === "critical"
+            ? 52
+            : 34,
+      available: true,
+      allowDuringPrimaryMission: missionAllowsRationCraft,
+      execute: () => {
+        const crafted =
+          BF.Research?.craft?.(
+            RECIPE_ID,
+            possible,
+            {
+              automatic: true,
+              source: "bac-survival"
+            }
+          ) || 0;
+
+        engine.__lastRationAutonomyDecision = {
+          at: Date.now(),
+          level: currentProfile.level || null,
+          shouldCraft: true,
+          requested: possible,
+          crafted,
+          directOverride: false,
+          source: "bac-candidate"
+        };
+
+        if (crafted > 0) {
+          engine.callbacks?.onStatus?.(
+            `BlueFox profite du camp pour préparer ${crafted} ration${crafted > 1 ? "s" : ""}.`
+          );
+          return true;
+        }
+        return false;
+      }
+    };
+  };
+
   BF.RationPolicy = Object.freeze({
     recipeId: RECIPE_ID,
     profile,
@@ -170,6 +260,7 @@
     autoCraftEnabled,
     craftableCount,
     campAccessible,
+    autonomyCandidate,
     policy: POLICY
   });
 
@@ -259,215 +350,9 @@
 
   const install = () => {
     const engine = BF.currentEngine;
-    if (
-      !engine ||
-      typeof engine.updateAutonomy !==
-        "function"
-    ) {
-      return false;
-    }
-    if (
-      engine.__rationAiVersion ===
-      VERSION
-    ) {
-      return true;
-    }
-
-    const originalAutonomy =
-      engine.updateAutonomy.bind(engine);
-    engine.__autonomyBeforeRationAI =
-      originalAutonomy;
-
-    engine.updateAutonomy =
-      function updateAutonomyWithRationPriority(
-        now
-      ) {
-        if (!recipeUnlocked()) {
-          return originalAutonomy(now);
-        }
-
-        const currentProfile = profile();
-        const survivalState =
-          BF.getSurvivalState?.() || {};
-
-        // La ration décrit un besoin de survie mais ne préempte jamais une
-        // mission principale active et ne devient pas propriétaire d'action.
-        const primaryMissionOwnsAction =
-          this.missionManager?.hasPrimaryMissionAuthority?.() === true;
-        const primaryMission = this.missionManager?.definition?.(
-          this.missionManager?.primaryMissionId
-        );
-        const missionAllowsRationCraft =
-          primaryMission?.allowsAutonomousRationCraft === true &&
-          BF.isTutorialSurvivalCapabilityUnlocked?.("ration-craft") === true;
-        const missionCraftRemaining = missionAllowsRationCraft
-          ? missionRationCraftRemaining(this)
-          : 0;
-        if (primaryMissionOwnsAction && !missionAllowsRationCraft) {
-          return originalAutonomy(now);
-        }
-
-        if (
-          (currentProfile.shouldCraft || missionCraftRemaining > 0) &&
-          autoCraftEnabled() &&
-          campAccessible() &&
-          !this.transitioning &&
-          !this.pendingInteraction &&
-          !this.pendingGate &&
-          !this.pendingZoneExploration &&
-          !this.currentRoutine &&
-          !this.missionManager
-            ?.currentAction &&
-          now >=
-            this.postActionRecoveryUntil &&
-          now - this.lastAutonomyAt >=
-            5000 &&
-          this.character.root.position
-            .distanceTo(
-              this.character.target
-            ) <= 0.2
-        ) {
-          const survivalMissing = Math.max(
-            0,
-            currentProfile.targetMin - rationCount()
-          );
-          const capacityRemaining = Math.max(
-            0,
-            (
-              Number(BF.Rations?.maxRations) ||
-              Number(BF.Rations?.snapshot?.().maxRations) ||
-              0
-            ) - rationCount()
-          );
-          const missing = Math.min(
-            Math.max(
-              survivalMissing,
-              missionCraftRemaining
-            ),
-            capacityRemaining
-          );
-          const possible =
-            craftableCount(missing);
-
-          if (possible > 0) {
-            this.lastAutonomyAt = now;
-            const crafted =
-              BF.Research?.craft?.(
-                RECIPE_ID,
-                possible,
-                {
-                  automatic: true,
-                  source: "bac-survival"
-                }
-              ) || 0;
-
-            if (crafted > 0) {
-              this.callbacks
-                ?.onStatus?.(
-                  `BlueFox profite du camp pour préparer ${crafted} ration${crafted > 1 ? "s" : ""}.`
-                );
-              return true;
-            }
-          }
-        }
-
-        if (
-          !currentProfile.shouldCollect
-        ) {
-          return originalAutonomy(now);
-        }
-
-        const survivalCritical =
-          Boolean(
-            survivalState.needs
-              ?.criticalRest ||
-            survivalState.needs?.food ||
-            Number(
-              survivalState.energy
-            ) < 40 ||
-            Number(
-              survivalState.food
-            ) < 40
-          );
-
-        if (
-          currentProfile.level !==
-            "critical" ||
-          !survivalCritical
-        ) {
-          this.__lastRationAutonomyDecision =
-            {
-              at: Date.now(),
-              level:
-                currentProfile.level ||
-                null,
-              shouldCollect: true,
-              directOverride: false,
-              survivalCritical,
-              energy:
-                Number(
-                  survivalState.energy
-                ) || null,
-              food:
-                Number(
-                  survivalState.food
-                ) || null,
-              reason:
-                survivalCritical
-                  ? "ration-stock-non-critical-online-delegated-to-bac"
-                  : "survival-state-healthy-online-delegated-to-bac"
-            };
-          return originalAutonomy(now);
-        }
-
-        if (
-          this.missionManager
-            ?.hasRunnablePrimaryMission?.()
-        ) {
-          return originalAutonomy(now);
-        }
-
-        if (
-          this.transitioning ||
-          this.pendingInteraction ||
-          this.pendingGate ||
-          this.pendingZoneExploration ||
-          this.currentRoutine ||
-          this.missionManager
-            ?.currentAction
-        ) {
-          return originalAutonomy(now);
-        }
-
-        if (
-          now <
-            this.postActionRecoveryUntil ||
-          now - this.lastAutonomyAt <
-            5000 ||
-          this.character.root.position
-            .distanceTo(
-              this.character.target
-            ) > 0.2
-        ) {
-          return originalAutonomy(now);
-        }
-
-        this.__lastRationAutonomyDecision =
-          {
-            at: Date.now(),
-            level:
-              currentProfile.level ||
-              null,
-            shouldCollect: true,
-            directOverride: false,
-            recipeId: RECIPE_ID
-          };
-
-        return originalAutonomy(now);
-      };
-
-    engine.__rationAiVersion =
-      VERSION;
+    if (!engine) return false;
+    engine.__rationAiVersion = VERSION;
+    engine.__autonomyBeforeRationAI = null;
     return true;
   };
 

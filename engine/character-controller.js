@@ -166,7 +166,7 @@
     }
 
     setTarget(target, movementMode = "auto") {
-      if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.z)) return;
+      if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.z)) return false;
       const safeTarget = target.clone
         ? target.clone()
         : new this.THREE.Vector3(target.x, 0, target.z);
@@ -178,17 +178,26 @@
       this.finalTarget.copy(safeTarget);
       this.finalTarget.y = 0;
       this.failedReplans = 0;
-      this.rebuildPath();
+      return this.rebuildPath();
     }
 
     rebuildPath(extraPadding = 0) {
-      this.waypoints = this.pathPlanner.plan(
+      const plannedPath = this.pathPlanner.plan(
         this.root.position,
         this.finalTarget,
         this.colliders,
         this.radius,
         0.12 + extraPadding
       );
+      if (!Array.isArray(plannedPath) || !plannedPath.length) {
+        const failedTarget = this.finalTarget.clone();
+        this.stop();
+        global.dispatchEvent(new CustomEvent("bluefox:navigation-failed", {
+          detail: { target: failedTarget, reason: "no-path" }
+        }));
+        return false;
+      }
+      this.waypoints = plannedPath;
       if (this.waypoints.length) {
         this.finalTarget.copy(this.waypoints[this.waypoints.length - 1]);
       }
@@ -204,6 +213,7 @@
           ]
         }
       }));
+      return true;
     }
 
     stop() {
