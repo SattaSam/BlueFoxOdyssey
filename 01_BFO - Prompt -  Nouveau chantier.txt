@@ -16,19 +16,39 @@ identifier le commit GitHub courant et le prendre comme base exclusive ;
 ne jamais repartir d’un ancien ZIP, d’un ancien fichier local ou d’une ancienne tentative rejetée ;
 auditer les fichiers concernés et leurs interactions avant de proposer une correction.
 
-2. Chantier du jour : [NOM DU CHANTIER]
+2. DOCUMENT GAMEPLAY À LIRE AVANT TOUT AUDIT TECHNIQUE
 
-Priorité : [P0 / P1 / P2]
+Ce document doit être lu AVANT de proposer une stratégie technique.
 
-Objectif précis : [DESCRIPTION COURTE]
+Il rassemble les intentions de gameplay retrouvées dans :
 
-Pour ce chantier, prends également en compte :
+* le cahier des charges ;
+* la Bible narrative ;
+* les documents missionnels ;
+* CUO / CUM ;
+* les documents techniques ;
+* l’historique des validations ;
+* nos conversations de développement ;
+* les corrections et arbitrages successifs de juillet et août.
 
-les validations fonctionnelles obtenues dans nos échanges récents ;
-les versions stables ou comportements validés mentionnés dans les documents ou fichiers transmis dans la conversation ;
-l’état réel du dépôt actuel.
+Ce document n’est PAS une nouvelle couche moteur.
 
-Une fonctionnalité validée dans nos essais mais non commitée doit être considérée comme une spécification fonctionnelle à récupérer, pas comme absente ou abandonnée.
+Il sert uniquement de **référentiel d’intention et de non-régression gameplay**.
+
+### Ordre d’autorité fonctionnelle
+
+Lorsqu’il existe une contradiction :
+
+1. décision gameplay explicite la plus récente de l’utilisateur ;
+2. validation directe en jeu par l’utilisateur ;
+3. Bible narrative / document fonctionnel récent ;
+4. documents officiels du projet ;
+5. anciennes traductions CUM/CUO/Bible moteur ;
+6. code actuel.
+
+Le code ne définit pas à lui seul l’intention.
+
+---
 
 3. Première passe uniquement : diagnostic + stratégie
 
@@ -46,7 +66,40 @@ une stratégie d’intégration synthétique mais techniquement justifiée.
 
 Ne génère encore aucun correctif à cette étape.
 
-4. Après ma validation de la stratégie
+4. IMPORTANT — NE PAS REPRODUIRE LES ERREURS DES CHANTIERS PRÉCÉDENTS
+
+Plusieurs sessions dites de « consolidation », « nettoyage » ou « récupération » ont elles-mêmes produit de nouvelles régressions.
+
+Par conséquent :
+
+### Il est interdit de raisonner ainsi :
+
+> fichier mal propriétaire → on supprime son wrapper → propriétaire officiel restauré → problème réglé.
+
+Avant de retirer ou neutraliser quoi que ce soit, il faut identifier **TOUS les comportements gameplay actuellement transportés par cette couche**.
+
+Même une couche architecturalement mauvaise peut aujourd’hui être la seule à assurer une fonctionnalité validée.
+
+La suppression n’est acceptable qu’après preuve de conservation du comportement.
+
+---
+
+5. UNITÉ DE TRAVAIL : L’INVARIANT GAMEPLAY
+
+La matrice principale du chantier ne doit PAS être une liste de fonctions JavaScript.
+
+Elle doit être une matrice :
+
+| Attendu gameplay | Situation initiale | Déclencheur | Initiative BlueFox | Intervention joueur | Résultat observable attendu | Effets secondaires autorisés | Interdits | Persistance / reprise | Validé historiquement ? | État HEAD | Propriétaire(s) runtime réellement impliqués | Verdict |
+| ---------------- | ------------------ | ----------- | ------------------ | ------------------- | --------------------------- | ---------------------------- | --------- | --------------------- | ----------------------- | --------- | -------------------------------------------- | ------- |
+
+Le document Gameplay V2 doit fournir la base de cette matrice.
+
+Complète-la avec les références du dépôt et l’historique pertinent lorsque nécessaire.
+
+
+
+6. Après ma validation de la stratégie
 
 Tu réalises le correctif en repartant exclusivement des fichiers du commit courant ou de la cible désignée.
 
@@ -62,7 +115,7 @@ vérifier le diff contre le commit de départ ;
 effectuer les tests disponibles ;
 ne jamais annoncer le correctif comme validé si une partie n’a pas pu être vérifiée.
 
-5. Une fois le correctif validé en jeu
+7. Une fois le correctif validé en jeu
 
 On décide ensemble s’il faut :
 

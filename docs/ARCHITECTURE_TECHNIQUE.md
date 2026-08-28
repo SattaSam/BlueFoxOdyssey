@@ -1,6 +1,8 @@
 # BlueFox Odyssey — Architecture technique
 
-Référence : **commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` — 23 août 2026**
+Référence technique : **commit `c75fa77b2afe59a0d3dc41fc00453c3dc47a1d64` — 28 août 2026**
+
+Ce document décrit les **propriétaires effectifs** après la passe de récupération intégrée. Il remplace les descriptions d’architecture antérieures lorsqu’elles sont en contradiction avec le HEAD.
 
 ## Registre canonique des propriétaires
 
@@ -12,194 +14,159 @@ Référence : **commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` — 23 août 2
 | Politique de population | `engine/biome-population-policy-r3.js` | Pondérations, exclusions, population |
 | Hiérarchie de population | `engine/map-population-hierarchy.js` | Organisation des niveaux de population |
 | Génération de map | `engine/map-generator.js` + `engine/map-generation-rules.js` | Génération structurelle des maps |
-| Prescription Bible des maps | `engine/bible-map-prescription-v19.js` | Prescriptions Bible appliquées aux maps |
+| Prescription Bible des maps | `engine/bible-map-prescription-v19.js` | Prescriptions / excursions / contraintes de map ; **pas un second exécuteur du retour connu** |
 | Application prescriptions Bible au générateur | `engine/map-generator-bible-overrides-v19.js` | Traduit/applique les prescriptions |
 | Exploration Bible / monde | `engine/bible-exploration-world-v19.js` | Règles exploration issues de la Bible |
 | Exploration Bible / MSC | `engine/bible-exploration-micro-scenes-v19.js` | Liaison exploration Bible ↔ MSC |
 | Micro-scènes | `engine/micro-scenes.js` | Orchestration MSC |
 | Données MSC custom | `data/custom-micro-scenes.js` | Compositions MSC enregistrées |
 | Persistance MSC | `engine/persistent-micro-scenes-v20.js` | Restaurer/persister les MSC |
-| Monde / transitions / autonomie | `engine/world-engine.js` | État et fonctionnement du monde |
+| Monde / transitions / autonomie exécutée | `engine/world-engine.js` | État du monde, transitions, autonomie exécutée, navigation et directive joueur persistante |
 | Topologie monde | `engine/world-topology-v3.js` | Graphe/topologie des maps |
 | Persistance topologie | `engine/topology-persistence-bridge.js` | Sauvegarde/restauration topologie |
 | Menu planète / topologie UI | `engine/planet-topology-ui.js` | Représentation topologique dans l’UI |
 | Globe planète | `engine/planet-globe-ui.js` | Rendu/interactions globe |
 | Caméra | `engine/camera-controller.js` | Propriétaire principal caméra |
 | Regard caméra étendu | `engine/camera-extended-look.js` | Extension du contrôleur |
-| Déplacement BlueFox | `engine/character-controller.js` | Mouvement personnage |
-| Navigation / chemins | `engine/path-planner.js` | Calcul/planification des déplacements |
+| Déplacement BlueFox | `engine/character-controller.js` | Mouvement personnage ; signale `bluefox:navigation-failed` |
+| Navigation / chemins | `engine/path-planner.js` | Calcul/planification ; absence de chemin = échec, jamais cible directe forcée |
 | Arbitrage comportemental BAC | `engine/behavior-arbitration-core.js` | Décision comportementale |
-| Intégration BAC au jeu | `engine/behavior-arbitration-integration.js` | Raccord BAC ↔ runtime |
+| Intégration BAC au jeu | `engine/behavior-arbitration-integration.js` | Raccord BAC ↔ runtime ; **ne remplace pas le choix missionnel propriétaire de MissionManager** |
 | Budget CPU | `engine/runtime-budget.js` | Unique système de throttling adaptatif |
 | Progression centrale | `engine/progression-registry.js` | Registre autoritaire de progression |
-| Sauvegarde globale / snapshots | `engine/save-ui-bridge.js` | Orchestration save/load |
-| Missions / orchestration | `engine/mission-manager.js` | Propriétaire du cycle missionnel |
+| Sauvegarde globale / snapshots | `engine/save-ui-bridge.js` | Orchestration save/load ; flush des mémoires différées avant snapshot |
+| Missions / lifecycle / sélection action missionnelle | `engine/mission-manager.js` | Propriétaire du cycle missionnel, primaire/secondaires, pending, choix de l’action missionnelle |
+| Nettoyage lifecycle de compatibilité | `engine/mission-manager-bible-fix-v19.js` | Compatibilité/clean state ; ne doit pas recréer un propriétaire concurrent |
 | Mémoire mission | `engine/mission-memory.js` | Lifecycles, faits, historique, sites |
 | Planification mission | `engine/mission-planner.js` | Traduit mission en intention/action |
-| Arbre / objectifs | `engine/mission-tree.js` | Structure des objectifs et mémoire `distinctValues` |
+| Arbre / objectifs | `engine/mission-tree.js` | Structure objectifs, `distinctValues` |
 | Types mission | `engine/mission-types.js` | Modèle des types/objectifs |
 | Contrat Bible | `engine/bible-contract-v0-1.js` | Contrat des fiches/patrons |
-| Runtime Bible | `engine/bible-runtime-v0-1-unified.js` | Interprétation Bible, narration, effets et crédits d’activation |
+| Runtime Bible | `engine/bible-runtime-v0-1-unified.js` | Interprétation, narration, effets, compteurs, completion gates ; **ne possède pas le lifecycle** |
 | Validation Bible | `engine/bible-validation-v0-1.js` | Validation des données Bible |
 | Patrons Bible | `data/bible-patterns.js` | Familles génériques |
 | Catalogue Bible | `data/bible-catalog.js` | Fiches missionnelles |
 | Exécution mission → action | `engine/action-bridge.js` | Raccord intention/action réelle |
 | Événements objets | `engine/object-event-registry.js` | Normalisation événements |
-| Raccord CUO → M0 | `engine/object-m0-bridge.js` | Matching générique critères mission ↔ métadonnées CUO ; études missionnelles avant acquisition ; distinct étude par instance |
+| Raccord CUO → M0 | `engine/object-m0-bridge.js` | Matching générique, études dues, même instance, fan-out, identité missionnelle |
 | Arbitrage cible mission | `engine/mission-target-arbitration-v19-12.js` | Choix/priorité de cible |
-| Intégration runtime missions | `engine/mission-runtime-integration-v19-7.js` | Raccord runtime mission au jeu |
-| UI missions / tutoriel | `engine/mission-ui-bridge.js` | Affichage mission + consommation guidage tutoriel ; aucune logique missionnelle propriétaire |
+| Intégration runtime missions | `engine/mission-runtime-integration-v19-7.js` | Fallback de compatibilité ; ObjectM0 reste prioritaire lorsqu’il est actif |
+| UI missions / tutoriel | `engine/mission-ui-bridge.js` | Affichage/guidage uniquement |
 | Inventaire UI | `engine/inventory-ui-bridge.js` | Raccord UI inventaire |
-| Survie / IA | `engine/survival-ai-bridge.js` | Raccord survie ↔ comportement |
-| Rations | `engine/survival-rations-v0-3.js` | Mécanique ration |
-| IA ration | `engine/survival-rations-ai-v0-3.js` | Utilisation ration par IA |
+| Nettoyage UI inventaire | `engine/inventory-ui-clean-v0-2.js` | Nettoyage visuel ; aucune sémantique gameplay |
+| UI générale / Planète / Recherche | `engine/ui-enhancements.js` | Extensions UI ; ne possède pas le gameplay |
+| Réglages UI | `engine/settings-ui-bridge.js` | UI/réglages ; ne doit pas réécrire l’autonomie métier |
+| Survie / IA | `engine/survival-ai-bridge.js` | État survie / décisions de besoin |
+| Rations | `engine/survival-rations-v0-3.js` | Mécanique réelle ration |
+| IA ration | `engine/survival-rations-ai-v0-3.js` | Candidats collecte/craft/consommation sous capacités et BAC |
 | Réglages survie | `engine/survival-tuning-r3.js` | Tuning uniquement |
 | Musique adaptative | `engine/adaptive-music-engine-v1.js` | Unique moteur musical |
 | Raccord musique ↔ gameplay | `engine/adaptive-music-gameplay-bridge-v1.js` | Contexte gameplay/BAC |
 | UI musique | `engine/adaptive-music-ui-v1.js` | Volumes/UI |
 | `map-registry.js` | **PROTÉGÉ** | Aucun ajout de logique objet/population/mission |
 
-## Contrat missionnel validé P01→P04
+## Contrat d’autorité runtime
 
-### Chaînage
-Le lifecycle reste la propriété de `MissionManager`.
-Les prérequis sont satisfaits sur l’état `completed` de la mission précédente. Une fiche peut être enregistrée/préparée avant d’être réellement active ; la narration de révélation doit attendre le passage réel à `active`.
+### MissionManager
+`MissionManager` est l’unique propriétaire du lifecycle et du choix missionnel :
+- active / pending / completed ;
+- mission principale et secondaires ;
+- sélection canonique de la primaire ;
+- `chooseRunnableMissionAction()`;
+- maximum une nouvelle activation par réévaluation causale.
 
-Chaîne validée :
+Aucun wrapper tardif ne doit redéfinir une shortlist concurrente d’actions missionnelles.
 
-```text
-T01 completed
-→ T02 active
-T02 completed
-→ T03 active
-T03 completed
-→ T04 active + GAME-shelter active
-```
+### BAC
+Le BAC décide des besoins/opportunités comportementales. L’intégration BAC matérialise ces décisions, mais :
+- elle ne remplace pas le choix missionnel de `MissionManager`;
+- elle ne doit pas détourner une mission prioritaire/tutorielle par une collecte/repos sans autorisation explicite du contrat gameplay ;
+- les capacités ration post-T12 restent des exceptions explicites, pas une permission générale de repos.
 
-### Narration Bible
-Le propriétaire est `engine/bible-runtime-v0-1-unified.js`.
+### BibleRuntime
+`BibleRuntime` interprète les fiches, récompenses, compteurs et completion gates. Il appelle les méthodes du `MissionManager` lorsque nécessaire ; il ne remplace pas son lifecycle.
 
-Contrat courant :
-- texte narratif ordinaire → queue narrative → `onSpeak` + historique d’action ;
-- route explicite `journal` → journal dédié lorsque le contrat le prévoit ;
-- `mission_revealed` → émission une seule fois au passage réel en `active`, y compris sortie de `pending`;
-- les reçus de narration sont persistés pour éviter les doublons ;
-- la queue narrative calcule la durée d’affichage et réserve `speechQuietUntil` afin d’éviter qu’une parole autonome n’écrase la bulle.
+## Navigation et directive joueur
 
-### Crédit d’inventaire à l’activation
-Le catalogue peut déclarer `activationInventoryCredits`.
-`BibleRuntime` est le consommateur générique de cette prescription.
-P03 l’utilise pour créditer l’objectif `collectWood` à partir du bois déjà disponible, plafonné à 10, sans consommer la ressource avant l’effet de complétion.
+Propriétaire : `WorldEngine`.
 
-### Matching CUO générique
-`engine/object-m0-bridge.js` compare les critères de mission aux métadonnées réelles :
-- `objectId`
-- `cuoType`
-- `kind`
-- `family`
-- `subject`
-- `category`
-- tags
-- exclusions correspondantes
+Règle B validée :
+1. la suggestion joueur de changement de map est mémorisée immédiatement ;
+2. elle n’interrompt pas l’action atomique déjà engagée ;
+3. dès cette action terminée, elle est reprise **avant toute nouvelle planification missionnelle ou décision BAC** ;
+4. elle est persistée (`bluefox_navigation_intent_v1`) et doit survivre au reload ;
+5. elle est supprimée uniquement sur réalisation, remplacement ou annulation explicite.
 
-Cette règle a permis de valider T02 sans coder de cas missionnel spécifique : bois, plante et minerai sont distingués par le vocabulaire CUO existant.
+La navigation inconnue reste limitée à un seul passage lorsqu’elle est explicitement demandée.
 
-### Fan-out
-Une même action canonique peut faire progresser plusieurs missions déjà actives.
-P04 + `GAME-shelter` constituent le test de référence actuel de ce comportement.
-Aucun bridge supplémentaire ne doit intercepter l’événement avant ses consommateurs normaux.
+## Contrat chemins / obstacles
 
-### Études missionnelles avant acquisition — contrat validé au 23 août 2026
-Le raccord reste porté par `engine/object-m0-bridge.js`; aucun propriétaire supplémentaire n'est créé.
+`PathPlanner` doit retourner un vrai chemin ou aucun chemin.
+`CharacterController` :
+- ne transforme pas l’absence de chemin en déplacement direct vers la cible ;
+- arrête le déplacement et émet `bluefox:navigation-failed` ;
+- conserve le mécanisme de replanification pour les blocages apparus pendant un chemin valide.
 
-Contrat courant :
-- `observer`, `inspecter` et `analyser` sont trois verbes missionnels/narratifs d'une même action physique : `observe` ;
-- une instance collectable peut être observée avant sa collecte si une mission le demande, y compris si elle avait déjà été observée historiquement ;
-- plusieurs nœuds missionnels successifs peuvent demander de nouvelles observations de la même instance ;
-- après la dernière étude réellement due, `collect/extract` reprend immédiatement sur la même instance ;
-- une observation canonique reste disponible au fan-out vers toutes les missions actives compatibles ;
-- l'identité persistante de l'acquisition (`acquisitionMission*`) reste distincte de l'identité momentanée du nœud d'étude (`mission*`) ;
-- l'annulation d'une acquisition pendant une étude intermédiaire doit nettoyer l'ensemble de la transaction sans interaction orpheline.
+Le traveling d’intro et les paramètres de locomotion ne sont pas des variables de correction implicites : toute modification exige une preuve dédiée.
 
-### Unicité d'étude nœud × instance
-`MissionNode` reste propriétaire de `distinctValues`, `incrementDistinct()` et `hasDistinctValue()`.
+## CUO / même instance / fan-out
 
-Pour les nœuds d'étude `OBSERVE/INSPECT/ANALYZE` sans `distinctBy` explicite, `object-m0-bridge.js` applique désormais un distinct effectif `instanceId`.
+`object-m0-bridge.js` reste propriétaire du raccord générique :
+- critères `objectId`, `cuoType`, `kind`, `family`, `subject`, `category`, tags/exclusions ;
+- 0..N études missionnelles réellement dues ;
+- acquisition immédiate de la **même instance** ;
+- identité d’acquisition persistante distincte de l’étude momentanée ;
+- fan-out d’un ObjectEvent vers toutes les missions déjà actives compatibles ;
+- unicité nœud d’étude × instance.
 
-Règles :
-- un même nœud d'étude ne peut créditer une même instance qu'une seule fois ;
-- une autre instance peut faire progresser le même nœud ;
-- un autre nœud peut réobserver la même instance ;
-- un `distinctBy` explicite reste prioritaire (`instanceId`, `objectId`, `none`) ;
-- les nœuds non-study, notamment `collect/extract`, ne reçoivent aucun distinct implicite.
+Le fallback `mission-runtime-integration-v19-7.js` ne devient propriétaire que lorsque ObjectM0 n’est pas disponible.
 
-Cas de référence : `GAME-shelter / plantStudy` (« Observer, inspecter ou analyser 100 plantes ») doit progresser sur des instances distinctes et ne jamais boucler sur la même plante.
+## Sauvegarde / persistance
 
-## UI tutorielle
-La façade visuelle `BF.TutorialUI`, installée dans `mission-ui-bridge.js`, reste non destructive :
-- message ;
-- fermeture ;
-- résolution de cible ;
-- surbrillance.
+`savе-ui-bridge.js` capture les clés `bluefox_*` après avoir demandé aux propriétaires différés de publier leur état.
+Au checkpoint c75fa77 :
+- `MissionMemory.flush(true)` doit être utilisé s’il existe ;
+- `MapExploration.flush(true)` doit être utilisé s’il existe ;
+- `ProgressionRegistry` conserve ses mutations à la source ;
+- topologie, MSC, ration et autres propriétaires conservent leurs clés canoniques.
 
-Les fiches portent les prescriptions `uiGuidance`. Le bridge UI les consomme, mais ne possède pas le lifecycle missionnel.
+La persistance est validée seulement si le reload conserve la **signification** du gameplay, pas uniquement des octets.
 
-Comportements validés :
-- P01 : aide capsule ;
-- P03 : aide caméra après 90 s, surbrillance `camera`;
-- P04 : aide lorsque T04 + `GAME-shelter` sont actives simultanément ;
-- durée explicite courante des aides : 14 s.
+## Rations
 
-## BAC / fatigue
-La décision survie/fatigue est portée par le BAC. L’intégration runtime exécute la routine décidée.
-Ne pas réintroduire un second overlay `updateAutonomy` concurrent.
-Les pauses critiques et micro-pauses restent autorisées même avec mission prioritaire.
+- mécanique réelle : `survival-rations-v0-3.js`;
+- politique/candidat IA : `survival-rations-ai-v0-3.js`;
+- fabrication autonome missionnelle : doit passer par capacités déverrouillées + propriétaire réel du craft + BAC ;
+- ne jamais créer une recette/ration parallèle.
 
-## RuntimeBudget
-`engine/runtime-budget.js` reste l'unique budget adaptatif de runtime. Aucun second système de throttling ne doit être créé.
+## UI
 
-## Sauvegarde / dirty-state
-Chaîne d'autosave :
+L’UI n’est jamais propriétaire du gameplay.
+`game.js` conserve un état React de panneau actif ; les bridges tardifs doivent nettoyer leurs injections lorsqu’un panneau change et ne doivent pas laisser Recherche/Inventaire coexister visuellement.
 
-```text
-persistRuntime()
-→ captureState()
-→ stateSignature()
-→ comparaison à lastAutoStateSignature
-→ écriture seulement si nécessaire
-```
+## Écarts ouverts au checkpoint c75fa77
 
-`persistRuntime()` ne doit pas créer artificiellement un état modifié. `MissionMemory` conserve son mécanisme dirty/flush.
-`MissionNode.toJSON()` persiste `distinctValues`; la preuve intégrée save → reload → reprise du correctif du 23 août reste à rejouer dans le banc complet.
+### T11 — retour autonome
+Le contrat est connu et a déjà été historiquement validé, mais il n’est pas reproduit au checkpoint :
+- après les collectes T11, BlueFox continue localement pour Shelter ;
+- le retour physique autonome vers un abri ne prend pas la main.
 
-## Contrat CUO → événements → missions
-Le CUO ne sert pas uniquement au rendu 3D. Les définitions normalisées exposent actions, états, familles, tags, connaissances, recherche, ressources, progression, rareté, biomes et spawn.
-Ces métadonnées sont projetées dans `userData` puis réinjectées dans les événements consommés par le moteur missionnel.
+Chantier dédié : **récupération différentielle du dernier cycle fonctionnel**. Ne pas inventer un nouveau moteur de retour.
 
-## Contrat MSC
-- CUO Lab enregistre les transformations locales.
-- MAP_Test et le jeu interprètent exactement les mêmes données.
-- `ObjectSpawner` ne réécrit pas les pivots internes.
-- Une MSC peut avoir trois rôles missionnels indépendants : `triggerContext`, `objectiveSubject`, `scenarioSupport`.
-- Une MSC associée à une mission n'est pas automatiquement un objectif.
-- P03 établit `MSC-CUSTOM-CAMP` via l’effet canonique `site.establish`.
+### T13 — autocraft ration
+La mécanique ration existe mais l’objectif T13 ne déclenche pas encore le craft autonome.
+Chantier dédié : tracer génériquement :
+`CRAFT → MissionPlanner/BAC → propriétaire craft → consommation → production → événement → progression`.
 
-## Raccords missionnels encore ouverts
-À ajouter uniquement lorsqu’une future mission l’exige :
-- propagation `targetBinding=instance` jusqu'à ActionBridge ;
-- agrégation multi-map / multi-biome / multi-instance ;
-- généralisation éventuelle du spawn missionnel au-delà de `site.establish`;
-- présence / proximité / durée / délai ;
-- excursion → changement de map → retour ;
-- effets génériques réputation / branche / faits.
-
-Le distinct générique n'est plus un raccord « à créer » : le moteur possède le mécanisme `MissionNode.distinctValues`, les overrides explicites `distinctBy` et le distinct implicite `instanceId` pour les nœuds d'étude validé au commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f`.
+Aucune branche `if (missionId === "T13")`.
 
 ## Discipline de modification
-- toujours partir du fichier complet du HEAD courant ;
-- ne jamais reconstruire depuis un extrait ;
-- vérifier le diff exact ;
-- conserver tout contenu hors périmètre ;
-- aucun bridge parallèle ;
-- aucun fichier versionné dans les patchs committables ;
-- une correction locale doit préserver toutes les fonctionnalités validées ajoutées depuis le dernier commit de référence.
+
+- HEAD courant seule base technique ;
+- décisions utilisateur récentes > anciennes traductions techniques ;
+- audit producteur → propriétaire → runtime final → événement → consommateurs ;
+- aucun bridge parallèle si un propriétaire existe ;
+- aucun patch depuis un extrait partiel ;
+- tests des wrappers réellement chargés par `index.html`;
+- un symptôme sert de réfutation, pas de cible de design ;
+- `hasPrimaryMissionAuthority()` n’est pas à modifier sans preuve explicite.

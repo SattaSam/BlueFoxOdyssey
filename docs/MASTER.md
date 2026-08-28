@@ -1,188 +1,112 @@
 # BLUEFOX ODYSSEY — MASTER
 
 ## État de référence
-Dernière mise à jour : 2026-08-23
+
+Dernière mise à jour : **28 août 2026**
 
 ### Version de travail
-- Base GitHub de référence : commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f`.
-- Cette base cumule les travaux validés récents : stabilisation fatigue/BAC, fondations UI tutoriel, routage Bible vers bulles/journal/50 actions, intégration P01→P04, restauration des garanties missionnelles, corrections MSC/camp récentes et correction de la double interaction missionnelle observation→collecte.
+- Base GitHub de référence : commit `c75fa77b2afe59a0d3dc41fc00453c3dc47a1d64`.
+- Libellé : `RECOVERY_CHECKPOINT — moteur stabilisé, T11 return + T13 autocraft encore ouverts`.
+- Ce checkpoint remplace les cumulatifs intermédiaires comme base de reprise.
+- Il **ne vaut pas validation gameplay complète T01→T13** : T11 retour autonome et T13 autocraft restent ouverts.
 - Base PC historique : V16.20.
-- Version mobile/APK précédente : V16.14, considérée obsolète.
-- Développement mobile à reprendre depuis la base PC stable courante.
-- Objectif : builds testables régulièrement, Web puis Android.
+- Version mobile/APK V16.14 : obsolète.
+- Objectif : consolider la base PC/Web avant reprise Android.
 
 ## Gouvernance documentaire officielle
-Les seuls documents de référence officiels maintenus sont ceux listés dans `docs/README.txt` :
-- `MASTER.md`
-- `ARCHITECTURE_TECHNIQUE.md`
-- `ROADMAP_TODO.md`
-- `DEV_HISTORIQUE.md`
-- `MUSIC_SYSTEM_V1.md`
 
-Les autres DOCX/MD présents dans `docs/` sont des annexes, archives ou sources historiques et ne doivent pas être utilisés pour piloter le chantier courant.
+Les documents maintenus sont listés dans `docs/README.txt`.
+Depuis le 28 août 2026, les deux addenda de récupération font partie du corpus de reprise :
+- `RECOVERY_CHECKPOINT_2026-08-28.md`
+- `GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md`
 
-## Architecture 3D concernée
-Fichiers principaux :
-- `engine/bluefox3d-core.js`
-- `engine/map-registry.js`
-- `engine/world-engine.js`
-- `engine/object-library.js`
-- `engine/object-spawner.js`
-- `engine/micro-scenes.js`
-- `engine/runtime-budget.js`
-- `engine/special-object-runtime.js`
-- `engine/save-ui-bridge.js`
-- `game.js` uniquement si des réglages restent compilés ou embarqués à la racine.
+Les DOCX historiques restent des sources de décision, mais le HEAD et les documents officiels courants priment lorsqu’une ancienne traduction technique est dépassée.
 
-## Contrat MSC validé
-- CUO Lab, MAP_Test et moteur du jeu doivent restituer exactement les mêmes transformations locales enregistrées.
-- `ObjectSpawner` choisit uniquement l'ancrage et la rotation globale d'une instance MSC.
-- Les trois MSC coralliennes sous-marines bioluminescentes restent intégrées.
-- Les rochers blanchis restent exclus de tout contexte non glace/banquise/neige/toundra.
-- Les scènes déjà créées et les associations mission↔MSC déjà décidées doivent être réutilisées avant toute création nouvelle.
-- Règle îlots suspendus : garantie sur `floating_islands`, les déserts à roches en lévitation et les marais à îles flottantes ; probabilité renforcée seulement sur les autres contextes magnétiques.
+## Architecture de référence
 
-## Performance / RuntimeBudget
-- `engine/runtime-budget.js` reste l'unique système de throttling adaptatif.
-- Flore, faune, PNJ, phénomènes et objets passifs l'utilisent déjà.
-- `engine/special-object-runtime.js` est raccordé au même budget.
-- La logique métier à 1 Hz (respawns / drones) reste indépendante de l'animation frame par frame.
+Le registre complet est dans `ARCHITECTURE_TECHNIQUE.md`.
 
-## BAC / fatigue
-- La politique de survie/fatigue appartient au BAC ; l'intégration runtime matérialise les routines décidées.
-- Les besoins critiques et micro-pauses sont arbitrés sans recréer un second `updateAutonomy` concurrent.
-- Les pauses physiologiques doivent rester possibles même lorsqu'une mission est prioritaire.
-- Le correctif stabilisé du 18 août 2026 est la référence comportementale courante pour ce domaine.
+Principes majeurs :
+- `MissionManager` : lifecycle + sélection action missionnelle ;
+- BAC : arbitrage comportemental, jamais propriétaire parallèle du choix missionnel ;
+- `WorldEngine` : monde, transitions, navigation et directive joueur persistante ;
+- `ObjectM0` : CUO, études dues, même instance, fan-out ;
+- `BibleRuntime` : interprétation Bible/effets/gates sans posséder le lifecycle ;
+- `save-ui-bridge` : snapshot global après flush ;
+- UI : jamais propriétaire du gameplay ;
+- `map-registry.js` : protégé.
+
+## Contrat gameplay durable
+
+### Relation joueur / BlueFox
+Le joueur exprime une intention ; BlueFox conserve une marge de décision sauf ordre explicitement prioritaire.
+
+Suggestion de changement de map — règle B :
+- mémorisée immédiatement ;
+- n’interrompt pas l’action atomique en cours ;
+- reprise immédiatement après cette action, avant toute nouvelle décision missionnelle/BAC ;
+- persistée au reload.
+
+### Missions
+- plusieurs missions actives peuvent progresser en parallèle ;
+- une action réelle peut faire progresser plusieurs missions compatibles ;
+- une réévaluation ne révèle au maximum qu’une nouvelle mission ;
+- une mission terminée ne reste pas principale ;
+- les missions tutoriel servent de banc d’industrialisation d’un moteur générique.
+
+### CUO
+Observer/inspecter/analyser restent des nuances missionnelles d’une même étude physique quand le CUO le prévoit.
+Une acquisition missionnelle conserve la même instance après les études dues.
+
+### Navigation
+- trajet connu = déplacement physique ;
+- inconnue = génération au passage réellement demandé ;
+- pas de téléportation comme substitut d’un retour ;
+- absence de chemin = échec de navigation, pas marche infinie contre obstacle.
+
+### Survie
+Pendant les missions tutoriel/prioritaires, un repos autonome ne doit pas détourner la mission sauf déblocage explicitement prévu.
+Après T12, les comportements ration autorisés redeviennent progressivement arbitrables par BAC conformément au contrat tutoriel.
 
 ## Sauvegarde
-- `MissionMemory` conserve son modèle dirty/flush.
-- `save-ui-bridge.js` ne force plus `BF.progression.save()` avant la capture d'état.
-- Le mécanisme de signature d'autosave peut ainsi réellement ignorer un état inchangé.
-- `ProgressionRegistry` continue de sauvegarder ses vraies mutations à leur source.
-- `MissionNode` sérialise déjà `distinctValues`; la validation intégrée save → reload → reprise du correctif missionnel du 23 août reste un point de preuve à rejouer.
-- Règle renforcée : tout fichier modifié doit être construit depuis le fichier complet du HEAD courant ou depuis un fichier complet fourni par l'utilisateur ; jamais depuis un extrait de lecture partielle.
 
-## Système de missions et progression
-- Le Runtime missionnel V0.1 / MissionManager M2 reste la fondation fonctionnelle.
-- Une action peut faire progresser plusieurs missions déjà actives.
-- Un même événement ne peut révéler qu'une seule nouvelle mission.
-- Mission principale et missions secondaires coexistent ; les secondaires progressent passivement.
-- `MissionMemory` reste la mémoire persistante des lifecycles, faits, historiques, effets et sites.
-- Le registre central de progression reste autoritaire pour les quantités d'inventaire.
+La sauvegarde doit préserver le sens du gameplay :
+- missions/lifecycles/faits ;
+- exploration ;
+- topologie ;
+- MSC persistantes ;
+- recettes/research unlocks ;
+- ration et compteurs de craft ;
+- directive joueur persistante.
 
-### Tranche tutorielle validée P01→P04
-- P01 `Reconnaître le Site du crash` : observation de la capsule, guidage UI initial et narration.
-- P02 `Prélever les premiers échantillons` : plante, bois et minerai distingués par les métadonnées CUO ; le bois ne compte pas comme plante.
-- P03 `Établir le premier Camp` : étude du bois, objectif 10 bois, crédit de l'inventaire déjà présent à l'activation, consommation de 10 bois et établissement de `MSC-CUSTOM-CAMP`.
-- P04 `Comprendre qu’un projet peut progresser en parallèle` : objectif unique de collecte d'une ressource utile au Refuge ; progression parallèle avec `GAME-shelter`.
-- `GAME-shelter` est visible/active en parallèle après P03 sous le titre `Construire un refuge`.
-- Le fan-out d'une collecte vers plusieurs missions actives reste un comportement moteur générique.
+Les états différés doivent être flushés avant snapshot.
 
-### Double interaction missionnelle validée
-Contrat validé au commit `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` :
-- sur un objet collectable, une ou plusieurs études missionnelles réellement dues peuvent précéder la collecte ;
-- une instance déjà observée historiquement peut être réobservée si un nœud missionnel le demande ;
-- `observer / inspecter / analyser` restent des verbes narratifs d'une même action physique `observe`;
-- plusieurs nœuds différents peuvent réobserver la même instance ;
-- un même nœud d'étude ne peut créditer une même instance qu'une seule fois ;
-- pour les nœuds d'étude sans `distinctBy` explicite, le distinct effectif est `instanceId`;
-- `distinctBy` explicite (`instanceId`, `objectId`, `none`) reste prioritaire ;
-- après la dernière étude due, `collect/extract` reprend immédiatement sur la même instance ;
-- fan-out observation et fan-out collecte restent génériques ;
-- l'identité d'acquisition persistante reste séparée de l'identité missionnelle momentanée de l'étude ;
-- annuler l'acquisition pendant une étude intermédiaire nettoie la transaction.
+## Tutoriel T01→T13 — état de reprise
 
-Validation runtime en jeu :
-- T06 : observation missionnelle d'une plante puis collecte de la même instance, sans boucle ;
-- `GAME-shelter / plantStudy` : plusieurs plantes distinctes sont chacune observées une fois puis collectées ; une même instance ne peut pas faire progresser plusieurs fois le même objectif 100 plantes.
+Les décisions gameplay du Contrat V2 restent la référence.
 
-### UI tutorielle validée sur P01→P04
-- Les prescriptions tutoriel sont portées par les fiches missionnelles et consommées par `mission-ui-bridge.js`.
-- La façade `BF.TutorialUI` reste visuelle uniquement : messages, fermeture, résolution de cible et surbrillance non destructive.
-- Les aides P01→P04 utilisent une durée de 14 s lorsque spécifiée.
-- L'aide caméra de P03 apparaît après 90 s d'activité de la mission et surligne la cible `camera`.
-- Le message de missions parallèles apparaît lorsque T04 et `GAME-shelter` sont actives simultanément.
+- T01→T10 : comportements historiques à préserver ; aucune réinterprétation par le checkpoint.
+- T11 : **OUVERT** — retour autonome vers un abri non reproduit au runtime c75fa77, malgré validation historique antérieure.
+- T12 : preuve joueur de consommation réelle de ration ; autonomie ration ensuite selon déblocages.
+- T13 : **OUVERT** — fabrication autonome des 10 rations non déclenchée au runtime c75fa77.
+- LOC : map-scopé ; progression conservée hors map, affichage uniquement map active.
+- Bosquet_bio : persistant, déclenché dans la séquence T13 prévue.
 
-## Principe officiel Bible → moteur
-La Bible documentaire reste la source narrative humaine et souveraine.
+## Deux chantiers immédiats
 
-Chaîne officielle :
+### 1. T11 — récupérer le retour historiquement validé
+Méthode :
+- retrouver le dernier cycle réellement validé ;
+- comparer `fin collecte → décision retour → BAC/returnPolicy → route connue → gate → transition → abri → completion`;
+- rétablir uniquement le maillon perdu dans le propriétaire courant ;
+- aucun nouveau système de retour.
 
-```text
-BIBLE DOCUMENTAIRE
-  ↓
-PATRON DE MISSION
-  ↓
-FICHE DE MISSION PARAMÉTRÉE
-  ↓
-BibleRuntime
-  ↓
-MissionManager + ObjectEvents + BAC
-  ↓
-Moteur du jeu
-```
+### 2. T13 — raccorder le craft autonome générique
+Tracer :
+`objectif CRAFT → MissionPlanner → BAC → propriétaire réel craft → ressources consommées → ration produite → événement → progression`.
+Le correctif doit fonctionner aussi pour une future mission de craft sans ID spécial.
 
-Le patron porte la mécanique commune. La fiche ne contient que les paramètres propres à une mission.
+## Industrialisation
 
-### Narration Bible
-- Une narration Bible ordinaire est émise par le runtime vers la bulle BlueFox et l'historique d'actions via les callbacks existants.
-- Une route explicite `route: "journal"` est réservée à une entrée de journal dédiée.
-- Les `thought — mission_revealed` doivent être émis une seule fois au passage réel de la mission à l'état actif, y compris lorsqu'elle sort d'une attente de prérequis.
-- Les bulles narratives Bible passent par une file d'attente dédiée avec une durée calculée selon la longueur du texte ; `speechQuietUntil` empêche une parole ordinaire de les écraser avant leur fin.
-
-### Stratégie de patrons
-L'objectif n'est pas de créer un patron par mission, mais un nombre réduit de familles génériques couvrant un maximum de cas avec des interrupteurs.
-
-Interrupteurs de référence :
-- `targetBinding = instance | definition`
-- `distinctMode = indifferent | unique`
-- `scope = local | map | global`
-- `sameTarget = true | false`
-- `count` / `threshold`
-- `duration` / `proximity`
-- `direction`
-- `contextRole = triggerContext | objectiveSubject | scenarioSupport`
-- effets / délai / prérequis
-
-Les trois familles historiques restent le socle : découvrir/comprendre ; accumuler/atteindre un seuil ; préparer→produire/débloquer. `SEQUENCE_ACTIONS` est également utilisé pour les séquences tutoriel comme P03 et `GAME-shelter`.
-
-## CUO → missions
-- Le CUO reste source de vérité de l'objet ; aucun catalogue parallèle n'est créé dans le raccord missionnel.
-- `object-m0-bridge.js` peut comparer les critères missionnels aux métadonnées disponibles : `objectId`, `cuoType`, `kind`, `family`, `subject`, `category`, tags et exclusions associées.
-- Le même raccord assure désormais l'insertion des études missionnelles avant acquisition et applique le distinct d'étude effectif sans créer de mémoire parallèle.
-- Cette capacité permet les distinctions génériques plante/bois/minéral et prépare les futures fiches sans règle codée en dur par mission.
-
-## Audit Bible / CUO / moteur — raccords encore ouverts
-Déjà disponibles : triggers interaction/exploration/progression ; `instanceId`, `mapId`, `zoneId`, `factionId` dans les événements ; `targetBinding` au contrat ; mission instanciable par map ; `uniqueOnly` ; persistance des faits/historiques ; spawn MSC via `site.establish` ; fan-out multi-missions ; métadonnées CUO riches ; distinct par nœud/instance pour les objectifs d'étude et overrides `distinctBy`.
-
-Raccords à compléter seulement lorsqu'une mission future les exige :
-- faire suivre réellement `targetBinding=instance` jusqu'à ActionBridge ;
-- agréger plusieurs maps/biomes/instances dans une mission globale ;
-- généraliser le spawn MSC missionnel si nécessaire ;
-- durée/proximité/délai ;
-- cycle excursion→retour ;
-- effets génériques de branche, réputation et faits.
-
-## CUO / factions / réputation
-- Chaque type de créature/PNJ pertinent doit porter un `speciesId` et un `factionId`.
-- `cultureId` peut être porté par la MSC/instance si le contexte l'exige.
-- Réputation simple attendue : agressif, neutre, friendly, friendly++.
-- Ne pas recréer les PNJ : enrichir leur identité fonctionnelle.
-
-## Ration
-La brique de ration existante doit être auditée/raccordée avant toute création parallèle. La fiche `BIBLE-TUTORIAL-RATION-DISCOVERY` reste présente mais ne remplace pas le chantier de validation complet de la mécanique ration.
-
-## Tutoriel
-- P01→P04 : intégrées et validées en jeu.
-- Prochaine tranche : P05→P012.
-- Séquence dirigée au départ, autonomie progressive ensuite.
-- Sauvegarde/reprise à valider à chaque étape.
-- Le tutoriel reste le banc de validation avant industrialisation des 182 missions.
-
-## Direction actuelle
-Priorité immédiate :
-1. poursuivre P05→P012 depuis le HEAD courant en conservant les comportements P01→P04 et le contrat observation→collecte validé au 23 août ;
-2. n'ajouter que les raccords missionnels génériques réellement exigés par cette tranche ;
-3. poursuivre factions/réputation + ration ;
-4. industrialiser progressivement les 182 missions ;
-5. finaliser gameplay, audio, performances et packaging.
+Le moteur n’est déclaré prêt pour l’industrialisation massive qu’après validation des primitives génériques dont T11 et T13 sont actuellement les preuves manquantes.
+L’objectif reste de brancher les futures missions par patrons/paramètres/données, jamais mission par mission.

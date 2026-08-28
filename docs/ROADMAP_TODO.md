@@ -1,130 +1,89 @@
 # BlueFox Odyssey — Roadmap et TODO
 
-Mise à jour : **23 août 2026**
+Mise à jour : **28 août 2026**
 
 Cette page est la **seule TODO active**.
 
 ## Base de reprise
 
-* [x] Base courante auditée : `b757aa457ce5eca4a994ff8f35dcc482aca5c77f`.
-* [x] Restauration complète de `save-ui-bridge.js` après troncature accidentelle.
-* [x] Correction dirty-state autosave.
-* [x] Raccord `special-object-runtime.js` au `RuntimeBudget` existant.
-* [x] Règle îlots : garantie ciblée / probabilité magnétique renforcée.
-* [x] MSC coralliennes underwater conservées.
-* [x] Stabilisation fatigue / BAC.
-* [x] Nettoyage `game.js` du 18 août.
-* [x] Fondation UI tutoriel non destructive.
-* [x] Routage Bible narration / bulles / journal / 50 actions.
-* [x] Timer / queue des bulles narratives V5.3.
-* [x] Restauration après régression du précrédit inventaire et de `mission_revealed`.
-* [x] Double interaction missionnelle : observation(s) réellement due(s) puis collecte de la même instance.
-* [x] Réobservation missionnelle possible d'une instance déjà connue.
-* [x] Unicité nœud d'étude × instance ; `GAME-shelter / plantStudy` ne peut plus compter plusieurs fois la même plante.
-* [x] Fan-out observation et collecte conservé.
-* [x] Annulation transactionnelle propre pendant les études intermédiaires.
+- [x] Checkpoint courant : `c75fa77b2afe59a0d3dc41fc00453c3dc47a1d64`.
+- [x] Cumulatifs intermédiaires 1→4 abandonnés comme base de confiance.
+- [x] MissionManager restauré comme propriétaire du lifecycle et du choix missionnel.
+- [x] Suppression du choix missionnel concurrent dans `behavior-arbitration-integration.js`.
+- [x] BibleRuntime ramené à l’interprétation/effets/gates, sans propriété lifecycle.
+- [x] `bible-map-prescription-v19.js` ne relance plus un second retour connu.
+- [x] Directive joueur de navigation persistante dans WorldEngine ; règle B validée.
+- [x] Absence de chemin distinguée d’un chemin valide ; `navigation-failed` produit par CharacterController.
+- [x] Flush des mémoires différées avant snapshot.
+- [x] Un seul nouveau dévoilement par réévaluation causale.
+- [x] Unicité étude nœud × instance et fan-out ObjectM0 préservés.
+- [x] Documentation architecture/propriétaires mise à jour.
 
-## P0 — Intégration missions tutoriel
+## P0 — Chantiers bloquants immédiats
 
-### P01→P04 — VALIDÉ EN JEU
-* [x] P01 — Reconnaître le Site du crash.
-* [x] P02 — Prélever les premiers échantillons.
-* [x] P03 — Établir le premier Camp.
-* [x] P04 — Comprendre qu’un projet peut progresser en parallèle.
-* [x] `GAME-shelter` disponible en parallèle après P03.
-* [x] Matching CUO plante / bois / minerai.
-* [x] Fan-out d'une collecte vers T04 + Refuge.
-* [x] P03 : bois déjà en inventaire crédité à l'activation.
-* [x] P03 : consommation des 10 bois + `MSC-CUSTOM-CAMP`.
-* [x] Narrations `revealed/progress/completed` raccordées au chemin Bible courant.
-* [x] `mission_revealed` garanti à l'activation réelle, y compris sortie de pending.
-* [x] Guidage UI P01.
-* [x] Guidage Vue P03 après 90 s.
-* [x] Guidage missions parallèles T04 + Refuge.
-* [x] Durée des aides portée à 14 s.
-* [x] Validation en jeu du lot P01→P04.
+### T11 — retour autonome historiquement validé
+- [ ] Retrouver le dernier commit/patch réellement validé où le cycle T11 revenait physiquement à l’abri.
+- [ ] Comparer la chaîne historique au HEAD `c75fa77`.
+- [ ] Identifier le maillon disparu sans reconstruire un nouveau système de retour.
+- [ ] Vérifier que Shelter ne reprend aucune collecte locale une fois le retour décidé.
+- [ ] Préserver le différé seulement pour une mission réellement utile sur la même map.
+- [ ] Valider route connue → gate → transition → abri → completion.
+- [ ] Réfuter sur une mission fictive `FUTURE-RETURN`.
 
-### P05→P012 — PROCHAINE TRANCHE
-* [ ] Repartir strictement du HEAD courant.
-* [ ] Auditer les définitions canoniques P05→P012 avant modification moteur.
-* [ ] Affecter chaque mission à un patron existant ou à une famille générique réellement nécessaire.
-* [ ] Ne créer aucun code spécifique à une mission si un paramètre générique suffit.
-* [ ] Préserver intégralement les comportements P01→P04.
-* [ ] Propager `targetBinding=instance` jusqu'à ActionBridge uniquement si requis.
-* [x] Raccord `distinctBy` générique disponible ; distinct implicite `instanceId` validé pour les nœuds d'étude.
-* [ ] Supporter agrégation multi-map / multi-biome / multi-instance si le lot l'exige.
-* [ ] Généraliser le spawn missionnel si nécessaire.
-* [ ] Ajouter présence/proximité/durée/délai si nécessaire.
-* [ ] Ajouter cycle excursion → changement de map → retour si nécessaire.
-* [ ] Valider sauvegarde/reprise à chaque étape.
-* [ ] Vérifier fan-out multi-missions sans révélation multiple.
-* [ ] Vérifier priorité commande joueur / autonomie.
-* [ ] Auditer le lot complet avant passage aux missions suivantes.
+### T13 — autocraft ration générique
+- [ ] Tracer `CRAFT → MissionPlanner → BAC → propriétaire craft → inventaire → événement → progression`.
+- [ ] Vérifier `allowsAutonomousRationCraft` et capacité `ration-craft` au bon moment.
+- [ ] Vérifier ressources réelles et accès inventaire/camp.
+- [ ] Vérifier production réelle de ration et incrément `rations.craftedTotal`.
+- [ ] Vérifier progression du nœud missionnel depuis l’événement/compteur canonique.
+- [ ] Réfuter avec une future mission de craft sans branche T13.
 
-## P1 — Patrons missionnels mutualisés
-* [x] Conserver les familles existantes comme socle.
-* [x] `SEQUENCE_ACTIONS` validé sur P03 / Refuge.
-* [x] Matching CUO générique validé sur T02.
-* [x] Crédit d'inventaire à l'activation validé comme prescription générique.
-* [x] `distinctBy` utilisé sur besoin réel : objectifs d'étude à cardinalité multiple.
-* [x] Unicité par instance intégrée aux nœuds d'étude sans `distinctBy` explicite ; overrides explicites conservés.
-* [ ] Définir seulement les familles supplémentaires réellement nécessaires après P05→P012.
-* [ ] Viser un petit nombre de familles génériques plutôt qu'un patron par mission.
+## P1 — Non-régression du checkpoint
+- [ ] T01→T10 : conserver les comportements historiques validés.
+- [ ] Navigation joueur règle B après action atomique.
+- [ ] Reload de la directive joueur.
+- [ ] Pas de collecte/repos parasite sous mission prioritaire.
+- [ ] CUO même instance et fan-out.
+- [ ] LOC map-scopé.
+- [ ] Recherche et Inventaire sans superposition/écran noir.
+- [ ] Traveling intro et locomotion inchangés hors chantier dédié.
+- [ ] MSC persistantes après reload.
+- [ ] Save/reload missions, exploration, topologie, recherche et ration.
 
-## P1 — CUO / factions / réputation
-* [ ] Attribuer `speciesId` aux créatures/PNJ pertinents.
-* [ ] Attribuer `factionId` aux créatures/PNJ pertinents.
-* [ ] Porter `cultureId` au niveau CUO ou MSC/instance selon le contexte.
-* [ ] Ajouter réputation simple : agressif / neutre / friendly / friendly++.
-* [ ] Raccorder ces identités aux ObjectEvents.
-* [ ] Réutiliser les MSC comportementales existantes.
+## P2 — Recherche / craft / logistique
+- [ ] Recette acquise visible uniquement après unlock.
+- [ ] Ressources vérifiées dans les vrais inventaires.
+- [ ] Consommation réelle.
+- [ ] Production objet réel dans le compartiment prévu.
+- [ ] Aucun slot vide parasite.
+- [ ] Aucun deuxième moteur de craft.
 
-## P2 — Survie / ration
-* [ ] Auditer la brique ration existante avant toute création.
-* [ ] Identifier sa source de vérité.
-* [ ] Vérifier ingrédients, consommation, inventaire et effet.
-* [ ] Raccorder la fiche existante au patron approprié.
-* [ ] Ne pas créer une recette parallèle si la définition existante suffit.
+## P3 — Industrialisation missions
+- [ ] Affecter les missions à des patrons génériques.
+- [ ] Paramétrer plutôt que coder par ID.
+- [ ] Conserver fan-out et max 1 révélation par événement.
+- [ ] Réutiliser les MSC existantes avant création nouvelle.
+- [ ] Valider chaque nouvelle primitive sur mission fictive `FUTURE-*`.
+- [ ] Industrialiser par lots seulement après T11/T13.
 
-## P3 — Industrialisation des 182 missions
-* [ ] Affecter chaque mission à un patron.
-* [ ] Renseigner ses paramètres sans réécrire le sens documentaire.
-* [ ] Conserver les associations mission↔MSC déjà décidées.
-* [ ] Réutiliser compositions/alias existants.
-* [ ] Ne créer une MSC que si aucun contenu existant ne couvre réellement le besoin.
-* [ ] Intégrer par lots homogènes.
-* [ ] Auditer chaque lot avant le suivant.
+## P4 — Population / maps / MSC
+- [ ] Préserver protections maps tutoriel.
+- [ ] Préserver fallback textures 028_1/_2/_3.
+- [ ] Préserver règles rareté/faune/îlots.
+- [ ] Continuer validation MAP_Test / CUO Lab / jeu sur mêmes données.
 
-## P4 — MAP_Test / CUO Lab / non-régression
-* [ ] Continuer la qualification sauvegarde/relecture.
-* [ ] Rejouer la preuve intégrée save → reload → reprise de `MissionNode.distinctValues`.
-* [ ] Rejouer le banc complet P01→P04 après le commit `b757aa45…`.
-* [ ] Vérifier preview vs moteur production.
-* [ ] Maintenir le contrat MSC exact.
-* [ ] Garder les axes principaux dégagés.
-* [ ] Réparer les tests historiques encore pertinents.
-* [ ] Ne pas réintroduire de modules hotfix versionnés.
-
-## P5 — Musique adaptative
-* [x] Moteur adaptatif raccordé au jeu.
-* [x] Volumes musique / sons séparés.
-* [x] Développements longs et persistance de thème renforcés.
-* [x] Choix modulé par activité/BAC sans changement à chaque action.
-* [ ] Finaliser l'écoute des segments encore perfectibles.
-* [ ] Vérifier absence totale de silence et impact nul sur changement de map.
-* [ ] Geler après validation d'écoute.
+## P5 — Audio
+- [x] Moteur adaptatif unique.
+- [x] Volumes musique / sons séparés.
+- [x] Silence musique adaptative pendant intro.
+- [x] Fondus de cues validés, notamment fin de `drift_note_D2_18-3s`.
+- [ ] Geler après dernière validation d’écoute globale.
 
 ## Discipline de livraison
-* [x] ZIP contenant uniquement les fichiers réellement modifiés.
-* [x] Aucun fichier suffixé/versionné destiné au dépôt.
-* [x] Aucun bridge parallèle pour un correctif local.
-* [x] Toujours partir du fichier complet courant.
-* [x] Vérifier diff exact avant livraison.
-* [x] Règle renforcée après V5.3 : un correctif sur fichier partagé doit intégrer toutes les modifications validées apparues depuis la base, sinon il est rejeté.
-* [ ] Continuer à appliquer strictement ces règles sur P05→P012.
-
-## Hors priorité immédiate
-* Nouvelle vague massive de missions avant validation P05→P012.
-* Duplication de missions par espèce avant validation réputation.
-* Suite ARCH-40 miroir avant conception narrative dédiée.
-* APK Android avant base PC consolidée.
+- [x] HEAD courant seule base technique.
+- [x] Aucun bridge parallèle si un propriétaire existe.
+- [x] Aucun fichier reconstruit depuis un extrait partiel.
+- [x] Diff exact avant livraison.
+- [x] Tests producteurs + propriétaires + runtime final + consommateurs.
+- [x] Les symptômes servent de réfutation, pas de design.
+- [ ] Ne déclarer PASS gameplay qu’après preuve observable correspondante.
