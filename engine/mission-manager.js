@@ -327,29 +327,134 @@
       return `missionReturnIntent:${missionId}`;
     }
 
-    ensureMissionReturnIntent() {
+    transitionLocalCandidates(missionId, context = this.bridge.context()) {
+      return this.activeMissionIds
+        .filter((id) => id !== missionId)
+        .filter((id) => this.ensureLifecycle(id).status === "active")
+        .filter((id) => this.isMissionExclusiveToCurrentMap(id))
+        .filter((id) => {
+          const tree = this.trees.get(id);
+          return Boolean(
+            tree &&
+            !tree.root.isComplete &&
+            this.planner.nextAction(tree, context)
+          );
+        });
+    }
+
+    chooseTransitionDeferralMission(
+      transitionMissionId,
+      eligibleMissionIds,
+      context = this.bridge.context()
+    ) {
+      const ids = Array.isArray(eligibleMissionIds)
+        ? eligibleMissionIds.filter(Boolean)
+        : [];
+      if (!ids.length) return null;
+
+      const assessments = ids
+        .map((id) => this.assessMission(id, context))
+        .filter((candidate) => candidate?.action);
+
+      if (!assessments.length) return null;
+
+      const BAC = BF.BAC;
+      if (!BAC?.weightedPick) return null;
+
+      const transitionDefinition = this.definition(transitionMissionId) || {};
+      const transitionOption = {
+        id: `mission-transition:${transitionMissionId}`,
+        axis: this.missionActionAxis(
+          transitionMissionId,
+          { type: Missions.ActionType.TRAVEL }
+        ),
+        baseWeight: Math.max(1, Number(transitionDefinition.priority) || 1),
+        transition: true
+      };
+
+      const options = [transitionOption];
+      assessments.forEach((candidate) => {
+        options.push({
+          id: `mission-local:${candidate.missionId}`,
+          axis: this.missionActionAxis(candidate.missionId, candidate.action),
+          baseWeight: Math.max(1, Number(candidate.score) || 1),
+          missionId: candidate.missionId
+        });
+      });
+
+      const selected = BAC.weightedPick(options);
+      return selected?.missionId || null;
+    }
+
+    ensureMissionTransitionIntent(context = this.bridge.context()) {
       const travel = this.primaryEventDrivenTravel();
-      if (!travel?.mission?.navigation?.autonomousKnownReturn) return null;
-      const targetMapId = String(travel.node?.params?.toMapId || "");
-      if (!targetMapId) return null;
+      const targetMapId = String(travel?.node?.params?.toMapId || "");
+      if (!travel || !targetMapId) return null;
 
       const key = this.missionReturnIntentKey(travel.missionId);
       const previous = this.memory.getFact?.(key, null);
-      if (previous?.active === true &&
-          String(previous.mapId || "") === targetMapId) {
+      const currentMapId = String(this.engine?.currentMapId || "");
+      const kind = travel.mission?.navigation?.autonomousKnownReturn === true
+        ? "return-base"
+        : "map-travel";
+
+      if (
+        previous?.active === true &&
+        String(previous.mapId || previous.targetMapId || "") === targetMapId &&
+        String(previous.evaluatedMapId || "") === currentMapId &&
+        previous.kind === kind
+      ) {
         return previous;
       }
 
       const intent = {
+        ...(previous && typeof previous === "object" ? previous : {}),
         active: true,
         missionId: travel.missionId,
+        nodeId: travel.node?.id || null,
+        kind,
         mapId: targetMapId,
+        targetMapId,
+        evaluatedMapId: currentMapId,
+        eligibleLocalMissionIds: [],
+        deferMissionId: null,
+        decisionResolved: false,
         createdAt: Number(previous?.createdAt) || Date.now(),
         updatedAt: Date.now()
       };
+
       this.memory.setFact?.(key, intent);
       this.memory.save?.();
-      return intent;
+
+      const eligibleLocalMissionIds =
+        this.transitionLocalCandidates(travel.missionId, context);
+      const pendingDecision = {
+        ...intent,
+        eligibleLocalMissionIds
+      };
+      this.memory.setFact?.(key, pendingDecision);
+
+      const deferMissionId = this.chooseTransitionDeferralMission(
+        travel.missionId,
+        eligibleLocalMissionIds,
+        context
+      );
+
+      const resolved = {
+        ...pendingDecision,
+        deferMissionId,
+        decisionResolved: true,
+        updatedAt: Date.now()
+      };
+      this.memory.setFact?.(key, resolved);
+      this.memory.save?.();
+      return resolved;
+    }
+
+    ensureMissionReturnIntent(context = this.bridge.context()) {
+      const travel = this.primaryEventDrivenTravel();
+      if (!travel?.mission?.navigation?.autonomousKnownReturn) return null;
+      return this.ensureMissionTransitionIntent(context);
     }
 
     hasPendingMissionReturn(missionId = this.primaryMissionId) {
@@ -360,11 +465,45 @@
       )?.active === true;
     }
 
-    resumeMissionReturnIntent() {
-      const travel = this.primaryEventDrivenTravel();
-      if (!travel?.mission?.navigation?.autonomousKnownReturn) return false;
+    shouldDeferMissionTransition(
+      missionId,
+      context = this.bridge.context()
+    ) {
+      const intent = this.memory.getFact?.(
+        this.missionReturnIntentKey(missionId),
+        null
+      );
+      const deferMissionId = String(intent?.deferMissionId || "");
+      if (!intent?.active || !deferMissionId) return false;
+      if (!this.isMissionExclusiveToCurrentMap(deferMissionId)) return false;
+      if (this.ensureLifecycle(deferMissionId).status !== "active") return false;
 
-      const intent = this.ensureMissionReturnIntent();
+      const tree = this.trees.get(deferMissionId);
+      if (
+        !tree ||
+        tree.root.isComplete ||
+        !this.planner.nextAction(tree, context)
+      ) {
+        const cleared = {
+          ...intent,
+          deferMissionId: null,
+          updatedAt: Date.now()
+        };
+        this.memory.setFact?.(
+          this.missionReturnIntentKey(missionId),
+          cleared
+        );
+        this.memory.save?.();
+        return false;
+      }
+      return true;
+    }
+
+    resumeMissionTransitionIntent(context = this.bridge.context()) {
+      const travel = this.primaryEventDrivenTravel();
+      if (!travel) return false;
+
+      const intent = this.ensureMissionTransitionIntent(context);
       if (!intent?.active) return false;
       if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") {
         return false;
@@ -377,13 +516,52 @@
         this.currentAction ||
         this.bridge.isEngineBusy()
       ) return false;
-      if (this.shouldDeferMissionReturn(travel.missionId) === true) return false;
-      if (typeof this.engine?.returnToBase !== "function") {
+      if (this.shouldDeferMissionTransition(travel.missionId, context)) {
         return false;
       }
 
-      this.engine.returnToBase();
+      const targetMapId = String(intent.targetMapId || intent.mapId || "");
+      const currentMapId = String(this.engine?.currentMapId || "");
+      if (!targetMapId || !currentMapId) return false;
+
+      if (currentMapId === targetMapId) {
+        if (
+          intent.kind === "return-base" &&
+          typeof this.engine?.returnToBase === "function"
+        ) {
+          this.engine.returnToBase();
+          return true;
+        }
+        return false;
+      }
+
+      const route = this.engine?.findKnownRoute?.(currentMapId, targetMapId);
+      if (!Array.isArray(route) || route.length < 2) return false;
+
+      if (
+        intent.kind === "return-base" &&
+        route.length === 2 &&
+        typeof this.engine?.returnToBase === "function"
+      ) {
+        this.engine.returnToBase();
+        return true;
+      }
+
+      const nextMapId = String(route[1] || "");
+      if (!nextMapId || typeof this.engine?.handleNavigationSuggestion !== "function") {
+        return false;
+      }
+      this.engine.handleNavigationSuggestion({
+        mapId: nextMapId,
+        source: "mission"
+      });
       return true;
+    }
+
+    resumeMissionReturnIntent(context = this.bridge.context()) {
+      const travel = this.primaryEventDrivenTravel();
+      if (!travel?.mission?.navigation?.autonomousKnownReturn) return false;
+      return this.resumeMissionTransitionIntent(context);
     }
 
     isMissionExclusiveToCurrentMap(missionId) {
@@ -398,40 +576,47 @@
       return scopedMapId === currentMapId;
     }
 
-    shouldDeferMissionReturn(missionId, context = this.bridge.context(), now = Date.now()) {
+    shouldDeferMissionReturn(
+      missionId,
+      context = this.bridge.context()
+    ) {
       const definition = this.definition(missionId) || {};
       const policy = definition.returnPolicy || {};
-      if (policy.mode !== "bac-discretion" || policy.deferForCurrentMapExclusiveMissions !== true) return false;
-      const runnableLocal = this.activeMissionIds
-        .filter((id) => id !== missionId)
-        .filter((id) => this.ensureLifecycle(id).status === "active")
-        .filter((id) => this.isMissionExclusiveToCurrentMap(id))
-        .some((id) => {
-          const tree = this.trees.get(id);
-          return Boolean(tree && !tree.root.isComplete && this.planner.nextAction(tree, context));
-        });
-      const key = `missionReturnDeferral:${missionId}`;
-      const previous = this.memory.getFact?.(key, null) || null;
-      if (!runnableLocal) {
-        if (previous) { this.memory.setFact?.(key, null); this.memory.save?.(); }
-        return false;
-      }
-      const startedAt = Number(previous?.startedAt) || now;
-      if (!previous) {
-        this.memory.setFact?.(key, { startedAt, mapId: this.engine?.currentMapId || null });
-        this.memory.save?.();
-      }
-      const maxDeferMs = Math.max(0, Number(policy.maxDeferMs) || 45000);
-      return now - startedAt < maxDeferMs;
+      if (
+        policy.mode !== "bac-discretion" ||
+        policy.deferForCurrentMapExclusiveMissions !== true
+      ) return false;
+      return this.shouldDeferMissionTransition(missionId, context);
     }
 
     travelAllowsSecondaryMission(missionId, context) {
       const travel = this.primaryEventDrivenTravel();
       if (!travel || missionId === travel.missionId) return true;
-      const policy = travel.mission?.returnPolicy || {};
-      if (policy.mode !== "bac-discretion") return true;
-      if (!this.isMissionExclusiveToCurrentMap(missionId)) return false;
-      return this.shouldDeferMissionReturn(travel.missionId, context);
+
+      const intent = this.memory.getFact?.(
+        this.missionReturnIntentKey(travel.missionId),
+        null
+      );
+      if (!intent?.active) {
+        const policy = travel.mission?.returnPolicy || {};
+        if (policy.mode !== "bac-discretion") return true;
+        return this.isMissionExclusiveToCurrentMap(missionId);
+      }
+
+      const eligible = Array.isArray(intent.eligibleLocalMissionIds)
+        ? intent.eligibleLocalMissionIds
+        : [];
+      if (
+        intent.decisionResolved !== true &&
+        eligible.includes(missionId)
+      ) {
+        return this.isMissionExclusiveToCurrentMap(missionId);
+      }
+      return (
+        intent.deferMissionId === missionId &&
+        eligible.includes(missionId) &&
+        this.isMissionExclusiveToCurrentMap(missionId)
+      );
     }
 
     assessMission(missionId, context) {
@@ -495,11 +680,9 @@
     selectBestPrimary(now = performance.now(), force = false) {
       if (this.currentAction || this.bridge.isEngineBusy()) return false;
       if (this.hasPendingMissionReturn(this.primaryMissionId)) {
-        const travel = this.primaryEventDrivenTravel();
-        if (travel?.mission?.returnPolicy?.mode === "bac-discretion") {
-          this.selectionReason = "Intention de retour persistante ; le BAC arbitre seulement son moment d’exécution.";
-          return false;
-        }
+        this.selectionReason =
+          "Intention de transition missionnelle persistante ; l’arbitrage local reste borné à la map courante.";
+        return false;
       }
       const candidates = this.activeMissionIds
         .filter((id) => {
@@ -736,7 +919,7 @@
     update(now) {
       if (!this.enabled) return false;
       this.applyPendingTransitions();
-      this.ensureMissionReturnIntent();
+      this.ensureMissionTransitionIntent();
       if (now - this.lastPriorityReviewAt > 5000) {
         this.lastPriorityReviewAt = now;
         this.selectBestPrimary(now);
@@ -778,7 +961,7 @@
       if (this.bridge.isEngineBusy()) return false;
 
       this.lastPlanAt = now;
-      if (this.resumeMissionReturnIntent()) {
+      if (this.resumeMissionTransitionIntent()) {
         this.retryAfter = now + 1200;
         return true;
       }
@@ -825,6 +1008,7 @@
         if (changed) {
           this.syncLifecycleFromTrees();
           this.reevaluatePendingActivations();
+          this.ensureMissionTransitionIntent();
           this.catalogController?.schedule();
           this.publish();
         }
@@ -849,6 +1033,7 @@
         });
       }
       this.syncLifecycleFromTrees();
+      this.ensureMissionTransitionIntent();
       this.catalogController?.schedule();
       this.publish();
       if (actionTree.root.isComplete) {
