@@ -74,9 +74,12 @@
       inspectionCount: 0,
       observationCount: 0,
       analysisCount: 0,
-      collectionCount: 0
+      collectionCount: 0,
+      studyGeneration: 0
     };
-    return owner.userData.interactionState;
+    const state = owner.userData.interactionState;
+    state.studyGeneration = Math.max(0, Number(state.studyGeneration) || 0);
+    return state;
   };
 
   const capabilities = (definition) => {
@@ -670,10 +673,26 @@
     return isStudyAction(node?.type) ? "instanceId" : "";
   };
 
+  const studyInstanceDistinctValue = (instanceId, generation = 0) => {
+    const identity = String(instanceId || "");
+    if (!identity) return "";
+    return `${identity}#study-${Math.max(0, Number(generation) || 0)}`;
+  };
+
   const distinctValueFromEvent = (node, event) => {
     const mode = studyDistinctMode(node);
     if (!mode || mode === "none") return null;
-    if (mode === "instanceId") return String(event?.instanceId || "");
+    if (mode === "instanceId") {
+      if (isStudyAction(node?.type)) {
+        return studyInstanceDistinctValue(
+          event?.instanceId,
+          event?.detail?.studyGeneration ??
+            event?.detail?.interactionState?.studyGeneration ??
+            0
+        );
+      }
+      return String(event?.instanceId || "");
+    }
     if (mode === "objectId") return String(event?.objectId || "").toLowerCase();
     if (mode === "family") {
       return lower(eventMissionMetadata(event).family);
@@ -685,7 +704,15 @@
     const mode = studyDistinctMode(node);
     if (!mode || mode === "none") return null;
     const identity = identityOf(resolved);
-    if (mode === "instanceId") return identity.instanceId;
+    if (mode === "instanceId") {
+      if (isStudyAction(node?.type)) {
+        return studyInstanceDistinctValue(
+          identity.instanceId,
+          interactionState(resolved).studyGeneration
+        );
+      }
+      return identity.instanceId;
+    }
     if (mode === "objectId") return identity.objectId;
     if (mode === "family") {
       return lower(
@@ -1399,6 +1426,7 @@
         interactionMode: mode,
         cuoType: definition.type || null,
         interactionSource: object.userData.requestedInteractionSource || "autonomy",
+        studyGeneration: Math.max(0, Number(state.studyGeneration) || 0),
         interactionState: { ...state }
       };
       const autonomousInteraction = detail.interactionSource === "autonomy";
@@ -1439,6 +1467,8 @@
             const cooldown = setTimeout(() => {
               if (this.disposed) return;
               anchor.visible = true;
+              state.studyGeneration =
+                Math.max(0, Number(state.studyGeneration) || 0) + 1;
               object.userData.active = true;
               state.collected = false;
               if (definition.interaction?.observeBeforeAcquire === true) {

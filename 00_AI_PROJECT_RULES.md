@@ -76,11 +76,13 @@ map-registry.js protégé ;
 
 DOCUMENT SOURCE
 Cahier\_des\_Charges\_BlueFox\_Odyssey updated
-BlueFox\_BIBLE\_MAIN\_MISSIONS\_NORMALISEES\_V1
+BlueFox\_BIBLE\_MAIN\_MISSIONS\_NORMALISEES\_V2
 BlueFox\_CUO\_v2\_Production\_complet
 CUM  \& CUM V2
 CUO\_Lab\_BANC\_VALIDATION\_3D
 CONVENTIONS\_MAPS\_IMAGES
 
 IMI — CONTRAT IA D'INTÉGRATION DES MISSIONS
+
+BlueFox\_Contrat\_Gameplay\_Operationnel\_V2\_Historique\_2026-08-28\_MAJ
 

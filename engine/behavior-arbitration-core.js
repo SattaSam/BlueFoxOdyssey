@@ -591,6 +591,7 @@
     }
 
     if (
+      BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true &&
       Number(autonomyActionStreak) >= Number(autonomyBreakTarget)
     ) {
       return {

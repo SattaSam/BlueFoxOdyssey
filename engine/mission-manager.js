@@ -327,6 +327,24 @@
       return `missionReturnIntent:${missionId}`;
     }
 
+    isAutonomousUnknownTravel(travel) {
+      return Boolean(
+        travel &&
+        travel.mission?.navigation?.autonomousUnknownTravel === true &&
+        !travel.node?.params?.toMapId
+      );
+    }
+
+    missionUnknownTravelDirection(travel) {
+      const directions = ["north", "east", "south", "west"];
+      const preferred = String(travel?.node?.params?.direction || "")
+        .trim()
+        .toLowerCase();
+      const exits = BF.maps?.[this.engine?.currentMapId]?.exits || {};
+      if (directions.includes(preferred) && !exits[preferred]) return preferred;
+      return directions.find((direction) => !exits[direction]) || null;
+    }
+
     transitionLocalCandidates(missionId, context = this.bridge.context()) {
       return this.activeMissionIds
         .filter((id) => id !== missionId)
@@ -388,21 +406,42 @@
 
     ensureMissionTransitionIntent(context = this.bridge.context()) {
       const travel = this.primaryEventDrivenTravel();
-      const targetMapId = String(travel?.node?.params?.toMapId || "");
-      if (!travel || !targetMapId) return null;
+      if (!travel) return null;
+
+      const unknownTravel = this.isAutonomousUnknownTravel(travel);
+      const targetMapId = String(travel.node?.params?.toMapId || "");
+      if (!unknownTravel && !targetMapId) return null;
 
       const key = this.missionReturnIntentKey(travel.missionId);
       const previous = this.memory.getFact?.(key, null);
       const currentMapId = String(this.engine?.currentMapId || "");
-      const kind = travel.mission?.navigation?.autonomousKnownReturn === true
-        ? "return-base"
-        : "map-travel";
-
-      if (
+      const kind = unknownTravel
+        ? "unknown-travel"
+        : travel.mission?.navigation?.autonomousKnownReturn === true
+          ? "return-base"
+          : "map-travel";
+      const previousSameContext = Boolean(
         previous?.active === true &&
-        String(previous.mapId || previous.targetMapId || "") === targetMapId &&
+        String(previous.nodeId || "") === String(travel.node?.id || "") &&
         String(previous.evaluatedMapId || "") === currentMapId &&
         previous.kind === kind
+      );
+      const direction = unknownTravel
+        ? (
+            previousSameContext && previous?.direction
+              ? String(previous.direction)
+              : this.missionUnknownTravelDirection(travel)
+          )
+        : null;
+      if (unknownTravel && !direction) return null;
+
+      if (
+        previousSameContext &&
+        (
+          unknownTravel
+            ? String(previous.direction || "") === direction
+            : String(previous.mapId || previous.targetMapId || "") === targetMapId
+        )
       ) {
         return previous;
       }
@@ -413,8 +452,9 @@
         missionId: travel.missionId,
         nodeId: travel.node?.id || null,
         kind,
-        mapId: targetMapId,
-        targetMapId,
+        mapId: targetMapId || null,
+        targetMapId: targetMapId || null,
+        direction,
         evaluatedMapId: currentMapId,
         eligibleLocalMissionIds: [],
         deferMissionId: null,
@@ -520,9 +560,25 @@
         return false;
       }
 
-      const targetMapId = String(intent.targetMapId || intent.mapId || "");
       const currentMapId = String(this.engine?.currentMapId || "");
-      if (!targetMapId || !currentMapId) return false;
+      if (!currentMapId) return false;
+
+      if (intent.kind === "unknown-travel") {
+        const direction = String(intent.direction || "");
+        if (
+          !direction ||
+          typeof this.engine?.handleNavigationSuggestion !== "function"
+        ) return false;
+        this.engine.handleNavigationSuggestion({
+          discoverUnknown: true,
+          direction,
+          source: "mission"
+        });
+        return true;
+      }
+
+      const targetMapId = String(intent.targetMapId || intent.mapId || "");
+      if (!targetMapId) return false;
 
       if (currentMapId === targetMapId) {
         if (
