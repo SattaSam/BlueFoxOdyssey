@@ -327,22 +327,67 @@
       return `missionReturnIntent:${missionId}`;
     }
 
+    travelMissionDefinition(travel) {
+      const missionId = String(travel?.missionId || "");
+      return missionId ? this.definition(missionId) : null;
+    }
+
     isAutonomousUnknownTravel(travel) {
+      const mission = this.travelMissionDefinition(travel);
       return Boolean(
         travel &&
-        travel.mission?.navigation?.autonomousUnknownTravel === true &&
+        mission?.navigation?.autonomousUnknownTravel === true &&
         !travel.node?.params?.toMapId
       );
     }
 
-    missionUnknownTravelDirection(travel) {
+    missionUnknownTravelPlan(travel) {
       const directions = ["north", "east", "south", "west"];
       const preferred = String(travel?.node?.params?.direction || "")
         .trim()
         .toLowerCase();
-      const exits = BF.maps?.[this.engine?.currentMapId]?.exits || {};
-      if (directions.includes(preferred) && !exits[preferred]) return preferred;
-      return directions.find((direction) => !exits[direction]) || null;
+      const currentMapId = String(this.engine?.currentMapId || "");
+      if (!currentMapId) return null;
+
+      const freeDirection = (mapId) => {
+        const exits = BF.maps?.[mapId]?.exits || {};
+        if (directions.includes(preferred) && !exits[preferred]) return preferred;
+        return directions.find((direction) => !exits[direction]) || null;
+      };
+
+      const localDirection = freeDirection(currentMapId);
+      if (localDirection) {
+        return {
+          frontierMapId: currentMapId,
+          direction: localDirection,
+          route: [currentMapId]
+        };
+      }
+
+      const discovered = this.engine?.discoveredMaps instanceof Set
+        ? this.engine.discoveredMaps
+        : new Set([currentMapId]);
+      const queue = [[currentMapId]];
+      const visited = new Set([currentMapId]);
+
+      while (queue.length) {
+        const route = queue.shift();
+        const mapId = route[route.length - 1];
+        if (mapId !== currentMapId) {
+          const direction = freeDirection(mapId);
+          if (direction) {
+            return { frontierMapId: mapId, direction, route };
+          }
+        }
+        const exits = Object.values(BF.maps?.[mapId]?.exits || {});
+        for (const exit of exits) {
+          const nextMapId = String(exit?.targetMap || "");
+          if (!nextMapId || visited.has(nextMapId) || !discovered.has(nextMapId)) continue;
+          visited.add(nextMapId);
+          queue.push([...route, nextMapId]);
+        }
+      }
+      return null;
     }
 
     transitionLocalCandidates(missionId, context = this.bridge.context()) {
@@ -415,9 +460,10 @@
       const key = this.missionReturnIntentKey(travel.missionId);
       const previous = this.memory.getFact?.(key, null);
       const currentMapId = String(this.engine?.currentMapId || "");
+      const mission = this.travelMissionDefinition(travel);
       const kind = unknownTravel
         ? "unknown-travel"
-        : travel.mission?.navigation?.autonomousKnownReturn === true
+        : mission?.navigation?.autonomousKnownReturn === true
           ? "return-base"
           : "map-travel";
       const previousSameContext = Boolean(
@@ -426,14 +472,16 @@
         String(previous.evaluatedMapId || "") === currentMapId &&
         previous.kind === kind
       );
-      const direction = unknownTravel
-        ? (
-            previousSameContext && previous?.direction
-              ? String(previous.direction)
-              : this.missionUnknownTravelDirection(travel)
-          )
+      const travelPlan = unknownTravel
+        ? this.missionUnknownTravelPlan(travel)
         : null;
-      if (unknownTravel && !direction) return null;
+      const direction = unknownTravel
+        ? String(travelPlan?.direction || "")
+        : null;
+      const frontierMapId = unknownTravel
+        ? String(travelPlan?.frontierMapId || "")
+        : "";
+      if (unknownTravel && (!direction || !frontierMapId)) return null;
 
       if (
         previousSameContext &&
@@ -454,6 +502,7 @@
         kind,
         mapId: targetMapId || null,
         targetMapId: targetMapId || null,
+        frontierMapId: frontierMapId || null,
         direction,
         evaluatedMapId: currentMapId,
         eligibleLocalMissionIds: [],
@@ -493,7 +542,7 @@
 
     ensureMissionReturnIntent(context = this.bridge.context()) {
       const travel = this.primaryEventDrivenTravel();
-      if (!travel?.mission?.navigation?.autonomousKnownReturn) return null;
+      if (!this.travelMissionDefinition(travel)?.navigation?.autonomousKnownReturn) return null;
       return this.ensureMissionTransitionIntent(context);
     }
 
@@ -565,14 +614,31 @@
 
       if (intent.kind === "unknown-travel") {
         const direction = String(intent.direction || "");
+        const frontierMapId = String(intent.frontierMapId || currentMapId);
         if (
           !direction ||
+          !frontierMapId ||
           typeof this.engine?.handleNavigationSuggestion !== "function"
         ) return false;
+
+        if (frontierMapId !== currentMapId) {
+          const route = this.engine?.findKnownRoute?.(currentMapId, frontierMapId);
+          if (!Array.isArray(route) || route.length < 2) return false;
+          const nextMapId = String(route[1] || "");
+          if (!nextMapId) return false;
+          this.engine.handleNavigationSuggestion({
+            mapId: nextMapId,
+            source: "mission",
+            missionId: travel.missionId
+          });
+          return true;
+        }
+
         this.engine.handleNavigationSuggestion({
           discoverUnknown: true,
           direction,
-          source: "mission"
+          source: "mission",
+          missionId: travel.missionId
         });
         return true;
       }
@@ -616,7 +682,7 @@
 
     resumeMissionReturnIntent(context = this.bridge.context()) {
       const travel = this.primaryEventDrivenTravel();
-      if (!travel?.mission?.navigation?.autonomousKnownReturn) return false;
+      if (!this.travelMissionDefinition(travel)?.navigation?.autonomousKnownReturn) return false;
       return this.resumeMissionTransitionIntent(context);
     }
 
@@ -654,7 +720,7 @@
         null
       );
       if (!intent?.active) {
-        const policy = travel.mission?.returnPolicy || {};
+        const policy = this.travelMissionDefinition(travel)?.returnPolicy || {};
         if (policy.mode !== "bac-discretion") return true;
         return this.isMissionExclusiveToCurrentMap(missionId);
       }

@@ -639,6 +639,16 @@
             pattern.autonomyAxis ||
             null,
           journalIntro: mission.narrative?.revealed?.[0] || "",
+          navigation: mission.navigation ? clone(mission.navigation) : null,
+          returnPolicy: mission.returnPolicy ? clone(mission.returnPolicy) : null,
+          allowsAutonomousRationCraft:
+            mission.allowsAutonomousRationCraft === true,
+          runtimeCounters: Array.isArray(mission.runtimeCounters)
+            ? clone(mission.runtimeCounters)
+            : null,
+          sequence: Array.isArray(mission.sequence)
+            ? clone(mission.sequence)
+            : null,
           bible: {
             version: VERSION,
             pattern: mission.pattern
@@ -730,6 +740,16 @@
           pattern.autonomyAxis ||
           null,
         journalIntro: mission.narrative?.revealed?.[0] || "",
+        navigation: mission.navigation ? clone(mission.navigation) : null,
+        returnPolicy: mission.returnPolicy ? clone(mission.returnPolicy) : null,
+        allowsAutonomousRationCraft:
+          mission.allowsAutonomousRationCraft === true,
+        runtimeCounters: Array.isArray(mission.runtimeCounters)
+          ? clone(mission.runtimeCounters)
+          : null,
+        sequence: Array.isArray(mission.sequence)
+          ? clone(mission.sequence)
+          : null,
         bible: {
           version: VERSION,
           pattern: mission.pattern

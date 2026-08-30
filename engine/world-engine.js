@@ -1963,6 +1963,10 @@
           mapId,
           direction,
           discoverUnknown,
+          source: typeof intent.source === "string" ? intent.source : null,
+          missionId: typeof intent.missionId === "string" && intent.missionId
+            ? intent.missionId
+            : null,
           requestedAt,
           retryAfter: Math.max(0, Number(intent.retryAfter) || 0)
         };
@@ -1992,6 +1996,10 @@
           ? detail.direction
           : null,
         discoverUnknown: detail.discoverUnknown === true,
+        source: typeof detail.source === "string" ? detail.source : null,
+        missionId: typeof detail.missionId === "string" && detail.missionId
+          ? detail.missionId
+          : null,
         requestedAt: Date.now(),
         retryAfter: 0
       };
@@ -2036,7 +2044,10 @@
           this.navigateNextRouteStep();
           return true;
         }
-        this.generateUnknownPassage(intent.direction);
+        this.generateUnknownPassage(intent.direction, {
+          source: intent.source || null,
+          bibleMissionId: intent.missionId || null
+        });
         return true;
       }
       if (intent.mapId) {
@@ -2066,7 +2077,10 @@
         return;
       }
       if (detail.discoverUnknown && detail.direction) {
-        this.generateUnknownPassage(detail.direction);
+        this.generateUnknownPassage(detail.direction, {
+          source: detail.source || null,
+          bibleMissionId: detail.missionId || null
+        });
         return;
       }
       if (detail.mapId && detail.mapId !== this.currentMapId) {

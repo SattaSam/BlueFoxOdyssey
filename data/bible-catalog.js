@@ -1040,7 +1040,17 @@
     tutorialSurvivalUnlocks: Object.freeze([
       "ration-craft",
       "ration-consume",
-      "micro-rest"
+      "micro-rest",
+      "autonomous-rest"
+    ]),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "ration-manual-use-help",
+        when: "active",
+        message: "Ouvre l’inventaire et utilise manuellement une ration depuis le sac d’expédition pour vérifier son effet sur ton énergie.",
+        duration: 14000,
+        dismissOnProgress: true
+      })
     ]),
     runtimeValidation: Object.freeze({
       type: "manual-ration-energy-gain",

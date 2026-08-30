@@ -93,26 +93,56 @@
   const campAccessible = () =>
     BF.canAccessCampInventory?.() === true;
 
-  const missionRationCraftRemaining = (engine) => {
+  const missionRationCraftContext = (engine) => {
     const manager = engine?.missionManager;
     const missionId = String(manager?.primaryMissionId || "");
     const mission = manager?.definition?.(missionId);
-    if (!missionId || mission?.allowsAutonomousRationCraft !== true) return 0;
+    if (!missionId || mission?.allowsAutonomousRationCraft !== true) return null;
+
     const counter = Array.isArray(mission?.runtimeCounters)
       ? mission.runtimeCounters.find((entry) =>
           entry?.source === "rations.craftedTotal" && entry?.slot
         )
       : null;
-    if (!counter?.slot) return 0;
+    if (!counter?.slot) return null;
+
     const node = manager?.trees?.get?.(missionId)?.find?.(
       `${missionId}:${counter.slot}`
     );
-    if (!node || node.isComplete) return 0;
-    return Math.max(
-      0,
-      (Number(node.target) || 0) - (Number(node.progress) || 0)
+    if (!node || node.isComplete) return null;
+
+    const sequenceEntry = Array.isArray(mission?.sequence)
+      ? mission.sequence.find((entry) => entry?.slot === counter.slot)
+      : null;
+    const recipeId = String(
+      sequenceEntry?.params?.recipeId ||
+      node?.params?.recipeId ||
+      ""
     );
+
+    // Ce propriétaire ne traite que la recette ration qu'il possède.
+    // Une mission future est reconnue par ses données, jamais par son ID.
+    if (recipeId && recipeId !== RECIPE_ID) return null;
+
+    const target = Math.max(0, Number(node.target) || 0);
+    const progress = Math.max(0, Number(node.progress) || 0);
+    const remaining = Math.max(0, target - progress);
+
+    return {
+      missionId,
+      mission,
+      counter,
+      node,
+      recipeId: recipeId || RECIPE_ID,
+      target,
+      progress,
+      remaining,
+      priority: Math.max(0, Number(mission?.priority) || 0)
+    };
   };
+
+  const missionRationCraftRemaining = (engine) =>
+    missionRationCraftContext(engine)?.remaining || 0;
 
 
   const availableFor = (key) =>
@@ -163,18 +193,19 @@
   };
 
   const autonomyCandidate = (engine, now = performance.now()) => {
-    if (!engine || !recipeUnlocked() || !autoCraftEnabled() || !campAccessible()) {
+    if (!engine || !recipeUnlocked() || !autoCraftEnabled()) {
       return null;
     }
 
     const currentProfile = profile();
     const manager = engine.missionManager;
-    const primaryMission = manager?.definition?.(manager?.primaryMissionId);
-    const missionAllowsRationCraft =
-      primaryMission?.allowsAutonomousRationCraft === true &&
-      BF.isTutorialSurvivalCapabilityUnlocked?.("ration-craft") === true;
+    const missionContext = missionRationCraftContext(engine);
+    const missionAllowsRationCraft = Boolean(
+      missionContext &&
+      BF.isTutorialSurvivalCapabilityUnlocked?.("ration-craft") === true
+    );
     const missionCraftRemaining = missionAllowsRationCraft
-      ? missionRationCraftRemaining(engine)
+      ? missionContext.remaining
       : 0;
 
     if (
@@ -196,61 +227,146 @@
         0
       ) - rationCount()
     );
-    const missing = Math.min(
-      Math.max(survivalMissing, missionCraftRemaining),
+    const desiredCrafts = Math.min(
+      missionCraftRemaining > 0
+        ? missionCraftRemaining
+        : survivalMissing,
       capacityRemaining
     );
-    const possible = craftableCount(missing);
 
     if (
-      possible <= 0 ||
+      desiredCrafts <= 0 ||
       !(currentProfile.shouldCraft || missionCraftRemaining > 0)
     ) {
       return null;
     }
 
-    return {
-      id: "survival-ration-craft",
-      axis: "survival",
-      baseWeight:
-        missionCraftRemaining > 0
-          ? 48
-          : currentProfile.level === "critical"
-            ? 52
-            : 34,
-      available: true,
-      allowDuringPrimaryMission: missionAllowsRationCraft,
-      execute: () => {
-        const crafted =
-          BF.Research?.craft?.(
-            RECIPE_ID,
-            possible,
-            {
-              automatic: true,
-              source: "bac-survival"
-            }
-          ) || 0;
+    const atCraftLocation = campAccessible();
+    const possible = atCraftLocation
+      ? craftableCount(desiredCrafts)
+      : 0;
+    const possibleIgnoringLocation = craftableCount(
+      desiredCrafts,
+      { ignoreShelter: true }
+    );
 
-        engine.__lastRationAutonomyDecision = {
-          at: Date.now(),
-          level: currentProfile.level || null,
-          shouldCraft: true,
-          requested: possible,
-          crafted,
-          directOverride: false,
-          source: "bac-candidate"
-        };
+    if (possible > 0) {
+      const missionPriorityBoost =
+        missionContext
+          ? Math.min(
+              35,
+              12 + Math.max(0, Number(missionContext.priority) || 0) / 20
+            )
+          : 0;
 
-        if (crafted > 0) {
+      return {
+        id: "survival-ration-craft",
+        axis: "survival",
+        baseWeight:
+          missionCraftRemaining > 0
+            ? Math.round(72 + missionPriorityBoost)
+            : currentProfile.level === "critical"
+              ? 52
+              : 34,
+        available: true,
+        allowDuringPrimaryMission: missionAllowsRationCraft,
+        missionDriven: missionCraftRemaining > 0,
+        missionCraftRemaining,
+        execute: () => {
+          const crafted =
+            BF.Research?.craft?.(
+              RECIPE_ID,
+              possible,
+              {
+                automatic: true,
+                source: "bac-survival"
+              }
+            ) || 0;
+
+          engine.__lastRationAutonomyDecision = {
+            at: Date.now(),
+            level: currentProfile.level || null,
+            shouldCraft: true,
+            missionDriven: missionCraftRemaining > 0,
+            missionId: missionContext?.missionId || null,
+            missionCraftRemaining,
+            requested: possible,
+            crafted,
+            directOverride: false,
+            source: "bac-candidate"
+          };
+
+          if (crafted > 0) {
+            engine.callbacks?.onStatus?.(
+              `BlueFox profite du camp pour préparer ${crafted} ration${crafted > 1 ? "s" : ""}.`
+            );
+            return true;
+          }
+          return false;
+        }
+      };
+    }
+
+    if (
+      !atCraftLocation &&
+      reward()?.requiresShelter === true &&
+      possibleIgnoringLocation > 0
+    ) {
+      const missionPriorityBoost =
+        missionContext
+          ? Math.min(
+              35,
+              12 + Math.max(0, Number(missionContext.priority) || 0) / 20
+            )
+          : 0;
+
+      return {
+        id: "survival-ration-craft-location",
+        axis: "survival",
+        baseWeight:
+          missionCraftRemaining > 0
+            ? Math.round(80 + missionPriorityBoost)
+            : 38,
+        available: typeof engine.returnToBase === "function",
+        allowDuringPrimaryMission: missionAllowsRationCraft,
+        missionDriven: missionCraftRemaining > 0,
+        missionCraftRemaining,
+        craftableOnArrival: possibleIgnoringLocation,
+        execute: () => {
+          if (typeof engine.returnToBase !== "function") return false;
+          engine.__lastRationAutonomyDecision = {
+            at: Date.now(),
+            level: currentProfile.level || null,
+            shouldReturnToCraft: true,
+            missionDriven: missionCraftRemaining > 0,
+            missionId: missionContext?.missionId || null,
+            missionCraftRemaining,
+            craftableOnArrival: possibleIgnoringLocation,
+            directOverride: false,
+            source: "bac-candidate"
+          };
+          engine.returnToBase();
           engine.callbacks?.onStatus?.(
-            `BlueFox profite du camp pour préparer ${crafted} ration${crafted > 1 ? "s" : ""}.`
+            missionCraftRemaining > 0
+              ? "BlueFox a les ingrédients nécessaires et rejoint le refuge pour poursuivre la fabrication prévue."
+              : "BlueFox rejoint le refuge pour préparer des rations."
           );
           return true;
         }
-        return false;
+      };
+    }
+
+    return ingredientCandidate(
+      engine,
+      now,
+      {
+        desiredCrafts,
+        missionContext: missionAllowsRationCraft ? missionContext : null,
+        currentProfile
       }
-    };
+    );
   };
+
 
   BF.RationPolicy = Object.freeze({
     recipeId: RECIPE_ID,
@@ -260,6 +376,7 @@
     autoCraftEnabled,
     craftableCount,
     campAccessible,
+    missionRationCraftRemaining,
     autonomyCandidate,
     policy: POLICY
   });
@@ -307,12 +424,11 @@
       typeof engine.chooseBACTarget ===
       "function"
     ) {
-      return (
-        engine.chooseBACTarget(
-          objects,
-          "survival"
-        ) || null
+      const routed = engine.chooseBACTarget(
+        objects,
+        "collection"
       );
+      if (routed) return routed;
     }
 
     if (
@@ -346,6 +462,165 @@
         return ld - rd;
       }
     )[0] || null;
+  };
+
+  const acquisitionAction = (object) => {
+    const data = object?.userData || {};
+    const definition =
+      data.functional ||
+      BF.ObjectLibrary?.get?.(data.libraryType) ||
+      BF.ObjectLibrary?.get?.(data.kind) ||
+      {};
+    const actions = new Set(definition?.interaction?.actions || []);
+    const configured = String(
+      definition?.interaction?.acquisitionAction ||
+      definition?.interaction?.afterInspectionAction ||
+      ""
+    ).toLowerCase();
+
+    if (configured === "extract" && actions.has("extract")) return "extract";
+    if (configured === "collect") return "collect";
+    if (actions.has("extract") && !actions.has("collect")) return "extract";
+    return actions.has("collect") || definition?.gameplay?.collectable === true
+      ? "collect"
+      : null;
+  };
+
+  const ingredientDeficits = (craftCount) => {
+    const requestedCrafts = Math.max(0, Math.floor(Number(craftCount) || 0));
+    if (!requestedCrafts) return [];
+
+    return requirements()
+      .map((entry) => {
+        const key = entry.inventoryKey || entry.resource;
+        const perCraft = Math.max(1, Number(entry.quantity) || 1);
+        const required = perCraft * requestedCrafts;
+        const available = key ? availableFor(key) : 0;
+        const missing = Math.max(0, required - available);
+        return {
+          key,
+          perCraft,
+          required,
+          available,
+          missing,
+          deficitRatio: required > 0 ? missing / required : 0
+        };
+      })
+      .filter((entry) => entry.key && entry.missing > 0)
+      .sort((left, right) =>
+        right.deficitRatio - left.deficitRatio ||
+        right.missing - left.missing ||
+        String(left.key).localeCompare(String(right.key))
+      );
+  };
+
+  const ingredientCandidate = (
+    engine,
+    now,
+    {
+      desiredCrafts = 0,
+      missionContext = null,
+      currentProfile = profile()
+    } = {}
+  ) => {
+    const deficits = ingredientDeficits(desiredCrafts);
+    if (!deficits.length) return null;
+
+    const interactables = (engine?.currentMap?.interactables || [])
+      .filter((object) =>
+        object?.userData?.active &&
+        engine.canInteractWith?.(object, now)
+      );
+
+    const availableDeficits = deficits
+      .map((deficit) => ({
+        ...deficit,
+        objects: interactables.filter(
+          (object) => objectInventoryKey(object) === deficit.key
+        )
+      }))
+      .filter((entry) => entry.objects.length > 0);
+
+    if (!availableDeficits.length) return null;
+
+    const selectedDeficit = availableDeficits[0];
+    const object = nearest(engine, selectedDeficit.objects);
+    if (!object) return null;
+
+    const action = acquisitionAction(object);
+    if (!action) return null;
+
+    const missionRemainingRatio =
+      missionContext?.target > 0
+        ? Math.min(1, missionContext.remaining / missionContext.target)
+        : 0;
+    const missionPriorityBoost =
+      missionContext
+        ? Math.min(
+            35,
+            12 + Math.max(0, Number(missionContext.priority) || 0) / 20
+          )
+        : 0;
+
+    // Pondération générique :
+    // - déficit réel de CE matériau ;
+    // - part de l'objectif de craft encore à produire ;
+    // - priorité déclarative de la mission.
+    const baseWeight = Math.round(
+      46 +
+      selectedDeficit.deficitRatio * 28 +
+      missionRemainingRatio * 12 +
+      missionPriorityBoost
+    );
+
+    return {
+      id: "survival-ration-ingredient",
+      axis: "collection",
+      baseWeight,
+      available: true,
+      allowDuringPrimaryMission: Boolean(missionContext),
+      missionDriven: Boolean(missionContext),
+      missionCraftRemaining: missionContext?.remaining || 0,
+      ingredientKey: selectedDeficit.key,
+      ingredientMissing: selectedDeficit.missing,
+      ingredientRequired: selectedDeficit.required,
+      ingredientDeficitRatio: selectedDeficit.deficitRatio,
+      execute: () => {
+        object.userData.requestedInteraction = action;
+        object.userData.requestedInteractionSource = "autonomy";
+
+        engine.__lastRationAutonomyDecision = {
+          at: Date.now(),
+          level: currentProfile.level || null,
+          shouldCollect: true,
+          missionDriven: Boolean(missionContext),
+          missionId: missionContext?.missionId || null,
+          missionCraftRemaining: missionContext?.remaining || 0,
+          ingredientKey: selectedDeficit.key,
+          ingredientMissing: selectedDeficit.missing,
+          ingredientRequired: selectedDeficit.required,
+          ingredientDeficitRatio: selectedDeficit.deficitRatio,
+          requestedInteraction: action,
+          directOverride: false,
+          source: "bac-candidate"
+        };
+
+        const accepted = engine.targetInteraction?.(object);
+        if (accepted === false) {
+          object.userData.requestedInteraction = null;
+          object.userData.requestedInteractionSource = null;
+          object.userData.lastInteractionAt = performance.now();
+          return false;
+        }
+
+        engine.callbacks?.onStatus?.(
+          missionContext
+            ? `BlueFox cherche en priorité ${selectedDeficit.key} pour poursuivre la fabrication prévue.`
+            : "BlueFox cherche de quoi reconstituer son stock de rations."
+        );
+        return true;
+      }
+    };
   };
 
   const install = () => {

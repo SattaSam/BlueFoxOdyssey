@@ -583,27 +583,10 @@
         routine: "critical-rest",
         duration: 9000 + Math.random() * 6000,
         detail: {
-          targetEnergy: 33,
+          targetEnergy: 50,
           pressureReduction: 3
         },
         speech: "critical-rest"
-      };
-    }
-
-    if (
-      BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true &&
-      Number(autonomyActionStreak) >= Number(autonomyBreakTarget)
-    ) {
-      return {
-        id: "micro-rest",
-        axis: "survival",
-        routine: "micro-rest",
-        duration: 2400 + Math.random() * 2200,
-        detail: {
-          restGain: fatigue.level === "heavy" ? 4.2 : 3.2,
-          pressureReduction: 0.75
-        },
-        speech: "micro-rest"
       };
     }
 
@@ -635,7 +618,30 @@
       }
     ];
 
-    return weightedPick(options);
+    const recovery = weightedPick(options);
+    if (recovery) return recovery;
+
+    if (
+      BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true &&
+      Number(autonomyActionStreak) >= Number(autonomyBreakTarget) &&
+      !survival.needs?.rest &&
+      !survival.needs?.food &&
+      survival.needs?.preventiveMicroRest === true
+    ) {
+      return {
+        id: "micro-rest",
+        axis: "survival",
+        routine: "micro-rest",
+        duration: 2400 + Math.random() * 2200,
+        detail: {
+          restGain: fatigue.level === "heavy" ? 10 : 9,
+          pressureReduction: 0.75
+        },
+        speech: "micro-rest"
+      };
+    }
+
+    return null;
   };
 
 

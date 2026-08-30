@@ -38,6 +38,16 @@
     restGain: 10
   });
 
+  // Zone de régulation autonome : BlueFox commence à récupérer avant
+  // d'entrer dans une fatigue pénalisante, sans viser 100 % en permanence.
+  const AUTONOMY_RECOVERY = Object.freeze({
+    restNeed: 58,
+    foodNeed: 52,
+    energyRestNeed: 55,
+    energyFoodNeed: 48,
+    microRestComfort: 62
+  });
+
   const legacyEnergy = () => {
     try {
       const save = JSON.parse(
@@ -338,7 +348,10 @@
       );
       let guard = 0;
       while (
-        recalculate() < targetEnergy &&
+        (
+          state.rest < 45 ||
+          recalculate() < targetEnergy
+        ) &&
         state.rest < 100 &&
         guard < 100
       ) {
@@ -553,11 +566,14 @@
       rations: rationState,
       needs: {
         rest:
-          state.rest < 35 ||
-          state.energy < 30,
+          state.rest < AUTONOMY_RECOVERY.restNeed ||
+          state.energy < AUTONOMY_RECOVERY.energyRestNeed,
         food:
-          state.food < 35 ||
-          state.energy < 25,
+          state.food < AUTONOMY_RECOVERY.foodNeed ||
+          state.energy < AUTONOMY_RECOVERY.energyFoodNeed,
+        preventiveMicroRest:
+          state.rest < AUTONOMY_RECOVERY.microRestComfort ||
+          state.energy < AUTONOMY_RECOVERY.microRestComfort,
         criticalRest:
           state.rest < 25 ||
           state.energy < 25,

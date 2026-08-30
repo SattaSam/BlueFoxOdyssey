@@ -957,12 +957,22 @@
         survivalDecision?.routine === "food" &&
         BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") === true
       );
+      const tutorialMicroRestUnlocked = Boolean(
+        survivalDecision?.routine === "micro-rest" &&
+        BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true
+      );
+      const tutorialAutonomousRestUnlocked = Boolean(
+        ["rest", "critical-rest"].includes(survivalDecision?.routine) &&
+        BF.isTutorialSurvivalCapabilityUnlocked?.("autonomous-rest") === true
+      );
 
       if (
         survivalDecision &&
         (
           !primaryMissionOwnsAction ||
-          tutorialRationConsumeUnlocked
+          tutorialRationConsumeUnlocked ||
+          tutorialMicroRestUnlocked ||
+          tutorialAutonomousRestUnlocked
         )
       ) {
         // OFF / pause runtime / fenêtre de grâce restent propriétaires dans WorldEngine.
@@ -1009,7 +1019,11 @@
           survivalDecision.detail
         );
 
-        if (survivalDecision.routine === "micro-rest") {
+        if (
+          ["micro-rest", "rest", "critical-rest", "food"].includes(
+            survivalDecision.routine
+          )
+        ) {
           this.autonomyActionStreak = 0;
           this.autonomyBreakTarget = 2 + Math.floor(Math.random() * 2);
         }
@@ -1194,7 +1208,8 @@
           activePreference.lastAxis === "collection" &&
           Date.now() - activePreference.lastAt < PREFERENCE_COMMIT_MS &&
           preferredCollectables.length > 0 &&
-          preferredCollectionOption?.available
+          preferredCollectionOption?.available &&
+          rationCandidate?.missionDriven !== true
         );
 
       const selected = preferenceCommitmentActive
