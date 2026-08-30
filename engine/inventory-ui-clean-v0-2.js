@@ -5,6 +5,7 @@
   const VERSION = "inventory-kit-clean-v0.2";
   const LEGACY_STORAGE_KEY = "bluefox_odyssey_save_v1";
   const DEFAULT_SITE_INTERACTION_RADIUS = 12;
+  const EXPEDITION_KIT_OPEN_KEY = "bluefox_expedition_kit_open_v1";
 
   const FALLBACKS = Object.freeze({
     crystal: { label: "Cristaux", icon: "◆" },
@@ -424,23 +425,17 @@
     return sections;
   };
 
-  // Suppression RÉELLE du reliquat visuel historique.
-  // On ne lui applique aucun hidden/display:none : le nœud est retiré du DOM.
-  const removeLegacyInventoryGrid = (drawer) => {
-    drawer
-      .querySelectorAll(
-        ":scope > .inventory-grid:not(.inventory-transfer-grid)"
-      )
-      .forEach((grid) => grid.remove());
-
-    // Sécurité pour les anciennes variantes où la grille était enveloppée.
+  // La grille historique appartient à React : ne jamais la retirer du DOM.
+  // Le bridge Inventaire la masque seulement pendant qu'il affiche ses sections
+  // enrichies, afin de laisser React seul propriétaire de son démontage.
+  const hideLegacyInventoryGrid = (drawer) => {
     drawer
       .querySelectorAll(
         ".inventory-grid:not(.inventory-transfer-grid)"
       )
       .forEach((grid) => {
         if (!grid.closest(".inventory-sections")) {
-          grid.remove();
+          grid.hidden = true;
         }
       });
   };
@@ -504,7 +499,14 @@
 
     const details = document.createElement("details");
     details.className = "expedition-kit-section";
-    details.open = false;
+    details.open =
+      global.localStorage.getItem(EXPEDITION_KIT_OPEN_KEY) === "true";
+    details.addEventListener("toggle", () => {
+      global.localStorage.setItem(
+        EXPEDITION_KIT_OPEN_KEY,
+        String(details.open)
+      );
+    });
 
     const summary = document.createElement("summary");
     summary.textContent = "Kit d’expédition";
@@ -549,8 +551,8 @@
     const drawer = inventoryDrawer();
     if (!drawer) return false;
 
-    // On retire l'ancien composant avant toute reconstruction.
-    removeLegacyInventoryGrid(drawer);
+    // La grille React reste montée ; le bridge la masque sans en prendre possession.
+    hideLegacyInventoryGrid(drawer);
 
     const sections = ensureSections(drawer);
 
@@ -657,7 +659,7 @@
       const locked = document.createElement("p");
       locked.className = "inventory-camp-locked";
       locked.textContent =
-        "Le stockage partagé est hors de portée. Rapprochez BlueFox du camp, du refuge ou de la base.";
+        "Camp hors de portée.";
       sections.appendChild(locked);
     }
 

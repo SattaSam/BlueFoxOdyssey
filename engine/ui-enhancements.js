@@ -2243,6 +2243,17 @@
     );
   };
 
+  function normalizeResearchPanelWindow(panel) {
+    if (!isResearchPanel(panel)) return false;
+    if (panel.classList.contains("full-screen-panel")) {
+      panel.classList.remove("full-screen-panel");
+    }
+    if (!panel.classList.contains("drawer")) {
+      panel.classList.add("drawer");
+    }
+    return true;
+  }
+
   let researchRefreshPending = true;
 
   function requestResearchRefresh() {
@@ -2252,10 +2263,13 @@
 
   function cleanupResearchPanelArtifacts() {
     document.querySelectorAll(".drawer, .full-screen-panel").forEach((panel) => {
-      if (isResearchPanel(panel)) return;
-      panel.querySelectorAll(".bluefox-research-runtime").forEach((section) =>
-        section.remove()
-      );
+      const researchPanel = isResearchPanel(panel);
+      panel.querySelectorAll(".bluefox-research-runtime").forEach((section) => {
+        // Le panneau principal appartient à React. Ne jamais retirer ici un nœud
+        // pendant son cycle de reconciliation : on masque seulement l'injection
+        // runtime lorsque le même conteneur est reutilise pour un autre menu.
+        section.hidden = !researchPanel;
+      });
     });
   }
 
@@ -2264,6 +2278,7 @@
     const panels = [...document.querySelectorAll(".drawer, .full-screen-panel")]
       .filter(isResearchPanel);
     if (!panels.length) return;
+    panels.forEach(normalizeResearchPanelWindow);
     const needsInitialRender = panels.some((panel) =>
       !panel.querySelector(".bluefox-research-runtime")
     );
@@ -2297,7 +2312,7 @@
     });
     let section = panel.querySelector(".bluefox-research-runtime");
     if (!entries.length) {
-      section?.remove();
+      if (section) section.hidden = true;
       return;
     }
     if (!section) {
@@ -2306,6 +2321,7 @@
       const host = panel.querySelector(".research-layout") || panel.querySelector(".panel-content") || panel;
       host.appendChild(section);
     }
+    section.hidden = false;
     if (section.dataset.signature === signature) return;
     section.dataset.signature = signature;
     section.replaceChildren();

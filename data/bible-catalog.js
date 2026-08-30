@@ -911,6 +911,15 @@
       deferForCurrentMapExclusiveMissions: true,
       maxDeferMs: 45000
     }),
+    uiGuidance: Object.freeze([
+      Object.freeze({
+        id: "unknown-zone-help",
+        when: "active",
+        message: "Envoie BlueFox vers une zone non explorée.",
+        duration: 14000,
+        highlight: "planet"
+      })
+    ]),
     sequence: Object.freeze([
       Object.freeze({
         slot: "reachSixPlateauMap",
