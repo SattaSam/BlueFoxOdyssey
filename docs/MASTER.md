@@ -2,7 +2,7 @@
 
 ## État de référence
 
-Dernière mise à jour : **28 août 2026**
+Dernière mise à jour : **30 août 2026**
 
 ### Version de travail
 - Base GitHub de référence : commit `c75fa77b2afe59a0d3dc41fc00453c3dc47a1d64`.
@@ -110,3 +110,44 @@ Le correctif doit fonctionner aussi pour une future mission de craft sans ID sp�
 
 Le moteur n’est déclaré prêt pour l’industrialisation massive qu’après validation des primitives génériques dont T11 et T13 sont actuellement les preuves manquantes.
 L’objectif reste de brancher les futures missions par patrons/paramètres/données, jamais mission par mission.
+
+
+---
+
+## Mise à jour de reprise — 30 août 2026
+
+### Base GitHub courante validée
+- HEAD de reprise : `a62c25ad75fc63dce4546dfe0bd8861d45842376`.
+- Parent avant Passe 4 : `b277d811756e980f4d6cae92c709fe147973ca04`.
+- Le checkpoint `c75fa77...` reste la borne documentaire historique du 28 août ; il n’est plus la base technique courante.
+
+### Validations post-checkpoint
+- T13 : le cumulatif P1→P3 + correction du compilateur Bible a été validé en jeu sur la chaîne de craft/excursion : collecte des ingrédients utiles, fabrication réelle des rations, déplacement autonome, deuxième nouvelle map et présence de `MSC-CUSTOM-BOSQUET-BIO`.
+- Passe 4 UI : commit `a62c25ad...` validé en jeu sur le conflit Recherche/Inventaire ; les cycles Recherche → Inventaire → Recherche et inversement ne provoquent plus d’écran noir ni de `NotFoundError: removeChild`.
+- L’UI reste non propriétaire du gameplay ; les bridges doivent masquer leurs injections tardives plutôt que supprimer les nœuds appartenant à React.
+
+### Chantier différé prioritaire — CPU / cadence / autorité missionnelle
+Symptômes runtime à reprendre :
+- consommation CPU perçue en hausse, y compris sur maps connues ;
+- délai anormal entre actions malgré plusieurs cibles proches et plusieurs missions compatibles ;
+- état prolongé « observation du terrain / choix de la prochaine action » ;
+- retour au camp puis actions locales aléatoires alors que plusieurs missions restent actives.
+
+Constats HEAD déjà établis :
+- garde-fou pathfinding encore actif mais limité : shortlist BAC de 6 candidats, puis cache d’approche 1,2 s / déplacement ≤ 0,5 ;
+- ce garde-fou ne couvre pas les rescans d’intérêt / ObjectEvents ni les décisions ultérieures ;
+- `MissionManager` contient une cadence de planification de 1,2 s et des `retryAfter` pouvant atteindre 4–5 s ;
+- pendant un voyage événementiel, `ensureMissionTransitionIntent()` est appelé depuis `MissionManager.update()` à chaque frame et le plan de frontière inconnue peut être recalculé avant validation du contexte mémorisé ;
+- le surcoût n’est pas prouvé comme introduit directement par Passe 4.
+
+### Chantier différé — cohérence Survival
+Propriétaire inchangé : `survival-ai-bridge.js`.
+
+État actuel :
+`énergie = 55 % repos + 32 % alimentation + 13 % sécurité`.
+
+À reprendre :
+- rapprocher la perception de la barre Énergie des composantes réellement utilisées par les décisions de repos/alimentation ;
+- lisser les divergences excessives `rest / food / energy` sans moteur parallèle ;
+- conserver des besoins distincts : la barre agrégée ne doit pas effacer un vrai déficit de repos ou d’alimentation ;
+- vérifier la pertinence du seuil `preventiveMicroRest` à partir des composantes réelles.

@@ -1,6 +1,6 @@
 # BlueFox Odyssey — Roadmap et TODO
 
-Mise à jour : **28 août 2026**
+Mise à jour : **30 août 2026**
 
 Cette page est la **seule TODO active**.
 
@@ -87,3 +87,37 @@ Cette page est la **seule TODO active**.
 - [x] Tests producteurs + propriétaires + runtime final + consommateurs.
 - [x] Les symptômes servent de réfutation, pas de design.
 - [ ] Ne déclarer PASS gameplay qu’après preuve observable correspondante.
+
+
+---
+
+## Mise à jour 30 août 2026 — base courante et chantiers différés
+
+### Base courante
+- [x] HEAD validé : `a62c25ad75fc63dce4546dfe0bd8861d45842376`.
+- [x] Passe 4 Recherche/Inventaire : plus d’écran noir / conflit React sur les cycles de panneaux testés en jeu.
+- [x] T13 : craft réel + excursion autonome + deuxième nouvelle map + Bosquet bio validés en jeu.
+
+### P0 — Performance / cadence décisionnelle
+- [ ] Profiler le coût CPU global sur map connue et map dense.
+- [ ] Vérifier la fréquence réelle des évaluations BAC et MissionManager.
+- [ ] Éviter le recalcul de `missionUnknownTravelPlan()` tant qu’une intention de voyage mémorisée reste valide.
+- [ ] Mesurer les rescans de `ObjectEvents.history()` pendant une décision BAC et mutualiser au niveau de la décision si le coût est confirmé.
+- [ ] Conserver le garde-fou existant : shortlist de 6 candidats pour le coût de route + cache d’approche court.
+- [ ] Vérifier si `RationPolicy.autonomyCandidate()` contribue au coût après T12/T13.
+- [ ] Ne pas créer de deuxième RuntimeBudget : utiliser le propriétaire `runtime-budget.js` si un throttling supplémentaire est réellement nécessaire.
+
+### P0 — Autorité missionnelle / temps entre actions
+- [ ] Reproduire le cas : plusieurs missions compatibles + cibles proches, mais délai prolongé « choix de la prochaine action ».
+- [ ] Mesurer `retryAfter`, `lastPlanAt`, primaire courante et secondaires runnables.
+- [ ] Identifier pourquoi le BAC peut reprendre des actions locales aléatoires alors que des missions restent actives.
+- [ ] Distinguer primaire temporairement non-runnable, arbre terminé en attente de gate, secondaire runnable, et retard de réévaluation.
+- [ ] Réduire les attentes uniquement après localisation ; ne pas supprimer globalement les gardes de cadence.
+
+### P1 — Survival / cohérence des jauges
+- [ ] Conserver `survival-ai-bridge.js` comme propriétaire.
+- [ ] Documenter et tester le calcul `energy = 0,55 rest + 0,32 food + 0,13 safety`.
+- [ ] Lisser les écarts excessifs entre repos, alimentation et énergie sans fusionner les besoins.
+- [ ] Vérifier l’effet réel des rations, micro-pauses, repos et actions sur les trois composantes.
+- [ ] Rendre la barre Énergie plus cohérente avec les décisions réellement prises par Survival/BAC.
+- [ ] Réévaluer le déclenchement `preventiveMicroRest` seulement sur preuve runtime.
