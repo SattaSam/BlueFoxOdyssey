@@ -1337,9 +1337,9 @@
       let changed = 0;
       this.catalog.forEach((mission) => {
         if (missionFilter && mission.id !== missionFilter) return;
-        if (!this.missionLifecycle(mission.id).active) return;
         const counters = asArray(mission?.runtimeCounters);
         if (!counters.length) return;
+        if (!this.missionLifecycle(mission.id).active) return;
         this.initializeRuntimeCounters(mission);
         const tree = manager.trees?.get?.(mission.id);
         if (!tree) return;
@@ -1438,8 +1438,10 @@
       if (!manager?.memory) return [];
       const entries = [];
       this.catalog.forEach((mission) => {
+        const contexts = asArray(mission?.proximityContexts);
+        if (!contexts.length) return;
         if (!this.missionLifecycle(mission.id).active) return;
-        asArray(mission?.proximityContexts).forEach((context) => {
+        contexts.forEach((context) => {
           if (!context?.microSceneId || !context?.fact) return;
           if (manager.memory.getFact?.(context.fact, false)) return;
           entries.push({ mission, context });
