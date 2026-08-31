@@ -449,7 +449,7 @@
       return selected?.missionId || null;
     }
 
-    ensureMissionTransitionIntent(context = this.bridge.context()) {
+    ensureMissionTransitionIntent(context = null) {
       const travel = this.primaryEventDrivenTravel();
       if (!travel) return null;
 
@@ -472,6 +472,21 @@
         String(previous.evaluatedMapId || "") === currentMapId &&
         previous.kind === kind
       );
+
+      // Tant que mission, noeud, map et nature du trajet sont inchangés,
+      // l'intention persistée reste le résultat canonique. Aucun nouveau
+      // contexte ni parcours de topologie n'est nécessaire.
+      if (
+        previousSameContext &&
+        (
+          unknownTravel
+            ? Boolean(previous.direction && previous.frontierMapId)
+            : String(previous.mapId || previous.targetMapId || "") === targetMapId
+        )
+      ) {
+        return previous;
+      }
+
       const travelPlan = unknownTravel
         ? this.missionUnknownTravelPlan(travel)
         : null;
@@ -482,17 +497,6 @@
         ? String(travelPlan?.frontierMapId || "")
         : "";
       if (unknownTravel && (!direction || !frontierMapId)) return null;
-
-      if (
-        previousSameContext &&
-        (
-          unknownTravel
-            ? String(previous.direction || "") === direction
-            : String(previous.mapId || previous.targetMapId || "") === targetMapId
-        )
-      ) {
-        return previous;
-      }
 
       const intent = {
         ...(previous && typeof previous === "object" ? previous : {}),
@@ -515,8 +519,9 @@
       this.memory.setFact?.(key, intent);
       this.memory.save?.();
 
+      const decisionContext = context || this.bridge.context();
       const eligibleLocalMissionIds =
-        this.transitionLocalCandidates(travel.missionId, context);
+        this.transitionLocalCandidates(travel.missionId, decisionContext);
       const pendingDecision = {
         ...intent,
         eligibleLocalMissionIds
@@ -526,7 +531,7 @@
       const deferMissionId = this.chooseTransitionDeferralMission(
         travel.missionId,
         eligibleLocalMissionIds,
-        context
+        decisionContext
       );
 
       const resolved = {
@@ -806,13 +811,14 @@
           "Intention de transition missionnelle persistante ; l’arbitrage local reste borné à la map courante.";
         return false;
       }
+      const context = this.bridge.context();
       const candidates = this.activeMissionIds
         .filter((id) => {
           const lifecycle = this.ensureLifecycle(id);
           return lifecycle.status === "active" &&
             lifecycle.autoPrimaryEligible !== false;
         })
-        .map((id) => this.assessMission(id, this.bridge.context()))
+        .map((id) => this.assessMission(id, context))
         .sort((left, right) => right.score - left.score);
       const best = candidates[0];
       if (!best) return false;

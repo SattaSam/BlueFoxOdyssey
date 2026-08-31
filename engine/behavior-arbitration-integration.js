@@ -202,9 +202,18 @@
     };
   };
 
-  const historyForObject = (engine, object) => {
+  const createDecisionContext = (engine) => ({
+    history: BF.ObjectEvents?.history?.() || [],
+    knowledge: mapKnowledge(engine),
+    researchTypes: researchEventTypes(),
+    interestCache: new WeakMap(),
+    newestResearchMaterialAt: null
+  });
+
+  const historyForObject = (engine, object, decision = null) => {
     const { objectId, instanceId } = objectIdentity(object);
-    return (BF.ObjectEvents?.history?.() || []).filter((event) => {
+    const history = decision?.history || BF.ObjectEvents?.history?.() || [];
+    return history.filter((event) => {
       if (!event) return false;
       if (event.mapId && engine?.currentMapId && event.mapId !== engine.currentMapId) return false;
       if (objectId && event.objectId === objectId) return true;
@@ -213,9 +222,9 @@
     });
   };
 
-  const researchKnowledge = (engine, object) => {
-    const events = historyForObject(engine, object);
-    const types = researchEventTypes();
+  const researchKnowledge = (engine, object, decision = null) => {
+    const events = historyForObject(engine, object, decision);
+    const types = decision?.researchTypes || researchEventTypes();
     return {
       seen: events.some((event) => types.seen.has(event.type)),
       inspected: events.some((event) => types.inspected.has(event.type)),
@@ -225,15 +234,16 @@
     };
   };
 
-  const instanceResearchKnowledge = (engine, object) => {
+  const instanceResearchKnowledge = (engine, object, decision = null) => {
     const { instanceId } = objectIdentity(object);
     if (!instanceId) return { seen:false, inspected:false, analyzed:false, latestAt:0 };
-    const events = (BF.ObjectEvents?.history?.() || []).filter((event) => {
+    const history = decision?.history || BF.ObjectEvents?.history?.() || [];
+    const events = history.filter((event) => {
       if (!event || event.instanceId !== instanceId) return false;
       if (event.mapId && engine?.currentMapId && event.mapId !== engine.currentMapId) return false;
       return true;
     });
-    const types = researchEventTypes();
+    const types = decision?.researchTypes || researchEventTypes();
     return {
       seen: events.some((event) => types.seen.has(event.type)),
       inspected: events.some((event) => types.inspected.has(event.type)),
@@ -256,7 +266,21 @@
     );
   };
 
-  const targetInterest = (engine, object, axis) => {
+  const targetInterest = (engine, object, axis, decision = null) => {
+    const cachedByAxis = decision?.interestCache?.get(object);
+    if (cachedByAxis?.has(axis)) return cachedByAxis.get(axis);
+
+    const remember = (result) => {
+      if (!decision?.interestCache) return result;
+      let byAxis = decision.interestCache.get(object);
+      if (!byAxis) {
+        byAxis = new Map();
+        decision.interestCache.set(object, byAxis);
+      }
+      byAxis.set(axis, result);
+      return result;
+    };
+
     const now = Date.now();
     const definition = objectDefinition(object);
     const data = object?.userData || {};
@@ -267,12 +291,12 @@
       definition.category || data.category || ""
     ).toLowerCase();
     const { objectId, instanceId } = objectIdentity(object);
-    const knowledge = mapKnowledge(engine);
+    const knowledge = decision?.knowledge || mapKnowledge(engine);
     const knownObject = Boolean(objectId && knowledge.uniqueObjects?.[objectId]);
     const knownInstance = Boolean(instanceId && knowledge.uniqueInstances?.[instanceId]);
     const knownResource = Boolean(kind && knowledge.uniqueResources?.[kind]);
-    const objectResearch = researchKnowledge(engine, object);
-    const instanceResearch = instanceResearchKnowledge(engine, object);
+    const objectResearch = researchKnowledge(engine, object, decision);
+    const instanceResearch = instanceResearchKnowledge(engine, object, decision);
     const perInstanceValue = hasPerInstanceKnowledgeValue(object);
     const latestAt = Math.max(
       Number(objectResearch.latestAt) || 0,
@@ -292,7 +316,7 @@
         !["collect", "extract"].includes(action) &&
         !preferredCollectable
       ) {
-        return { score: -1000, reasons: ["incompatible"] };
+        return remember({ score: -1000, reasons: ["incompatible"] });
       }
       score = 58;
       reasons.push("resource-action");
@@ -313,7 +337,7 @@
       }
     } else if (axis === "research") {
       if (!["observe", "inspect", "analyze"].includes(action)) {
-        return { score: -1000, reasons: ["incompatible"] };
+        return remember({ score: -1000, reasons: ["incompatible"] });
       }
 
       const targetKnowledge = perInstanceValue ? instanceResearch : objectResearch;
@@ -371,7 +395,7 @@
         reasons.push("new-individual");
       }
     } else {
-      return { score: -1000, reasons: ["unsupported-axis"] };
+      return remember({ score: -1000, reasons: ["unsupported-axis"] });
     }
 
     const preferred = preferredEntry();
@@ -389,7 +413,7 @@
       reasons.push("recently-interacted");
     }
 
-    return {
+    return remember({
       score: Math.max(0, score),
       reasons,
       knownObject,
@@ -401,12 +425,13 @@
         perInstanceValue
       },
       lastInteractionAgeMs: Number.isFinite(age) ? age : null
-    };
+    });
   };
 
-  const bestInterest = (engine, objects, axis) =>
+  const bestInterest = (engine, objects, axis, decision = null) =>
     objects.reduce(
-      (best, object) => Math.max(best, targetInterest(engine, object, axis).score),
+      (best, object) =>
+        Math.max(best, targetInterest(engine, object, axis, decision).score),
       0
     );
 
@@ -425,12 +450,16 @@
     };
   };
 
-  const newestResearchMaterialAt = (engine) => {
+  const newestResearchMaterialAt = (engine, decision = null) => {
+    if (decision && Number.isFinite(decision.newestResearchMaterialAt)) {
+      return decision.newestResearchMaterialAt;
+    }
     const types = BF.ObjectEvents?.types || {};
-    return (BF.ObjectEvents?.history?.() || []).reduce((latest, event) => {
-      if (!event) return latest;
+    const history = decision?.history || BF.ObjectEvents?.history?.() || [];
+    const latest = history.reduce((latestAt, event) => {
+      if (!event) return latestAt;
       if (event.mapId && engine?.currentMapId && event.mapId !== engine.currentMapId) {
-        return latest;
+        return latestAt;
       }
       if (![
         types.OBJECT_SEEN,
@@ -439,14 +468,16 @@
         types.PHENOMENON_OBSERVED,
         types.KNOWLEDGE_ACQUIRED
       ].includes(event.type)) {
-        return latest;
+        return latestAt;
       }
-      return Math.max(latest, Number(event.at) || 0);
+      return Math.max(latestAt, Number(event.at) || 0);
     }, 0);
+    if (decision) decision.newestResearchMaterialAt = latest;
+    return latest;
   };
 
-  const hasUnprocessedResearchMaterial = (engine) =>
-    newestResearchMaterialAt(engine) > lastResearchRoutineSourceAt;
+  const hasUnprocessedResearchMaterial = (engine, decision = null) =>
+    newestResearchMaterialAt(engine, decision) > lastResearchRoutineSourceAt;
 
   const recordSuggestion = (axis, detail) => {
     const BAC = getBAC();
@@ -548,7 +579,7 @@
     }
   };
 
-  const chooseLocalTarget = (engine, objects, axis) => {
+  const chooseLocalTarget = (engine, objects, axis, decision = null) => {
     if (!objects?.length) return null;
     const now = Date.now();
     const preferred = preferredKind();
@@ -571,7 +602,7 @@
 
     const shortlist = candidatePool
       .map((object) => {
-        const interest = targetInterest(engine, object, axis);
+        const interest = targetInterest(engine, object, axis, decision);
         return {
           object,
           interest: interest.score,
@@ -616,7 +647,7 @@
       selectedReasons: shortlist[0]?.reasons || [],
       selectedDirectDistance: shortlist[0]?.direct ?? null,
       selectedRouteCost: shortlist[0]?.cost ?? null,
-      newestResearchMaterialAt: newestResearchMaterialAt(engine),
+      newestResearchMaterialAt: newestResearchMaterialAt(engine, decision),
       lastResearchRoutineSourceAt,
       candidates: shortlist.map((entry) => ({
         kind: objectKind(entry.object),
@@ -1035,6 +1066,7 @@
         rationCandidate?.allowDuringPrimaryMission !== true
       ) return;
       this.lastAutonomyAt = now;
+      const decision = createDecisionContext(this);
       const interactables = (this.currentMap?.interactables || [])
         .filter((object) => this.canInteractWith(object, now));
       const activePreference = preferredEntry();
@@ -1057,9 +1089,9 @@
       };
 
       const interests = {
-        collection: bestInterest(this, byAxis.collection, "collection"),
-        research: bestInterest(this, byAxis.research, "research"),
-        relations: bestInterest(this, byAxis.relations, "relations")
+        collection: bestInterest(this, byAxis.collection, "collection", decision),
+        research: bestInterest(this, byAxis.research, "research", decision),
+        relations: bestInterest(this, byAxis.relations, "relations", decision)
       };
       const exploration = explorationContext(this);
       const knownGates = (this.currentMap?.gates || [])
@@ -1124,9 +1156,9 @@
           id: "research-routine",
           axis: "research",
           baseWeight: 8,
-          available: hasUnprocessedResearchMaterial(this),
+          available: hasUnprocessedResearchMaterial(this, decision),
           execute: () => {
-            lastResearchRoutineSourceAt = newestResearchMaterialAt(this);
+            lastResearchRoutineSourceAt = newestResearchMaterialAt(this, decision);
             this.startRoutine("research", now, 6500);
           }
         },
@@ -1137,7 +1169,7 @@
           available: interests.relations > 0,
           execute: () => commitTarget(
             this,
-            chooseLocalTarget(this, byAxis.relations, "relations"),
+            chooseLocalTarget(this, byAxis.relations, "relations", decision),
             "relations"
           )
         },
@@ -1148,7 +1180,7 @@
           available: interests.collection > 0,
           execute: () => commitTarget(
             this,
-            chooseLocalTarget(this, byAxis.collection, "collection"),
+            chooseLocalTarget(this, byAxis.collection, "collection", decision),
             "collection"
           )
         },
@@ -1159,7 +1191,7 @@
           available: interests.research > 0,
           execute: () => commitTarget(
             this,
-            chooseLocalTarget(this, byAxis.research, "research"),
+            chooseLocalTarget(this, byAxis.research, "research", decision),
             "research"
           )
         },
@@ -1267,7 +1299,8 @@
     }
     engine.__bacRoutingVersion = INTEGRATION_VERSION;
     engine.__bacIntegrated = true;
-    engine.chooseBACTarget = (objects, axis) => chooseLocalTarget(engine, objects, axis);
+    engine.chooseBACTarget = (objects, axis) =>
+      chooseLocalTarget(engine, objects, axis, createDecisionContext(engine));
     return true;
   };
   const reconnect = () => {
