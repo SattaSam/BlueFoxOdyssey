@@ -71,6 +71,10 @@ function actionContext(action){
  if(/run|escape|danger|fight/.test(value))return cat.contexts.ACTION_DYNAMIC;
  return null;
 }
+function missionMusicKey(state){
+ const action=state?.currentAction||null;
+ return `${actionContext(action?.type)||""}|${action?1:0}`;
+}
 function baseline(){
  const action=lastMission?.currentAction?.type;
  const missionContext=actionContext(action);
@@ -126,8 +130,10 @@ function onObject(event){
  if(phenomenon||relic)renewSpecialMapInterest(labels);
 }
 function onMission(event){
- lastMission=event.detail||null;
- evaluate();
+ const nextMission=event.detail||null;
+ const changed=missionMusicKey(nextMission)!==missionMusicKey(lastMission);
+ lastMission=nextMission;
+ if(changed)evaluate();
 }
 function onTransition(event){
  const detail=event.detail||{};
@@ -153,7 +159,7 @@ function onVisibility(){
 }
 on("bluefox:object-event",onObject);on("bluefox:mission-state",onMission);on("bluefox:map-transition-completed",onTransition);
 on("bluefox:map-milestone",onMilestone);on("bluefox:survival-changed",onSurvival);global.document?.addEventListener?.("visibilitychange",onVisibility);
-timer=global.setInterval(evaluate,500);evaluate();
+timer=global.setInterval(evaluate,3000);evaluate();
 
 BF.MusicGameplayBridge=Object.freeze({
  version:VERSION,priorities,
