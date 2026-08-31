@@ -165,7 +165,7 @@
     root.add(rock);
     return {
       root: setShadows(root),
-      colliders: [{ offset: new THREE.Vector3(), radius: radius * 0.86 }],
+      colliders: [{ offset: new THREE.Vector3(), radius: radius * 0.72 }],
       kind: "rock"
     };
   };
@@ -629,7 +629,7 @@
         crown.scale.y = type === "crystalline_tree" ? 1.35 : 0.72;
         root.add(crown);
       }
-      hitbox = makeHitbox(THREE, root, 1.5, 5.6, type);
+      hitbox = makeHitbox(THREE, root, 0.68, 5.6, type);
       colliders = [{ offset: new THREE.Vector3(), radius: 0.72 }];
     } else if (type === "fluorescent_vegetation") {
       for (let index = 0; index < 12; index += 1) {
@@ -888,7 +888,7 @@
         crown.rotation.y = level * 0.44;
         root.add(crown);
       }
-      hitbox = makeHitbox(THREE, root, 1.35, 5.6, type);
+      hitbox = makeHitbox(THREE, root, 0.52, 5.6, type);
       colliders = [{ offset: new THREE.Vector3(), radius: 0.58 }];
     } else if (type === "cactus") {
       const bark = material(THREE, { color: variant % 2 ? 0x557b68 : 0x496f62, roughness: 0.87 });
