@@ -51,3 +51,13 @@ Deux chantiers sont différés :
    - harmoniser la perception `energy / rest / food` sans fusionner les besoins ni créer de système parallèle.
 
 Aucune correction CPU ou Survival n’est considérée décidée à ce stade : le prochain chantier doit reprendre par profilage et localisation.
+
+---
+
+## Note de clôture — 1 septembre 2026
+
+Un nouveau checkpoint de reprise existe : `RECOVERY_CHECKPOINT_2026-09-01.md`.
+
+Le chantier trigger/cible missionnelle est clôturé en **FAIL moteur**.
+Aucun correctif runtime de ce chantier ne doit être repris.
+Seule la mise à jour IMI est retenue pour commit.

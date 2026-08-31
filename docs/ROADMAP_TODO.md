@@ -121,3 +121,30 @@ Cette page est la **seule TODO active**.
 - [ ] Vérifier l’effet réel des rations, micro-pauses, repos et actions sur les trois composantes.
 - [ ] Rendre la barre Énergie plus cohérente avec les décisions réellement prises par Survival/BAC.
 - [ ] Réévaluer le déclenchement `preventiveMicroRest` seulement sur preuve runtime.
+
+---
+
+## Mise à jour 1 septembre 2026 — chantier trigger/cible missionnelle
+
+### Base de clôture
+- [x] HEAD de référence avant clôture : `e12558f40f38129e4d3b4a3e6d85f54b3a2cac6f`.
+- [x] Les correctifs moteur/runtime produits pendant le chantier sont rejetés.
+- [x] Seule la mise à jour IMI est retenue pour commit.
+- [x] Prochaine session : repartir du HEAD GitHub propre après le commit IMI.
+
+### P0 — SUR-03 / relation trigger-cible
+- [x] Cause historique démontrée : ancien `bibleTarget:SUR-03` implicite en `binding:"definition"` sur le premier buisson.
+- [x] Preuve console : MissionManager propose `SUR-03:studyPlants` / `analyze`.
+- [x] Preuve console : `ActionBridge.execute()` retourne `false` avant `targetInteraction()`.
+- [x] Preuve console : neutraliser temporairement le binding permet à ObjectM0 de sélectionner une autre définition (`DOC-NAT-TREE-L-002`).
+- [x] Les migrations automatiques testées pendant la session ne sont pas validées gameplay.
+- [ ] Reprendre depuis le HEAD propre.
+- [ ] Couvrir le cycle complet `chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction → progression`.
+- [ ] Préserver les vrais cas `SAME-DEFINITION` et `SAME-INSTANCE`.
+- [ ] Valider aussi une mission `REVEAL-ONLY` multi-définition.
+- [ ] Ne déclarer PASS qu'après validation en jeu de la sauvegarde réelle.
+
+### Industrialisation
+- [x] IMI : relation explicite `REVEAL-ONLY / SAME-DEFINITION / SAME-INSTANCE`.
+- [ ] Ne pas compenser par une retouche manuelle massive du corpus documentaire.
+- [ ] Ne pas réintroduire de migration runtime sans preuve complète du cycle de chargement.

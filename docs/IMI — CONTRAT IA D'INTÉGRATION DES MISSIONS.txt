@@ -38,6 +38,32 @@ Comprendre synonymes et contexte.
 Si deux interprétations entraînent des gameplays différents :
 STOP → demander à l'utilisateur.
 
+RÈGLE 4B — RELATION DÉCLENCHEUR / CIBLE
+Pour toute mission déclenchée par une interaction avec un objet, l’intégration
+doit déduire automatiquement la relation entre l’objet déclencheur et les
+objectifs avant de produire la fiche moteur. Les missions documentaires source
+ne doivent pas être retouchées manuellement pour fournir cette information.
+
+Trois résultats seulement sont autorisés :
+- REVEAL-ONLY : l’objet révèle la mission mais ne devient pas sa cible
+  → générer triggerOnly: true ;
+- SAME-DEFINITION : la suite porte explicitement sur le même type/définition
+  → générer targetBinding: "definition" ;
+- SAME-INSTANCE : la suite porte explicitement sur ce même spécimen/objet
+  → générer targetBinding: "instance".
+
+Inférence obligatoire pour les cas non ambigus :
+- objectif cumulatif sur une catégorie/famille/kind plus large que le premier
+  objet rencontré → REVEAL-ONLY ;
+- objectif exigeant plusieurs objectId/familles/types distincts → REVEAL-ONLY ;
+- formulation explicite « même type / même définition » → SAME-DEFINITION ;
+- formulation explicite « même spécimen / cet objet / cette instance »
+  → SAME-INSTANCE.
+
+Une fiche issue d’un trigger interaction.* ne doit jamais dépendre du fallback
+implicite du runtime. Si la relation ne peut pas être déduite sans changer le
+gameplay : STOP → ambiguïté fonctionnelle à faire valider.
+
 RÈGLE 5 — PAS DE NOUVELLE MÉCANIQUE CACHÉE
 Si une mission exige une capacité absente :
 STOP → ENGINE EXTENSION REQUIRED.

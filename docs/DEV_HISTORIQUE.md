@@ -158,3 +158,55 @@ Demande utilisateur à reprendre :
 - lisser les compteurs énergie/repos/alimentation pour éviter des divergences peu intuitives ;
 - ne pas créer de jauge ou moteur parallèle ;
 - conserver `survival-ai-bridge.js` comme propriétaire.
+
+---
+
+## Session du 31 août → 1 septembre 2026 — Trigger/cible missionnelle SUR-03 — clôture en FAIL moteur
+
+### Base de référence
+- HEAD avant clôture : `e12558f40f38129e4d3b4a3e6d85f54b3a2cac6f`
+- Commit : `pass CPU 2 (musique)`
+
+### Cause fonctionnelle démontrée
+La sauvegarde contenait un ancien `bibleTarget:SUR-03` :
+- `binding:"definition"`
+- `instanceId` du premier buisson déclencheur
+- `objectId:"doc-bio-bush-m-001"`
+- `cuoType:"bush"`
+- `mapId:"generated-a2996d72-0005"`
+
+Preuves console :
+- MissionManager propose bien `SUR-03:studyPlants` / `analyze`;
+- `ActionBridge.execute()` retourne `false`;
+- `targetInteraction()` n'est jamais appelé;
+- aucune cible n'est sélectionnée tant que le vieux binding est présent;
+- binding neutralisé temporairement : ObjectM0 sélectionne immédiatement `DOC-NAT-TREE-L-002` / `crystalline_tree`.
+
+Conclusion prouvée :
+le vieux binding implicite de définition rend l'objectif multi-définition impossible.
+
+### Décision durable d'intégration
+L'IMI conserve trois relations explicites :
+- `REVEAL-ONLY`
+- `SAME-DEFINITION`
+- `SAME-INSTANCE`
+
+### Échec des correctifs moteur de la session
+Les variantes de migration automatique de vieux `bibleTarget` ont réussi des tests isolés mais ont échoué en jeu.
+Décision utilisateur :
+- rejeter tous les patchs moteur/runtime de ce chantier;
+- ne pas les réutiliser à la prochaine session;
+- repartir du HEAD GitHub propre;
+- seule la mise à jour IMI est retenue pour commit.
+
+### Fausses pistes à éviter
+- réarmement artificiel du planner/BAC sans preuve;
+- timer/bridge parallèle;
+- considérer `bibleTarget === null` comme preuve suffisante;
+- protéger un binding sur la seule présence de `mapId`;
+- tester la migration sans couvrir les consommateurs réels.
+
+### Contrat de reprise
+Le prochain chantier devra couvrir :
+`chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction → progression`
+et préserver les vrais cas `SAME-DEFINITION` / `SAME-INSTANCE`.
