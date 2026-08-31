@@ -9,7 +9,7 @@
   const RELATION_STORAGE_KEY = "bluefox_bac_relation_v1";
   const TRUST_TUNING = Object.freeze({
     alignedSuccess: 1.15,
-    opposedSuccess: 0.35,
+    opposedSuccess: -0.35,
     alignedFailure: -1.25,
     opposedFailure: -3.25,
     opposedUseless: -2.5,

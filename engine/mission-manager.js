@@ -53,6 +53,7 @@
           "Mission reprise depuis la sauvegarde."
         : "Aucune mission active.";
       this.pendingPrimaryMissionId = null;
+      this.pendingPrimaryMissionReason = null;
       this.pendingPauseMissionId = null;
       this.lastPriorityReviewAt = 0;
       this.syncMissionSelection();
@@ -205,6 +206,7 @@
       }
       if (this.currentAction || this.bridge.isEngineBusy()) {
         this.pendingPrimaryMissionId = missionId;
+        this.pendingPrimaryMissionReason = reason;
         this.selectionReason = `Changement vers « ${this.trees.get(missionId).title} » après l’action en cours.`;
         if (publish) this.publish();
         return true;
@@ -214,6 +216,7 @@
       this.tree = this.trees.get(missionId);
       this.selectionReason = reason;
       this.pendingPrimaryMissionId = null;
+      this.pendingPrimaryMissionReason = null;
       this.ensureLifecycle(missionId, "active").status = "active";
       this.syncMissionSelection();
       if (publish) {
@@ -804,8 +807,20 @@
       return { missionId, score, action, progress, reasons };
     }
 
+    isPlayerSelectedPrimary() {
+      if (!this.primaryMissionId || !this.tree || this.tree.root?.isComplete) return false;
+      const lifecycle = this.memory.state.missionLifecycle?.[this.primaryMissionId];
+      if (lifecycle?.status !== "active") return false;
+      const reason = String(lifecycle.selectionReason || this.selectionReason || "");
+      return reason === "Priorité suggérée par le joueur.";
+    }
+
     selectBestPrimary(now = performance.now(), force = false) {
       if (this.currentAction || this.bridge.isEngineBusy()) return false;
+      if (this.isPlayerSelectedPrimary()) {
+        this.selectionReason = "Priorité suggérée par le joueur.";
+        return false;
+      }
       if (this.hasPendingMissionReturn(this.primaryMissionId)) {
         this.selectionReason =
           "Intention de transition missionnelle persistante ; l’arbitrage local reste borné à la map courante.";
@@ -868,8 +883,10 @@
       }
       if (this.pendingPrimaryMissionId) {
         const missionId = this.pendingPrimaryMissionId;
+        const reason = this.pendingPrimaryMissionReason || "Priorité choisie explicitement.";
         this.pendingPrimaryMissionId = null;
-        changed = this.setPrimaryMission(missionId, false) || changed;
+        this.pendingPrimaryMissionReason = null;
+        changed = this.setPrimaryMission(missionId, false, reason) || changed;
       }
       return changed;
     }
