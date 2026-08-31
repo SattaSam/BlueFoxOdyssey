@@ -6,6 +6,8 @@
   const LEGACY_STORAGE_KEY = "bluefox_odyssey_save_v1";
   const DEFAULT_SITE_INTERACTION_RADIUS = 12;
   const EXPEDITION_KIT_OPEN_KEY = "bluefox_expedition_kit_open_v1";
+  const PERSONAL_BAG_OPEN_KEY = "bluefox_personal_bag_open_v1";
+  const CAMP_STORAGE_OPEN_KEY = "bluefox_camp_storage_open_v1";
 
   const FALLBACKS = Object.freeze({
     crystal: { label: "Cristaux", icon: "◆" },
@@ -408,6 +410,28 @@
       ".drawer, .full-screen-panel"
     )].find(isInventoryDrawer) || null;
 
+  const cleanupStaleInventoryUI = () => {
+    document.querySelectorAll(
+      ".drawer, .full-screen-panel"
+    ).forEach((panel) => {
+      if (isInventoryDrawer(panel)) return;
+
+      panel
+        .querySelectorAll(":scope > .inventory-sections")
+        .forEach((sections) => sections.remove());
+
+      panel
+        .querySelectorAll(
+          ':scope > [data-bluefox-legacy-inventory-hidden="true"]'
+        )
+        .forEach((node) => {
+          node.hidden = false;
+          node.style.removeProperty("display");
+          delete node.dataset.bluefoxLegacyInventoryHidden;
+        });
+    });
+  };
+
   const ensureSections = (drawer) => {
     let sections = drawer.querySelector(".inventory-sections");
     if (sections) return sections;
@@ -429,15 +453,27 @@
   // Le bridge Inventaire la masque seulement pendant qu'il affiche ses sections
   // enrichies, afin de laisser React seul propriétaire de son démontage.
   const hideLegacyInventoryGrid = (drawer) => {
+    if (!drawer) return false;
+    let changed = false;
+
+    // Le contenu React historique de l'Inventaire est composé de deux
+    // siblings directs après le titre : son paragraphe descriptif et sa
+    // grille fixe Cristaux/Fibres/Composants. Ils restent montés pour laisser
+    // React propriétaire de leur cycle de vie, mais ne doivent plus être
+    // visibles dès que les sections modernes sont actives.
     drawer
       .querySelectorAll(
-        ".inventory-grid:not(.inventory-transfer-grid)"
+        ":scope > p, :scope > .inventory-grid:not(.inventory-transfer-grid)"
       )
-      .forEach((grid) => {
-        if (!grid.closest(".inventory-sections")) {
-          grid.hidden = true;
-        }
+      .forEach((node) => {
+        if (node.closest(".inventory-sections")) return;
+        node.hidden = true;
+        node.style.display = "none";
+        node.dataset.bluefoxLegacyInventoryHidden = "true";
+        changed = true;
       });
+
+    return changed;
   };
 
   const createSection = (
@@ -445,10 +481,24 @@
     entries,
     bucket,
     target,
-    open = true
+    storageKey,
+    defaultOpen = true
   ) => {
     const details = document.createElement("details");
-    details.open = open;
+    const storedOpen = storageKey
+      ? global.localStorage.getItem(storageKey)
+      : null;
+    details.open = storedOpen == null
+      ? defaultOpen
+      : storedOpen === "true";
+    if (storageKey) {
+      details.addEventListener("toggle", () => {
+        global.localStorage.setItem(
+          storageKey,
+          String(details.open)
+        );
+      });
+    }
     const summary = document.createElement("summary");
     summary.textContent = title;
     details.append(
@@ -512,7 +562,7 @@
     summary.textContent = "Kit d’expédition";
 
     const grid = document.createElement("div");
-    grid.className = "expedition-kit-grid";
+    grid.className = "expedition-kit-grid inventory-transfer-grid";
 
     occupied.forEach((item) => {
       const button = document.createElement("button");
@@ -548,6 +598,7 @@
   };
 
   const render = () => {
+    cleanupStaleInventoryUI();
     const drawer = inventoryDrawer();
     if (!drawer) return false;
 
@@ -595,6 +646,7 @@
       personal,
       "inventory",
       campAccessible ? "camp" : "",
+      PERSONAL_BAG_OPEN_KEY,
       true
     );
 
@@ -641,26 +693,33 @@
       sections.appendChild(expeditionKit);
     }
 
-    // Règle validée :
-    // - camp absent : AUCUN bloc Camp, même verrouillé ;
-    // - camp présent : bloc disponible uniquement à portée ;
-    // - bloc replié par défaut.
-    if (campExists && campAccessible) {
-      sections.appendChild(
-        createSection(
-          "Stockage partagé des camps",
-          stored,
-          "deposited",
-          "bag",
-          false
-        )
+    // Règle UI : le stockage d'un camp existant reste consultable partout
+    // sur sa map. Les transferts restent strictement propriétaires de la
+    // proximité et ne sont activés qu'à portée du site.
+    if (campExists) {
+      const campSection = createSection(
+        "Stockage partagé des camps",
+        stored,
+        "deposited",
+        campAccessible ? "bag" : "",
+        CAMP_STORAGE_OPEN_KEY,
+        false
       );
-    } else if (campExists) {
-      const locked = document.createElement("p");
-      locked.className = "inventory-camp-locked";
-      locked.textContent =
-        "Camp hors de portée.";
-      sections.appendChild(locked);
+      if (!campAccessible) {
+        campSection
+          .querySelectorAll("article")
+          .forEach((article) => {
+            article.draggable = false;
+            article.title =
+              "Consultation uniquement ; rapprochez-vous du camp pour reprendre des objets.";
+          });
+        const readonly = document.createElement("p");
+        readonly.className = "inventory-camp-readonly";
+        readonly.textContent =
+          "Camp hors de portée · consultation uniquement.";
+        campSection.appendChild(readonly);
+      }
+      sections.appendChild(campSection);
     }
 
     sections.dataset.signature = signature;

@@ -84,26 +84,27 @@
 
 .expedition-kit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: .55rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
   padding: 0 10px 10px;
 }
 
 .expedition-kit-slot {
   appearance: none;
   width: 100%;
-  min-height: 76px;
+  min-width: 0;
+  min-height: 72px;
   border: 1px solid rgba(145, 220, 255, .24);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(7, 25, 42, .72);
   color: inherit;
-  padding: .65rem .55rem;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  column-gap: .55rem;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  text-align: left;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
   cursor: pointer;
 }
 
@@ -115,19 +116,29 @@
 }
 
 .expedition-kit-icon {
-  grid-row: 1 / span 2;
-  font-size: 1.45rem;
+  font-size: 20px;
   line-height: 1;
 }
 
 .expedition-kit-label {
-  font-size: .78rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 10px;
   font-weight: 700;
+  line-height: 1.15;
 }
 
 .expedition-kit-count {
-  font-size: .72rem;
-  opacity: .82;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: .9;
+}
+
+.inventory-camp-readonly {
+  margin: -2px 12px 10px;
+  color: #ffd9a4;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .tool-rail button:disabled {
@@ -137,7 +148,8 @@
 }
 
 @media (max-width: 650px) {
-  .inventory-transfer-grid {
+  .inventory-transfer-grid,
+  .expedition-kit-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 5px;
     padding-inline: 6px;
@@ -158,4 +170,13 @@
   .inventory-transfer-grid article > small {
     font-size: 9px;
   }
+}
+
+/* Garde-fou runtime : le contenu React historique reste monté mais invisible
+   pendant que l'Inventaire moderne est affiché. */
+.drawer[aria-label^="Inventaire"] > p[data-bluefox-legacy-inventory-hidden="true"],
+.drawer[aria-label^="Inventaire"] > .inventory-grid[data-bluefox-legacy-inventory-hidden="true"],
+.full-screen-panel[aria-label^="Inventaire"] > p[data-bluefox-legacy-inventory-hidden="true"],
+.full-screen-panel[aria-label^="Inventaire"] > .inventory-grid[data-bluefox-legacy-inventory-hidden="true"] {
+  display: none !important;
 }

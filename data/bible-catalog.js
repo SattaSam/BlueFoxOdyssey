@@ -1056,9 +1056,9 @@
       Object.freeze({
         id: "ration-manual-use-help",
         when: "active",
-        message: "Ouvre l’inventaire et utilise manuellement une ration depuis le sac d’expédition pour vérifier son effet sur ton énergie.",
-        duration: 14000,
-        dismissOnProgress: true
+        message: "1. Placer BlueFox à proximité du camp, fabriquer une ration à partir du menu \"Recherche\". 2. Ouvrir le \"sac d’expédition\" et cliquer sur une ration pour la consommer.",
+        duration: 0,
+        acknowledge: Object.freeze({ label: "OK" })
       })
     ]),
     runtimeValidation: Object.freeze({

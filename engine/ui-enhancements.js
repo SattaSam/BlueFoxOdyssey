@@ -2243,6 +2243,43 @@
     );
   };
 
+  const isInventoryPanel = (panel) => {
+    const identity = menuPanelIdentity(panel);
+    return identity.includes("inventaire");
+  };
+
+  const closeOwnedMenuPanel = (panel) => {
+    if (!panel?.isConnected) return false;
+    const close = panel.querySelector?.(".drawer-close");
+    if (!close) return false;
+    close.click();
+    return true;
+  };
+
+  const closeCompetingInventoryResearchPanel = (target) => {
+    const mode = String(target || "").trim().toLocaleLowerCase("fr");
+    if (!["inventaire", "recherche", "laboratoire"].includes(mode)) return false;
+    let changed = false;
+    document.querySelectorAll(".drawer, .full-screen-panel").forEach((panel) => {
+      const competing = mode === "inventaire"
+        ? isResearchPanel(panel)
+        : isInventoryPanel(panel);
+      if (competing) changed = closeOwnedMenuPanel(panel) || changed;
+    });
+    return changed;
+  };
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.(".tool-rail button");
+    if (!button) return;
+    const target = (
+      button.querySelector("small")?.textContent ||
+      button.getAttribute("aria-label") ||
+      ""
+    ).trim().toLocaleLowerCase("fr");
+    closeCompetingInventoryResearchPanel(target);
+  }, true);
+
   function normalizeResearchPanelWindow(panel) {
     if (!isResearchPanel(panel)) return false;
     if (panel.classList.contains("full-screen-panel")) {
