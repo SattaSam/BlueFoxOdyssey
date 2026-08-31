@@ -1670,6 +1670,29 @@
     });
   }
 
+  function planetSiteMarker(mapId) {
+    if (!mapId || mapId === "crystal") return null;
+    const raw = global.BlueFox3D.currentEngine?.missionManager?.memory?.state
+      ?.siteProgression?.[mapId] || null;
+    if (!raw) return null;
+    const sites = raw.sites && typeof raw.sites === "object"
+      ? raw.sites
+      : raw.kind
+        ? { [raw.kind]: raw }
+        : {};
+    if (sites.base) return { kind: "base", label: "Base installée" };
+    if (sites.refuge) return { kind: "refuge", label: "Refuge installé" };
+    if (sites.camp) return { kind: "camp", label: "Camp installé" };
+    return null;
+  }
+
+  function planetSiteSignature(mapIds) {
+    return mapIds
+      .map((mapId) => `${mapId}:${planetSiteMarker(mapId)?.kind || "-"}`)
+      .sort()
+      .join(",");
+  }
+
   function renderPlanetMap(panel) {
     const sphere = panel.querySelector(".planet-sphere");
     if (!sphere) return;
@@ -1828,7 +1851,7 @@
       const map = global.BlueFox3D.maps[id];
       const point = coordinates.get(id);
       return `${id}:${map.name}:${map.plateauCount || map.terrainUrls?.length || 1}:${point.x},${point.y}`;
-    }).join("|")}`;
+    }).join("|")}|sites:${planetSiteSignature(ids)}`;
     if (world.dataset.signature !== signature) {
       world.dataset.signature = signature;
       world.replaceChildren();
@@ -1875,6 +1898,8 @@
         const markers = [];
         if (mapId === currentMapId(panel)) markers.push(["bluefox", "Position de BlueFox"]);
         if (mapId === "crystal") markers.push(["camp", "Camp de base"]);
+        const siteMarker = planetSiteMarker(mapId);
+        if (siteMarker) markers.push(["camp", siteMarker.label, "remote-site"]);
         const runtimeMarkers = global.BlueFox3D.getPlanetMapMarkers?.(mapId);
         const futureMarkers = [
           ...(Array.isArray(definition.planetMarkers) ? definition.planetMarkers : []),
@@ -1887,9 +1912,14 @@
         });
         const markerLayer = document.createElement("span");
         markerLayer.className = "planet-map-markers";
-        markers.forEach(([type, title]) => {
+        markers.forEach(([type, title, variant]) => {
           const marker = document.createElement("span");
           marker.className = `planet-map-marker ${type}`;
+          if (variant === "remote-site") {
+            marker.style.borderColor = "#ffe0bd";
+            marker.style.background = "#f08b43";
+            marker.style.boxShadow = "0 0 12px rgba(240, 139, 67, .86)";
+          }
           marker.title = title;
           marker.setAttribute("aria-label", title);
           markerLayer.appendChild(marker);
@@ -2097,12 +2127,14 @@
       })
       .sort()
       .join(",");
+    const discoveredIds = discoveredMapIds(panel);
     const signature = [
       current,
-      discoveredMapIds(panel).length,
+      discoveredIds.length,
       mapGrid.querySelectorAll("button").length,
       catalogSignature,
-      discoverySignature
+      discoverySignature,
+      planetSiteSignature(discoveredIds)
     ].join(":");
     const alreadyComplete =
       panel.dataset.bluefoxPlanetSignature === signature &&
