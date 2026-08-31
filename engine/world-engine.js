@@ -3318,14 +3318,24 @@
     currentActivity() {
       if (this.currentRoutine) {
         if (["rest", "micro-rest", "critical-rest"].includes(this.currentRoutine.type)) {
+          if (this.currentRoutine.type === "micro-rest") {
+            return {
+              key: "micro-rest",
+              label: "Micro-pause et reprise de souffle.",
+              speech: "Je souffle un peu avant de reprendre."
+            };
+          }
+          if (this.currentRoutine.type === "critical-rest") {
+            return {
+              key: "critical-rest",
+              label: "Repos prolongé après une fatigue critique.",
+              speech: "Je dois vraiment récupérer avant de continuer."
+            };
+          }
           return {
-            key: this.currentRoutine.type,
-            label: this.currentRoutine.type === "critical-rest"
-              ? "Repos prolongé après une fatigue critique."
-              : "Repos et récupération des forces.",
-            speech: this.currentRoutine.type === "critical-rest"
-              ? "Je dois récupérer avant de continuer."
-              : "Je fais une courte pause avant de reprendre."
+            key: "rest",
+            label: "Pause longue et récupération des forces.",
+            speech: "J’ai vraiment besoin d’une bonne pause pour récupérer."
           };
         }
         if (this.currentRoutine.type === "research") {

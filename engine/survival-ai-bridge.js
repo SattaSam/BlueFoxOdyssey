@@ -34,8 +34,13 @@
   });
 
   const RATION_NUTRITION = Object.freeze({
-    foodGain: 40,
-    restGain: 10
+    foodGain: 45,
+    restGain: 0
+  });
+
+  const LONG_REST_RECOVERY = Object.freeze({
+    foodGain: 10,
+    criticalFoodPerRest: 0.3
   });
 
   // Zone de régulation autonome : BlueFox commence à récupérer avant
@@ -112,9 +117,9 @@
   const recalculate = () => {
     state.energy = clamp(
       Math.round(
-        state.rest * 0.55 +
-        state.food * 0.32 +
-        state.safety * 0.13
+        state.rest * 0.50 +
+        state.food * 0.40 +
+        state.safety * 0.10
       )
     );
     state.updatedAt = Date.now();
@@ -144,6 +149,18 @@
     inspect: 0.8,
     observe: 0.5,
     travel: 1.2
+  });
+
+  // Tuning historique R3 réintégré dans le propriétaire Survival.
+  // La compensation est appliquée AVANT publish() afin que runtime,
+  // événement canonique et sauvegarde décrivent exactement le même état.
+  const actionCostCompensation = Object.freeze({
+    collect: 0.45,
+    extract: 0.65,
+    analyze: 0.30,
+    inspect: 0.18,
+    observe: 0.12,
+    travel: 0.25
   });
 
   const actionAxis = (action) =>
@@ -265,10 +282,32 @@
       manualMultiplier *
       thermalMultiplier;
 
+    const restBefore = state.rest;
+    const foodBefore = state.food;
+
     state.rest = clamp(state.rest - cost);
     state.food = clamp(
       state.food - cost * 0.42
     );
+
+    const compensation =
+      actionCostCompensation[action] || 0;
+    if (compensation > 0) {
+      const restLoss = Math.max(
+        0,
+        restBefore - state.rest
+      );
+      const foodLoss = Math.max(
+        0,
+        foodBefore - state.food
+      );
+      state.rest = clamp(
+        state.rest + restLoss * compensation
+      );
+      state.food = clamp(
+        state.food + foodLoss * compensation
+      );
+    }
 
     publish(
       `action:${action}:${source}:${alignment}`
@@ -318,6 +357,16 @@
               : 24
           )
       );
+      state.food = clamp(
+        state.food +
+          (
+            Number.isFinite(
+              Number(detail.foodGain)
+            )
+              ? Math.max(0, Number(detail.foodGain))
+              : LONG_REST_RECOVERY.foodGain
+          )
+      );
       state.manualPressure = Math.max(
         0,
         state.manualPressure -
@@ -356,6 +405,10 @@
         guard < 100
       ) {
         state.rest = clamp(state.rest + 1);
+        state.food = clamp(
+          state.food +
+            LONG_REST_RECOVERY.criticalFoodPerRest
+        );
         guard += 1;
       }
       state.manualPressure = Math.max(
