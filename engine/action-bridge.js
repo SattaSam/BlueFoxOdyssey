@@ -72,6 +72,88 @@
       );
     }
 
+
+    revealBlockedZoneMicroScene(action, zone) {
+      const engine = this.engine;
+      if (!zone || zone.index !== engine.currentZoneIndex) return false;
+      if (typeof BF.revealMapArea !== "function") return false;
+
+      const mission =
+        engine.missionManager?.definition?.(action?.missionId) ||
+        (Array.isArray(BF.BibleCatalog)
+          ? BF.BibleCatalog.find((entry) => entry?.id === action?.missionId)
+          : Object.values(BF.BibleCatalog || {}).find((entry) => entry?.id === action?.missionId));
+      const contexts = (Array.isArray(mission?.proximityContexts)
+        ? mission.proximityContexts
+        : []
+      ).filter((context) =>
+        context?.microSceneId && context.useSceneRadius === true
+      );
+      if (!contexts.length) return false;
+
+      const scenes = Array.isArray(engine.currentMap?.group?.userData?.microScenes)
+        ? engine.currentMap.group.userData.microScenes
+        : Array.isArray(engine.currentMap?.microScenes)
+          ? engine.currentMap.microScenes
+          : [];
+      const player = engine.character?.root?.position;
+      if (!player) return false;
+
+      for (const context of contexts) {
+        const scene = scenes.find((entry) =>
+          String(entry?.id || "") === String(context.microSceneId)
+        );
+        const anchor = scene?.instanceRoot || scene?.records?.[0]?.root || null;
+        const point = anchor?.getWorldPosition
+          ? anchor.getWorldPosition(new engine.THREE.Vector3())
+          : anchor?.position;
+        if (!point) continue;
+
+        let nearestZone = null;
+        let nearestDistance = Infinity;
+        (engine.currentMap?.zoneRegions || []).forEach((candidate) => {
+          const distance = Math.hypot(
+            Number(point.x) - Number(candidate.center.x),
+            Number(point.z) - Number(candidate.center.z)
+          );
+          if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestZone = candidate;
+          }
+        });
+        if (nearestZone?.index !== zone.index) continue;
+
+        const radius = Number(
+          BF.MicroScenes?.get?.(context.microSceneId)?.radius
+        );
+        if (!Number.isFinite(radius) || radius <= 0) continue;
+        const distance = Math.hypot(
+          Number(player.x) - Number(point.x),
+          Number(player.z) - Number(point.z)
+        );
+        if (distance > radius) continue;
+
+        BF.revealMapArea({
+          mapId: engine.currentMapId,
+          planetId: engine.currentPlanetId || "planet-1",
+          zoneId: zone.index,
+          x: Number(point.x),
+          z: Number(point.z),
+          radius,
+          bounds: engine.currentMap?.bounds || 27,
+          source: "mission-msc-proximity",
+          microSceneId: context.microSceneId
+        });
+        const zoneKey = `${engine.currentMapId}:${zone.index}`;
+        if (!engine.discoveredZones.has(zoneKey)) {
+          engine.discoveredZones.add(zoneKey);
+          engine.saveZoneDiscovery?.();
+        }
+        return true;
+      }
+      return false;
+    }
+
     execute(action, now) {
       if (!action || this.isEngineBusy()) return false;
       const engine = this.engine;
@@ -112,17 +194,27 @@
           return true;
         }
         case Missions.ActionType.EXPLORE_ZONE: {
-          const zone = engine.currentMap.zoneRegions
+          const zones = engine.currentMap.zoneRegions
             .filter((candidate) => !engine.discoveredZones.has(
               `${engine.currentMapId}:${candidate.index}`
             ))
             .sort((left, right) =>
               engine.character.root.position.distanceTo(left.center) -
               engine.character.root.position.distanceTo(right.center)
-            )[0];
-          if (zone) {
+            );
+          for (const zone of zones) {
+            const accepted = engine.character.setTarget(zone.center);
+            if (accepted === false) {
+              const reconciled = this.revealBlockedZoneMicroScene(action, zone);
+              if (reconciled) {
+                const node = engine.missionManager?.trees
+                  ?.get?.(action?.missionId)
+                  ?.find?.(action?.nodeId);
+                if (node?.isComplete) return false;
+              }
+              continue;
+            }
             engine.pendingZoneExploration = zone;
-            engine.character.setTarget(zone.center);
             engine.showWorldMarker(zone.center);
             engine.callbacks.onStatus(`Mission : BlueFox reconnaît ${zone.name}.`);
             return true;
@@ -141,9 +233,8 @@
                 (candidate) => candidate.userData.exit.targetMap === nextMapId
               )
               : null;
-            if (gate) {
+            if (gate && engine.character.setTarget(gate.position, "run") !== false) {
               engine.pendingGate = gate;
-              engine.character.setTarget(gate.position, "run");
               engine.callbacks.onStatus(
                 `Mission : BlueFox rejoint ${BF.maps?.[incompleteMap.mapId]?.name || "un biome incomplet"}.`
               );
@@ -156,7 +247,7 @@
           );
           if (!target) return false;
           const position = new engine.THREE.Vector3(target.x, 0, target.z);
-          engine.character.setTarget(position);
+          if (engine.character.setTarget(position) === false) return false;
           engine.showWorldMarker(position);
           engine.callbacks.onStatus("Mission : BlueFox cartographie un secteur encore incomplet.");
           return true;

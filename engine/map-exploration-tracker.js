@@ -246,6 +246,66 @@
       return sectors;
     }
 
+    revealArea(detail = {}) {
+      const mapId = detail.mapId || detail.currentMapId;
+      const x = Number(detail.x);
+      const z = Number(detail.z);
+      const radius = Math.max(0, Number(detail.radius) || 0);
+      if (!mapId || !Number.isFinite(x) || !Number.isFinite(z) || radius <= 0) return false;
+
+      const map = this.ensureMap(mapId, detail.gridSize);
+      map.bounds = Math.max(1, Number(detail.bounds) || map.bounds || 27);
+      map.planetId = detail.planetId ?? map.planetId;
+      const geometry = this.syncPlayableGeometry(map);
+      const newlyVisited = this.sectorsWithinRadius(map, x, z, radius)
+        .filter((candidate) => !map.visitedSectors[candidate.key]);
+      if (!newlyVisited.length) return false;
+
+      newlyVisited.forEach((candidate) => {
+        map.visitedSectors[candidate.key] = {
+          at: Date.now(),
+          zoneId: detail.zoneId ?? null,
+          source: detail.source || "area-reveal",
+          microSceneId: detail.microSceneId || null
+        };
+      });
+      if (geometry.validKeys) {
+        map.sectorCount = Object.keys(map.visitedSectors)
+          .filter((key) => geometry.validKeys.has(key)).length;
+      } else {
+        map.sectorCount = Object.keys(map.visitedSectors).length;
+      }
+      map.surfacePercent = Math.min(
+        100,
+        Number(((map.sectorCount / Math.max(1, map.totalSectors)) * 100).toFixed(2))
+      );
+      map.updatedAt = Date.now();
+      this.evaluateMilestones(map);
+      this.markDirty();
+
+      const eventDetail = {
+        mapId: map.mapId,
+        planetId: map.planetId,
+        zoneId: detail.zoneId ?? null,
+        sectors: newlyVisited.map((candidate) => candidate.key),
+        revealedSectorCount: newlyVisited.length,
+        revealRadius: radius,
+        sectorCount: map.sectorCount,
+        totalSectors: map.totalSectors,
+        surfacePercent: map.surfacePercent,
+        source: detail.source || "area-reveal",
+        microSceneId: detail.microSceneId || null
+      };
+      global.dispatchEvent?.(new CustomEvent("bluefox:map-exploration-changed", { detail: eventDetail }));
+      BF.progressionRegistry?.incrementScopes?.({
+        type: "MAP_SECTOR_VISITED",
+        mapId: map.mapId,
+        planetId: map.planetId,
+        zoneId: detail.zoneId
+      }, newlyVisited.length);
+      return true;
+    }
+
     nextUnexploredTarget(mapId, origin = {}) {
       const map = this.ensureMap(mapId);
       const geometry = this.syncPlayableGeometry(map);
@@ -438,6 +498,7 @@
   BF.MapExplorationTracker = MapExplorationTracker;
   BF.mapExploration = tracker;
   BF.recordMapPosition = (detail) => tracker.recordPosition(detail);
+  BF.revealMapArea = (detail) => tracker.revealArea(detail);
   BF.getMapExplorationState = (mapId) => tracker.getMap(mapId);
   BF.getExplorationSummary = () => tracker.getSummary();
   BF.getNextUnexploredMapTarget = (mapId, origin) => tracker.nextUnexploredTarget(mapId, origin);

@@ -14,14 +14,19 @@
   const missionStatus = (engine, missionId) =>
     engine?.missionManager?.memory?.state?.missionLifecycle?.[missionId]?.status || null;
 
-  const resolveMissionMapGeneration = (engine, mission) => {
+  const activeEventDrivenTravelNode = (engine, mission) => {
     if (!mission?.id) return null;
     const tree = engine?.missionManager?.trees?.get?.(mission.id);
-    const travelNode = tree?.availableLeaves?.().find((node) =>
+    return tree?.availableLeaves?.().find((node) =>
       !node.isComplete &&
       node.params?.eventDriven === true &&
       BF.Missions?.normalizeActionType?.(node.type) === BF.Missions?.ActionType?.TRAVEL
     ) || null;
+  };
+
+  const resolveMissionMapGeneration = (engine, mission) => {
+    if (!mission?.id) return null;
+    const travelNode = activeEventDrivenTravelNode(engine, mission);
     const nextCount = Math.max(0, Number(travelNode?.progress) || 0) + 1;
     const staged = travelNode?.params?.mapGenerationOnCount?.[nextCount] ||
       travelNode?.params?.mapGenerationOnCount?.[String(nextCount)] ||
