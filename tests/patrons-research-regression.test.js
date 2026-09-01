@@ -75,6 +75,10 @@ function createWindow({ legacyRecipeUnlocked = false } = {}) {
       COLLECT_THEN_REWARD: {
         autonomyAxis: "survival",
         steps: [{ slot: "collect", action: "collect" }]
+      },
+      SEQUENCE_ACTIONS: {
+        autonomyAxis: "research",
+        dynamicSequence: true
       }
     },
     BibleContractV01: {
@@ -203,16 +207,21 @@ test("index charge explicitement les quatre bridges de patrons", () => {
   }
 });
 
-test("COLLECT_THEN_REWARD compile les deux ingrédients de la ration", () => {
+test("T11 compile les deux ingrédients actuels de la ration dans SEQUENCE_ACTIONS", () => {
   const { window } = loadRuntime();
-  const mission = window.BlueFox3D.BibleCatalog[0];
+  const mission = window.BlueFox3D.BibleCatalog.find((entry) => entry.id === "T11");
   const compiled = window.BlueFox3D.bibleRuntime.compileMission(mission);
 
-  assert.equal(compiled.root.children.length, 2);
-  assert.equal(compiled.root.children[0].target, 2);
-  assert.equal(compiled.root.children[0].params.kind, "fiber");
-  assert.equal(compiled.root.children[1].target, 1);
-  assert.equal(compiled.root.children[1].params.kind, "adaptive_biomass");
+  assert.ok(compiled);
+  assert.equal(compiled.root.children.length, 4);
+  const fibers = compiled.root.children.find((node) => node.id === "T11:fibers");
+  const adaptive = compiled.root.children.find((node) => node.id === "T11:adaptiveBiomass");
+  const returnHome = compiled.root.children.find((node) => node.id === "T11:returnHome");
+  assert.equal(fibers.target, 2);
+  assert.equal(fibers.params.kind, "fiber");
+  assert.equal(adaptive.target, 1);
+  assert.equal(adaptive.params.kind, "adaptive_biomass");
+  assert.deepEqual(JSON.parse(JSON.stringify(returnHome.requires)).sort(), ["T11:adaptiveBiomass", "T11:fibers"].sort());
 });
 
 
@@ -268,8 +277,9 @@ test("la recette récente n'existe que dans la Bible parmi les modules modifiés
 test("une mission terminée débloque la recette puis Research la fabrique", () => {
   const fixture = loadRuntime();
   const BF = fixture.window.BlueFox3D;
-  const mission = BF.BibleCatalog[0];
+  const mission = BF.BibleCatalog.find((entry) => entry.id === "T11");
 
+  assert.ok(mission);
   assert.equal(BF.Research.isUnlocked("ration-basic-v2"), false);
 
   fixture.memory.state.missionLifecycle[mission.id] = {

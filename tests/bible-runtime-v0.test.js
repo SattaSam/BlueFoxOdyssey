@@ -22,6 +22,7 @@ const files = [
 function runtimeFixture() {
   const listeners = new Map();
   const storage = new Map();
+  const schedule = () => 0;
   class CustomEvent {
     constructor(type, options = {}) { this.type = type; this.detail = options.detail; }
   }
@@ -41,10 +42,10 @@ function runtimeFixture() {
       for (const listener of [...(listeners.get(event.type) || [])]) listener(event);
       return true;
     },
-    setTimeout,
-    clearTimeout
+    setTimeout: schedule,
+    clearTimeout() {}
   };
-  const context = vm.createContext({ window, console, CustomEvent, performance, setTimeout, clearTimeout });
+  const context = vm.createContext({ window, console, CustomEvent, performance, setTimeout: schedule, clearTimeout() {} });
   for (const file of files) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, "..", file), "utf8"), context, { filename: file });
   }
@@ -74,19 +75,22 @@ function attachManager(window) {
 test("le runtime unifié filtre type et kind sans faux positif", () => {
   const window = runtimeFixture();
   const runtime = window.BlueFox3D.bibleRuntime;
-  const camp = runtime.byId.get("BIBLE-V01-CAMP");
-  assert.equal(runtime.eventMatchesTrigger(camp.trigger, { type: "interaction.analyze", kind: "wood" }), false);
-  assert.equal(runtime.eventMatchesTrigger(camp.trigger, { type: "interaction.collect", kind: "fiber" }), false);
-  assert.equal(runtime.eventMatchesTrigger(camp.trigger, { type: "interaction.collect", kind: "wood" }), true);
+  const fiber = runtime.byId.get("COL-FIBER-20");
+  assert.ok(fiber);
+  assert.equal(runtime.eventMatchesTrigger(fiber.trigger, { type: "interaction.analyze", kind: "fiber" }), false);
+  assert.equal(runtime.eventMatchesTrigger(fiber.trigger, { type: "interaction.collect", kind: "wood" }), false);
+  assert.equal(runtime.eventMatchesTrigger(fiber.trigger, { type: "interaction.collect", kind: "fiber" }), true);
 });
 
 test("les trois fiches cumulatives se compilent dans le runtime unifié", () => {
   const window = runtimeFixture();
   const BF = window.BlueFox3D;
-  assert.equal(BF.getBibleRuntimeDiagnostics().catalogCount, 3);
-  assert.equal(BF.getBibleRuntimeDiagnostics().registeredDefinitions, 3);
+  assert.equal(BF.getBibleRuntimeDiagnostics().catalogCount, 20);
+  assert.equal(BF.getBibleRuntimeDiagnostics().registeredDefinitions, 20);
   assert.equal(BF.getBibleRuntimeDiagnostics().strictContract, true);
-  assert.ok(BF.Missions.getDefinition("BIBLE-V01-DISCOVERY"));
+  assert.ok(BF.Missions.getDefinition("SUR-03"));
+  assert.ok(BF.Missions.getDefinition("COL-PLANT-20"));
+  assert.ok(BF.Missions.getDefinition("COL-FIBER-20"));
 });
 
 test("collecte -> activation -> progression -> état public -> narration", () => {
@@ -95,14 +99,13 @@ test("collecte -> activation -> progression -> état public -> narration", () =>
   const journal = [];
   BF.addJournalEntry = (entry) => { journal.push(entry); return true; };
 
-  BF.ObjectEvents.emit(BF.ObjectEvents.types.RESOURCE_COLLECTED, {
-    userData: { functional: { resource: { inventoryKey: "wood", family: "wood" } } }
-  }, { inventoryKey: "wood", kind: "wood", quantity: 1 });
-
-  assert.ok(manager.trees.has("BIBLE-V01-CAMP"));
-  assert.equal(BF.getMissionState().missions[0].title, "Établir un camp");
-  assert.equal(manager.notifyActionCompleted("collect", { kind: "wood", amount: 10 }), true);
-  assert.equal(manager.memory.state.missionLifecycle["BIBLE-V01-CAMP"].status, "completed");
-  assert.ok(journal.some((entry) => entry.text.includes("sécuriser un point de chute")));
-  assert.ok(journal.some((entry) => entry.text.includes("matériel est prêt")));
+  BF.bibleRuntime.activateInitialMissions();
+  assert.ok(manager.trees.has("T01"));
+  assert.equal(BF.getMissionState().missions.find((entry) => entry.missionId === "T01").title, "Reconnaître le Site du crash");
+  assert.equal(manager.notifyActionCompleted("observe", { objectId: "LANDMARK-CRASH-CAPSULE-001", amount: 1 }), true);
+  assert.equal(manager.memory.state.missionLifecycle.T01.status, "completed");
+  BF.bibleRuntime.onMissionState(manager.getState());
+  assert.ok(BF.bibleRuntime.state.progressNarrative["T01:revealed"]);
+  assert.ok(BF.bibleRuntime.state.progressNarrative["T01:progress:0"]);
+  assert.ok(BF.bibleRuntime.state.progressNarrative["T01:completed"]);
 });

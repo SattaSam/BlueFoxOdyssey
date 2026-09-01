@@ -142,19 +142,23 @@ test('pathfinding: absence de chemin devient un echec explicite', () => {
   assert.match(read('path-planner.js'), /return null;\s*\n\s*}\s*\n\s*\n\s*smooth\(/);
 });
 
-test('BAC: aucune micro-pause ni critical-rest autonome ne supplante une primaire', () => {
+test('BAC: une survie tutorielle explicitement débloquée peut interrompre une primaire, sinon la primaire reste propriétaire', () => {
   const source = read('behavior-arbitration-integration.js');
-  assert.doesNotMatch(source, /tutorialMicroRestUnlocked/);
-  assert.doesNotMatch(source, /criticalSurvivalDecision/);
   assert.match(source, /const primaryMissionOwnsAction\s*=\s*\n\s*this\.missionManager\?\.hasPrimaryMissionAuthority\?\.\(\) === true;/);
+  assert.match(source, /const tutorialMicroRestUnlocked = Boolean\(/);
+  assert.match(source, /isTutorialSurvivalCapabilityUnlocked\?\.\("micro-rest"\) === true/);
+  assert.match(source, /const tutorialAutonomousRestUnlocked = Boolean\(/);
+  assert.match(source, /isTutorialSurvivalCapabilityUnlocked\?\.\("autonomous-rest"\) === true/);
+  assert.match(source, /!primaryMissionOwnsAction \|\|\s*tutorialRationConsumeUnlocked \|\|\s*tutorialMicroRestUnlocked \|\|\s*tutorialAutonomousRestUnlocked/);
   assert.match(source, /primaryMissionOwnsAction\s*&&\s*rationCandidate\?\.allowDuringPrimaryMission !== true[\s\S]{0,40}return;/);
 });
 
-test('UI: un panneau non-Recherche est nettoye des artefacts Recherche', () => {
+test('UI: un panneau non-Recherche masque l’injection Recherche sans détruire le nœud React', () => {
   const source = read('ui-enhancements.js');
   assert.match(source, /function cleanupResearchPanelArtifacts\(\)/);
-  assert.match(source, /if \(isResearchPanel\(panel\)\) return;/);
+  assert.match(source, /const researchPanel = isResearchPanel\(panel\);/);
   assert.match(source, /panel\.querySelectorAll\("\.bluefox-research-runtime"\)/);
+  assert.match(source, /section\.hidden = !researchPanel;/);
   assert.match(source, /cleanupResearchPanelArtifacts\(\);\s*\n\s*const panels/);
 });
 

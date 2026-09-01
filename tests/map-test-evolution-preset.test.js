@@ -11,10 +11,13 @@ const microScenes = JSON.parse(
 );
 const byId = new Map(microScenes.map((entry) => [entry.id, entry]));
 
-test("le préréglage de validation est accessible dans map-test", () => {
-  assert.match(html, /id="evolution-preset"/);
-  assert.match(source, /createEvolutionValidationMap\(\)/);
-  assert.match(source, /createPlateaus\(3,/);
+test("MAP_Test charge les cartes du moteur et passe par le pipeline canonique", () => {
+  assert.match(html, /id="engine-template"/);
+  assert.match(html, /id="load-template"/);
+  assert.match(html, /id="generate-variant"/);
+  assert.match(source, /Object\.values\(BF\.maps \|\| \{\}\)/);
+  assert.match(source, /BF\.MapIntegrity\.prepareDefinition\(definition/);
+  assert.match(source, /BF\.buildMap\(THREE, currentDefinition/);
 });
 
 test("les trois zones utilisent les étapes de construction validées", () => {
@@ -27,9 +30,9 @@ test("les trois zones utilisent les étapes de construction validées", () => {
   assert.ok(base.objects.filter((entry) => entry.type === "wall").length >= 20);
 });
 
-test("chaque zone reçoit la texture de crash et la capsule validée", () => {
-  assert.match(source, /01_0Crash_Crystal\.png/);
-  assert.match(source, /BlueFox_Capsule_Depart\.glb/);
-  assert.match(source, /Promise\.all\(LAYOUTS\[3\]/);
-  assert.ok(fs.existsSync(path.join(root, "assets", "models", "BlueFox_Capsule_Depart.glb")));
+test("MAP_Test ne réinjecte pas localement les assets de crash", () => {
+  assert.doesNotMatch(source, /01_0Crash_Crystal\.png/);
+  assert.doesNotMatch(source, /BlueFox_Capsule_Depart\.glb/);
+  assert.match(source, /await renderDefinition\(clone\(selectedTemplate\)/);
+  assert.match(source, /BF\.buildMap\(THREE, currentDefinition/);
 });

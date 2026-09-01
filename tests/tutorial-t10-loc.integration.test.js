@@ -105,12 +105,10 @@ function activateT10(BF, manager) {
     autoPrimaryEligible: false
   }), true);
   const tree = manager.trees.get("T10");
-  tree.find("T10:reachSixPlateauMap").increment(1);
-  tree.refresh();
-  manager.memory.saveTree(tree);
-  manager.memory.setFact("tutorialExcursion:T10", {
+  manager.memory.setFact("tutorialExcursion:T09", {
     generatedTargetMapId: "target"
   });
+  manager.memory.save?.();
   return tree;
 }
 
@@ -159,7 +157,7 @@ test("T10 et les patrons LOC respectent le contrat moteur courant", () => {
   );
 });
 
-test("T10 crédite le pourcentage réel uniquement sur sa nouvelle map", () => {
+test("T10 crédite le pourcentage réel uniquement sur la map atteinte pendant T09", () => {
   const { BF, manager } = fixture();
   const tree = activateT10(BF, manager);
   const node = tree.find("T10:surface");

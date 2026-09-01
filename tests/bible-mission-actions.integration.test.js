@@ -57,7 +57,16 @@ function game(window) {
     currentMap: { interactables: [] }, pendingInteraction: null,
     currentRoutine: null, pendingGate: null, pendingZoneExploration: null,
     transitioning: false, resourceCooldowns: new WeakMap(), disposed: false,
-    targetInteraction(object) { this.pendingInteraction = object; this.interactionStartedAt = 0; }
+    interactionWorldPosition(object) { return object.position; },
+    interactionValidationDistance() { return 2; },
+    interactionApproachPoint(object) { return { point: object.position, approachDistance: 1 }; },
+    showWorldMarker() {},
+    targetInteraction(object) {
+      this.pendingInteraction = object;
+      this.interactionStartedAt = 0;
+      this.interactionApproachStartedAt = performance.now();
+      return true;
+    }
   };
   const manager = BF.Missions.MissionManager.create({ engine });
   engine.missionManager = manager;
@@ -67,89 +76,59 @@ function game(window) {
   return { BF, engine, manager, position };
 }
 
-test("la même flore peut être observée puis réellement analysée, même déjà connue", async () => {
+test("une flore déjà connue peut être ré-observée pour un objectif analyze actuel", async () => {
   const { window } = fixture();
   const { BF, engine, manager, position } = game(window);
   const definition = BF.ObjectLibrary.get("luminescent_tree");
   const object = { position, userData: { active: true, functional: definition, instanceId: "tree-a" } };
   object.userData.worldAnchor = object;
-  object.userData.interactionState = { inspected: true, observed: true, analyzed: true, identified: true, inspectionCount: 4, observationCount: 3, analysisCount: 2, collectionCount: 0 };
+  object.userData.interactionState = {
+    inspected: true, observed: true, analyzed: true, identified: true,
+    inspectionCount: 4, observationCount: 3, analysisCount: 2, collectionCount: 0
+  };
   engine.currentMap.interactables = [object];
   await BF.mount({ engine });
-  const act = (target = object) => {
-    engine.targetInteraction(target);
-    const now = performance.now();
-    engine.updateInteraction(now);
-    engine.updateInteraction(now + 2100);
-  };
-  act();
-  const tree = manager.trees.get("BIBLE-V01-DISCOVERY");
-  assert.ok(tree);
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:observe").isComplete, false);
-  const otherDefinition = BF.ObjectLibrary.get("fern");
-  const other = { position, userData: { active: true, functional: otherDefinition, instanceId: "fern-a" } };
-  other.userData.worldAnchor = other;
-  engine.currentMap.interactables.push(other);
-  engine.targetInteraction(other);
-  let wrongNow = performance.now();
-  engine.updateInteraction(wrongNow);
-  engine.updateInteraction(wrongNow + 2100);
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:observe").isComplete, false);
-  act();
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:observe").isComplete, true);
-  const resumed = BF.Missions.MissionManager.create({ engine });
-  engine.missionManager = resumed;
-  BF.getMissionState = () => resumed.getState();
-  BF.startMission = (id, options) => resumed.startMission(id, options);
-  object.userData.active = false;
-  const replacement = { position, userData: { active: true, functional: definition, instanceId: "tree-b" } };
-  replacement.userData.worldAnchor = replacement;
-  engine.currentMap.interactables.push(replacement);
-  act(replacement);
-  const resumedTree = resumed.trees.get("BIBLE-V01-DISCOVERY");
-  assert.equal(resumedTree.find("BIBLE-V01-DISCOVERY:observe").isComplete, true);
-  assert.equal(resumedTree.find("BIBLE-V01-DISCOVERY:analyze").isComplete, true);
-  const events = BF.ObjectEvents.history();
-  assert.equal(events.at(-2).type, BF.ObjectEvents.types.PHENOMENON_OBSERVED);
-  assert.equal(events.at(-1).type, BF.ObjectEvents.types.PHENOMENON_OBSERVED);
-  assert.equal(events.at(-1).detail.interactionMode, "observe");
-  assert.equal(events.at(-1).detail.missionNarrativeVerb, "analyze");
-  const completed = resumed.getState().missions.find((mission) =>
-    mission.missionId === "BIBLE-V01-DISCOVERY"
-  );
-  assert.equal(completed.lifecycleStatus, "completed");
-  assert.ok(completed.completedAt > 0);
-  assert.ok(completed.tree.root.children.every((node) => node.status === "completed"));
+
+  assert.equal(manager.startMission("SUR-03", { primary: false, autoPrimaryEligible: false }), true);
+  engine.targetInteraction(object);
+  assert.equal(object.userData.requestedInteraction, "observe");
+  assert.equal(object.userData.missionNarrativeVerb, "analyze");
+
+  const now = performance.now();
+  engine.updateInteraction(now);
+  engine.updateInteraction(now + 2100);
+
+  const study = manager.trees.get("SUR-03").find("SUR-03:studyPlants");
+  assert.equal(study.progress, 1);
+  const event = BF.ObjectEvents.history().at(-1);
+  assert.equal(event.type, BF.ObjectEvents.types.PHENOMENON_OBSERVED);
+  assert.equal(event.detail.interactionMode, "observe");
+  assert.equal(event.detail.missionNarrativeVerb, "analyze");
+  assert.equal(object.userData.active, true, "une étude pure ne collecte pas la plante");
 });
 
-test("l'autonomie exécute aussi la vraie analyse sur une flore CUO sans analyze manuel", async () => {
+test("l'autonomie exécute une vraie analyse SUR-03 sur une flore CUO", async () => {
   const { window } = fixture();
   const { BF, engine, manager, position } = game(window);
   const definition = BF.ObjectLibrary.get("tree_fallen");
-  const object = { position, userData: { active: true, functional: definition } };
+  const object = { position, userData: { active: true, functional: definition, instanceId: "fallen-a" } };
   object.userData.worldAnchor = object;
   engine.currentMap.interactables = [object];
   await BF.mount({ engine });
 
-  const finish = () => {
-    const now = performance.now();
-    engine.updateInteraction(now);
-    engine.updateInteraction(now + 2100);
-  };
-  BF.startBibleMission("BIBLE-V01-DISCOVERY");
-  const tree = manager.trees.get("BIBLE-V01-DISCOVERY");
-  tree.find("BIBLE-V01-DISCOVERY:observe").increment(1);
-  tree.refresh();
-  manager.memory.saveTree(tree);
-
+  assert.equal(manager.startMission("SUR-03", { primary: false, autoPrimaryEligible: false }), true);
   manager.lastPlanAt = 0;
   manager.retryAfter = 0;
   assert.equal(manager.update(10000), true);
+  assert.equal(engine.pendingInteraction, object);
   assert.equal(object.userData.requestedInteraction, "observe");
   assert.equal(object.userData.requestedInteractionSource, "mission");
-  finish();
+  assert.equal(object.userData.missionNarrativeVerb, "analyze");
 
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:analyze").isComplete, true);
+  const now = performance.now();
+  engine.updateInteraction(now);
+  engine.updateInteraction(now + 2100);
+  assert.equal(manager.trees.get("SUR-03").find("SUR-03:studyPlants").progress, 1);
   assert.equal(BF.ObjectEvents.history().at(-1).type, BF.ObjectEvents.types.PHENOMENON_OBSERVED);
 });
 
@@ -165,9 +144,10 @@ test("une collecte de flore ne crée plus une mission impossible sur un objet re
   assert.equal(manager.trees.has("BIBLE-V01-DISCOVERY"), false);
 });
 
-test("une plante fibreuse jamais étudiée est d'abord OBSERVÉE et ne fait que révéler la mission", async () => {
+test("une plante fibreuse jamais étudiée révèle SUR-03 sans binding implicite", async () => {
   const { window } = fixture();
   const { BF, engine, manager, position } = game(window);
+  manager.memory.setFact("worldContext:bosquet-bio", true);
   const definition = BF.ObjectLibrary.get("fiber");
   const object = { position, userData: { active: true, functional: definition, instanceId: "fiber-a" } };
   object.userData.worldAnchor = object;
@@ -180,23 +160,13 @@ test("une plante fibreuse jamais étudiée est d'abord OBSERVÉE et ne fait que 
   engine.updateInteraction(now);
   engine.updateInteraction(now + 2100);
 
-  const tree = manager.trees.get("BIBLE-V01-DISCOVERY");
-  assert.ok(tree);
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:observe").progress, 0);
-  assert.equal(manager.currentAction, null);
-  assert.equal(manager.update(performance.now()), false);
-  assert.equal(manager.currentAction, null);
+  const tree = manager.trees.get("SUR-03");
+  assert.ok(tree, "l'observation révèle SUR-03");
+  assert.equal(manager.memory.getFact("bibleTarget:SUR-03", "missing"), null);
   assert.equal(BF.ObjectEvents.history().at(-1).type, BF.ObjectEvents.types.PHENOMENON_OBSERVED);
-
-  engine.targetInteraction(object);
-  assert.equal(object.userData.requestedInteraction, "observe");
-  const second = performance.now();
-  engine.updateInteraction(second);
-  engine.updateInteraction(second + 2100);
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:observe").isComplete, true);
 });
 
-test("l'objectif narratif analyser force OBSERVE au lieu de COLLECT sur une plante collectable", async () => {
+test("l'objectif narratif SUR-03 analyser force OBSERVE au lieu de COLLECT", async () => {
   const { window } = fixture();
   const { BF, engine, manager, position } = game(window);
   const definition = BF.ObjectLibrary.get("bush");
@@ -204,14 +174,7 @@ test("l'objectif narratif analyser force OBSERVE au lieu de COLLECT sur une plan
   object.userData.worldAnchor = object;
   engine.currentMap.interactables = [object];
   await BF.mount({ engine });
-  BF.startBibleMission("BIBLE-V01-DISCOVERY");
-  manager.memory.setFact("bibleTarget:BIBLE-V01-DISCOVERY", {
-    instanceId: "bush-a", objectId: definition.id, cuoType: definition.type
-  });
-  const tree = manager.trees.get("BIBLE-V01-DISCOVERY");
-  tree.find("BIBLE-V01-DISCOVERY:observe").increment(1);
-  tree.refresh();
-  manager.memory.saveTree(tree);
+  assert.equal(manager.startMission("SUR-03", { primary: false, autoPrimaryEligible: false }), true);
 
   engine.targetInteraction(object);
   assert.equal(object.userData.requestedInteraction, "observe");
@@ -219,8 +182,10 @@ test("l'objectif narratif analyser force OBSERVE au lieu de COLLECT sur une plan
   const now = performance.now();
   engine.updateInteraction(now);
   engine.updateInteraction(now + 2100);
-  assert.equal(tree.find("BIBLE-V01-DISCOVERY:analyze").isComplete, true);
+
+  assert.equal(manager.trees.get("SUR-03").find("SUR-03:studyPlants").progress, 1);
   assert.equal(object.userData.active, true);
+  assert.equal(BF.ObjectEvents.history().at(-1).type, BF.ObjectEvents.types.PHENOMENON_OBSERVED);
 });
 
 test("OBSERVER incline puis fige la tête 2 s, enchaîne la respiration Idle et adapte le vocabulaire", async () => {
@@ -290,7 +255,7 @@ test("une plante adaptative étudiée est collectée ensuite hors priorité de m
 
   assert.equal(engine.pendingInteraction, object);
   assert.equal(object.userData.requestedInteraction, "collect");
-  assert.equal(object.userData.requestedInteractionSource, "autonomy");
+  assert.equal(object.userData.requestedInteractionSource, "manual");
 });
 
 test("une relique non collectable utilise Ear à gauche, pause 2 s, Idle, Blink rapide, Idle", async () => {

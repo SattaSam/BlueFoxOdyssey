@@ -326,18 +326,33 @@ test("la caméra et le glissement de la carte Planète persistent pendant la par
   assert.match(globeCss, /max-height: calc\(100vh - 12px\) !important;/);
 });
 
-test("le réglage de survie rembourse une partie du coût sans créer d'énergie", () => {
-  const state = { rest: 80, food: 70 };
-  const survival = {
-    state,
-    recordAction() {
-      state.rest -= 10;
-      state.food -= 4;
-      return "ok";
-    }
+test("le propriétaire Survival compense une partie du coût sans créer d'énergie", () => {
+  const saved = new Map();
+  const localStorage = {
+    getItem: (key) => saved.get(key) ?? null,
+    setItem: (key, value) => saved.set(key, String(value)),
+    removeItem: (key) => saved.delete(key)
   };
-  const BF = runBrowserScript("engine/survival-tuning-r3.js", { survival });
-  assert.equal(BF.survival.recordAction("collect"), "ok");
-  assert.equal(state.rest, 74.5);
-  assert.equal(state.food, 67.8);
+  const BF = runBrowserScript("engine/survival-ai-bridge.js", {}, {
+    window: {
+      localStorage,
+      addEventListener() {},
+      dispatchEvent() { return true; },
+      setInterval() { return 0; },
+      setTimeout() { return 0; }
+    },
+    document: { querySelector: () => null, documentElement: {} },
+    MutationObserver: class MutationObserver { observe() {} },
+    CustomEvent: class CustomEvent { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } },
+    setTimeout: () => 0,
+    setInterval: () => 0
+  });
+  BF.survival.state.rest = 80;
+  BF.survival.state.food = 70;
+  BF.survival.state.safety = 80;
+  const energyBefore = 80;
+  const energyAfter = BF.survival.recordAction("collect", "autonomy");
+  assert.ok(BF.survival.state.rest < 80 && BF.survival.state.rest > 77.8);
+  assert.ok(BF.survival.state.food < 70 && BF.survival.state.food > 69.0);
+  assert.ok(energyAfter < energyBefore);
 });

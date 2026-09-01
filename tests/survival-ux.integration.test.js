@@ -34,7 +34,8 @@ function fixture(priorities, inventory = {}) {
     },
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, String(value))
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key)
     },
     addEventListener(type, listener) {
       if (!listeners.has(type)) listeners.set(type, []);
@@ -51,11 +52,13 @@ function fixture(priorities, inventory = {}) {
     window, document, CustomEvent, MutationObserver,
     console, setInterval: window.setInterval, setTimeout: window.setTimeout
   });
-  vm.runInContext(
-    fs.readFileSync(path.join(__dirname, "..", "engine/survival-ai-bridge.js"), "utf8"),
-    context,
-    { filename: "engine/survival-ai-bridge.js" }
-  );
+  for (const file of ["engine/survival-rations-v0-3.js", "engine/survival-ai-bridge.js"]) {
+    vm.runInContext(
+      fs.readFileSync(path.join(__dirname, "..", file), "utf8"),
+      context,
+      { filename: file }
+    );
+  }
   return { BF: window.BlueFox3D, progression };
 }
 
@@ -71,16 +74,27 @@ test("une action manuelle alignée fatigue nettement moins qu'une action opposé
   assert.ok(opposedLoss >= alignedLoss * 2);
 });
 
-test("BlueFox peut fabriquer et consommer une ration à partir de deux plantes", () => {
+test("BlueFox consomme une ration déjà fabriquée et récupère réellement", () => {
   const { BF, progression } = fixture(
     { collection: 45, exploration: 45, research: 45, relations: 45, survival: 45 },
-    { fiber: 2, adaptive_biomass: 2 }
+    { fiber: 2, adaptive_biomass: 1 }
   );
   BF.survival.state.food = 30;
-  assert.equal(BF.survival.canConsumeRation(), true);
-  BF.survival.completeRoutine("food");
-  assert.equal(progression.inventory.fiber + progression.inventory.adaptive_biomass, 0);
-  assert.ok(BF.survival.state.food >= 58);
+  const beforeEnergy = BF.getSurvivalState().energy;
+  assert.equal(BF.Rations.add(1, "test-crafted"), 1);
+  assert.equal(BF.Rations.snapshot().rations, 1);
+
+  BF.survival.completeRoutine("food", { automatic: false });
+
+  assert.equal(BF.Rations.snapshot().rations, 0);
+  assert.equal(BF.Rations.snapshot().consumedTotal, 1);
+  assert.ok(BF.survival.state.food > 30);
+  assert.ok(BF.getSurvivalState().energy > beforeEnergy);
+  assert.deepEqual(
+    progression.inventory,
+    { fiber: 2, adaptive_biomass: 1 },
+    "les ingrédients sont consommés au craft, pas une seconde fois à la consommation"
+  );
 });
 
 test("les correctifs CSS masquent les commandes 3D au-dessus des menus", () => {
