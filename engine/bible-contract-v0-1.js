@@ -238,6 +238,55 @@
     });
   };
 
+  const validateTriggerTargetRelation = (
+    mission,
+    errors,
+    compatibility
+  ) => {
+    const missionId = mission?.id;
+    const original = mission?.trigger;
+    const trigger =
+      !original?.type && compatibility === "legacy-v0"
+        ? legacyTriggerToV01(original)
+        : original;
+    const interactionTrigger = String(trigger?.type || "")
+      .startsWith("interaction.");
+    const declaresTriggerOnly = mission?.triggerOnly != null;
+    const declaresTargetBinding = mission?.targetBinding != null;
+
+    if (declaresTriggerOnly && mission.triggerOnly !== true) {
+      add(
+        errors,
+        missionId,
+        "triggerOnly",
+        "doit valoir true lorsqu’il est déclaré."
+      );
+    }
+
+    if (mission?.triggerOnly === true && declaresTargetBinding) {
+      add(
+        errors,
+        missionId,
+        "triggerOnly/targetBinding",
+        "relations contradictoires : déclarer REVEAL-ONLY ou un binding, jamais les deux."
+      );
+      return;
+    }
+
+    if (
+      interactionTrigger &&
+      !declaresTriggerOnly &&
+      !declaresTargetBinding
+    ) {
+      add(
+        errors,
+        missionId,
+        "triggerOnly/targetBinding",
+        "une fiche déclenchée par interaction doit déclarer triggerOnly: true, targetBinding: definition ou targetBinding: instance."
+      );
+    }
+  };
+
   const validateNarrative = (mission, errors, warnings, compatibility) => {
     const missionId = mission?.id;
     const narrative = mission?.narrative || {};
@@ -610,6 +659,7 @@
       compatibility
     );
     validateTrigger(mission, errors, warnings, compatibility);
+    validateTriggerTargetRelation(mission, errors, compatibility);
     validateNarrative(mission, errors, warnings, compatibility);
     validateCompletionGate(mission, errors);
     validateEffects(mission, errors);

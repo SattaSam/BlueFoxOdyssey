@@ -1275,6 +1275,7 @@
       count: 1,
       subject: "flora"
     }),
+    triggerOnly: true,
     requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
     priority: 190,
     passivePriorityAxis: "survival",
@@ -1322,6 +1323,7 @@
       count: 1,
       subject: "flora"
     }),
+    triggerOnly: true,
     requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
     priority: 150,
     passivePriorityAxis: "survival",
@@ -1352,6 +1354,7 @@
       count: 1,
       kind: "fiber"
     }),
+    triggerOnly: true,
     requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
     priority: 149,
     passivePriorityAxis: "collection",

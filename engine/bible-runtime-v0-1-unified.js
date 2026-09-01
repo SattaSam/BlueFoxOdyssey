@@ -1674,20 +1674,20 @@
           return false;
         }
 
-        manager.memory?.setFact?.(`bibleTarget:${mission.id}`, {
-          binding: mission.targetBinding || "definition",
-          instanceId: event.instanceId || null,
-          objectId: event.objectId || null,
-          cuoType: event.cuoType || null
-        });
-
         // triggerOnly signifie : l’événement révèle la mission mais ne lie pas
         // la suite à l’objet qui a servi de déclencheur. Cette règle était
         // auparavant portée par bible-runtime-trigger-fix-v19.js.
         if (mission.triggerOnly === true) {
           manager.memory?.setFact?.(`bibleTarget:${mission.id}`, null);
-          manager.memory?.save?.();
+        } else if (mission.targetBinding) {
+          manager.memory?.setFact?.(`bibleTarget:${mission.id}`, {
+            binding: mission.targetBinding,
+            instanceId: event.instanceId || null,
+            objectId: event.objectId || null,
+            cuoType: event.cuoType || null
+          });
         }
+        manager.memory?.save?.();
 
         // La rencontre déclenche uniquement la révélation. L'autonomie ne doit
         // pas consommer le premier objectif dans la même séquence d'interaction.
@@ -3090,12 +3090,48 @@
       };
     }
 
+    reconcileTriggerOnlyBindings() {
+      const manager = this.manager();
+      const memory = manager?.memory;
+      if (!memory) return false;
+
+      let changed = false;
+      this.catalog.forEach((mission) => {
+        if (mission?.triggerOnly !== true) return;
+        if (!this.missionLifecycle(mission.id).active) return;
+
+        const key = `bibleTarget:${mission.id}`;
+        const bound = memory.getFact?.(key, null);
+        if (!bound || typeof bound !== "object") return;
+
+        // Les prescriptions de navigation et les MSC sont des producteurs
+        // légitimes de bibleTarget. Cette migration ne retire que l'ancien
+        // binding de définition créé implicitement par BibleRuntime.
+        const separateTargetOwner = Boolean(
+          mission.navigation?.target ||
+          bound.missionSceneMissionId ||
+          bound.binding === "instance" ||
+          bound.binding === "type" ||
+          bound.binding === "type-or-mission-scene"
+        );
+        if (separateTargetOwner) return;
+
+        memory.setFact?.(key, null);
+        changed = true;
+      });
+
+      if (changed) memory.save?.();
+      return changed;
+    }
+
     activateInitialMissions() {
+      if (!this.manager()) return false;
+      this.reconcileTriggerOnlyBindings();
+
       const initialMissions = this.catalog.filter(
         (mission) => mission?.initialState === "active"
       );
       if (!initialMissions.length) return true;
-      if (!this.manager()) return false;
 
       let settled = true;
       initialMissions.forEach((mission) => {
