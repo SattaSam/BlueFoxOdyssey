@@ -3090,44 +3090,8 @@
       };
     }
 
-    reconcileTriggerOnlyBindings() {
-      const manager = this.manager();
-      const memory = manager?.memory;
-      if (!memory) return false;
-
-      let changed = false;
-      this.catalog.forEach((mission) => {
-        if (mission?.triggerOnly !== true) return;
-        if (!this.missionLifecycle(mission.id).active) return;
-
-        const key = `bibleTarget:${mission.id}`;
-        const bound = memory.getFact?.(key, null);
-        if (!bound || typeof bound !== "object") return;
-
-        // Les prescriptions de navigation et les MSC sont des producteurs
-        // légitimes de bibleTarget. Cette migration ne retire que l'ancien
-        // binding de définition créé implicitement par BibleRuntime.
-        const separateTargetOwner = Boolean(
-          mission.navigation?.target ||
-          bound.missionSceneMissionId ||
-          bound.binding === "instance" ||
-          bound.binding === "type" ||
-          bound.binding === "type-or-mission-scene"
-        );
-        if (separateTargetOwner) return;
-
-        memory.setFact?.(key, null);
-        changed = true;
-      });
-
-      if (changed) memory.save?.();
-      return changed;
-    }
-
     activateInitialMissions() {
       if (!this.manager()) return false;
-      this.reconcileTriggerOnlyBindings();
-
       const initialMissions = this.catalog.filter(
         (mission) => mission?.initialState === "active"
       );
