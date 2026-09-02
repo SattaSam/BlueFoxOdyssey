@@ -492,85 +492,11 @@
         };
       }
 
-      const base = BF.BibleContractV01.validateCatalog(
+      return BF.BibleContractV01.validateCatalog(
         this.catalog,
         this.patterns,
         { compatibility: "strict" }
       );
-
-      const sequenceMissions = this.catalog.filter(
-        (mission) => mission?.pattern === "SEQUENCE_ACTIONS"
-      );
-      if (!sequenceMissions.length) return base;
-
-      const sequenceIds = new Set(
-        sequenceMissions.map((mission) => mission.id)
-      );
-      const errors = (base.errors || []).filter((message) =>
-        ![...sequenceIds].some((id) =>
-          message.startsWith(`${id} · slots`)
-        )
-      );
-
-      sequenceMissions.forEach((mission) => {
-        const steps = asArray(mission.sequence)
-          .filter((step) => step && typeof step === "object");
-        if (steps.length < 2) {
-          errors.push(
-            `${mission.id || "<sans-id>"} · sequence : minimum 2 étapes.`
-          );
-          return;
-        }
-
-        const slots = new Set();
-        steps.forEach((step, index) => {
-          const slot = step.slot || `step${index + 1}`;
-          if (slots.has(slot)) {
-            errors.push(
-              `${mission.id} · sequence[${index}].slot : identifiant dupliqué.`
-            );
-          }
-          slots.add(slot);
-
-          const action =
-            Missions.normalizeActionType?.(step.action) ||
-            String(step.action || "").trim().toLowerCase();
-          if (
-            !Object.values(Missions.ActionType || {}).includes(action)
-          ) {
-            errors.push(
-              `${mission.id} · sequence[${index}].action : action non supportée.`
-            );
-          }
-          if (
-            step.target != null &&
-            (
-              !Number.isFinite(Number(step.target)) ||
-              Number(step.target) < 1
-            )
-          ) {
-            errors.push(
-              `${mission.id} · sequence[${index}].target : doit être >= 1.`
-            );
-          }
-        });
-
-        steps.forEach((step, index) => {
-          asArray(step.requires).forEach((required) => {
-            if (!slots.has(required)) {
-              errors.push(
-                `${mission.id} · sequence[${index}].requires : slot inconnu ${required}.`
-              );
-            }
-          });
-        });
-      });
-
-      return Object.freeze({
-        ...base,
-        ok: errors.length === 0,
-        errors: Object.freeze(errors)
-      });
     }
 
     compileMission(mission) {

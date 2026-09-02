@@ -78,7 +78,8 @@ function createWindow({ legacyRecipeUnlocked = false } = {}) {
       },
       SEQUENCE_ACTIONS: {
         autonomyAxis: "research",
-        dynamicSequence: true
+        dynamicSequence: true,
+        minSteps: 2
       }
     },
     BibleContractV01: {
@@ -191,6 +192,27 @@ function loadRuntime(options = {}) {
   return fixture;
 }
 
+
+function loadContract() {
+  const fixture = createWindow();
+  const { window } = fixture;
+  const context = vm.createContext({
+    window,
+    console,
+    performance,
+    CustomEvent: window.CustomEvent,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval
+  });
+  vm.runInContext(
+    fs.readFileSync("engine/bible-contract-v0-1.js", "utf8"),
+    context
+  );
+  return fixture;
+}
+
 test("index charge explicitement les quatre bridges de patrons", () => {
   const html = fs.readFileSync("index.html", "utf8");
   const objectM0 = html.indexOf("object-m0-bridge.js");
@@ -205,6 +227,143 @@ test("index charge explicitement les quatre bridges de patrons", () => {
     assert.ok(at > objectM0, `${name} doit être chargé après object-m0`);
     assert.equal(html.indexOf(name, at + 1), -1, `${name} ne doit être chargé qu'une fois`);
   }
+});
+
+
+
+test("le catalogue Bible complet passe directement le contrat canonique strict", () => {
+  const window = { BlueFox3D: {} };
+  const context = vm.createContext({
+    window,
+    console,
+    performance,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval
+  });
+
+  for (const file of [
+    "engine/mission-types.js",
+    "engine/bible-contract-v0-1.js",
+    "data/bible-patterns.js",
+    "data/bible-catalog.js"
+  ]) {
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  }
+
+  const BF = window.BlueFox3D;
+  const report = BF.BibleContractV01.validateCatalog(
+    BF.BibleCatalog,
+    BF.BiblePatterns,
+    { compatibility: "strict" }
+  );
+
+  assert.equal(report.ok, true, report.errors.join("\n"));
+});
+
+test("BibleContract distingue les patrons à slots des séquences dynamiques", () => {
+  const { window } = loadContract();
+  const BF = window.BlueFox3D;
+
+  const sequenceMission = {
+    id: "SEQ-CONTRACT",
+    title: "Séquence",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: { type: "manual" },
+    sequence: [
+      { slot: "a", action: "observe", target: 1 },
+      { slot: "b", action: "analyze", target: 1, requires: ["a"] }
+    ]
+  };
+  const sequenceReport = BF.BibleContractV01.validateMission(
+    sequenceMission,
+    BF.BiblePatterns
+  );
+  assert.equal(sequenceReport.ok, true, sequenceReport.errors.join("\n"));
+
+  const staticReport = BF.BibleContractV01.validateMission({
+    id: "STATIC-CONTRACT",
+    title: "Statique",
+    pattern: "COLLECT_THEN_REWARD",
+    trigger: { type: "manual" }
+  }, BF.BiblePatterns);
+  assert.equal(staticReport.ok, false);
+  assert.ok(staticReport.errors.some((message) =>
+    message.includes("slots : objet requis")
+  ));
+
+  const constructionReport = BF.BibleContractV01.validateMission({
+    id: "CAMP@TEST",
+    title: "Camp test",
+    pattern: "SEQUENCE_ACTIONS",
+    constructionMission: true,
+    trigger: { type: "manual" },
+    sequence: [
+      { slot: "collectWood", action: "collect", target: 10 }
+    ]
+  }, BF.BiblePatterns);
+  assert.equal(
+    constructionReport.ok,
+    true,
+    constructionReport.errors.join("\n")
+  );
+});
+
+test("BibleContract rejette les séquences dynamiques structurellement invalides", () => {
+  const { window } = loadContract();
+  const BF = window.BlueFox3D;
+  const validate = (sequence) => BF.BibleContractV01.validateMission({
+    id: "SEQ-BAD",
+    title: "Séquence invalide",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: { type: "manual" },
+    sequence
+  }, BF.BiblePatterns);
+
+  assert.equal(validate([{ slot: "a", action: "observe" }]).ok, false);
+  assert.equal(validate([
+    { slot: "a", action: "observe" },
+    { slot: "a", action: "analyze" }
+  ]).ok, false);
+  assert.equal(validate([
+    { slot: "a", action: "observe" },
+    { slot: "b", action: "inconnue" }
+  ]).ok, false);
+  assert.equal(validate([
+    { slot: "a", action: "observe" },
+    { slot: "b", action: "analyze", target: 0 }
+  ]).ok, false);
+  assert.equal(validate([
+    { slot: "a", action: "observe" },
+    { slot: "b", action: "analyze", requires: ["missing"] }
+  ]).ok, false);
+});
+
+test("le runtime ne masque plus les erreurs slots de SEQUENCE_ACTIONS", () => {
+  const source = fs.readFileSync(
+    "engine/bible-runtime-v0-1-unified.js",
+    "utf8"
+  );
+  const start = source.indexOf("    validate() {");
+  const end = source.indexOf("    compileMission(mission) {", start);
+  const validateSource = source.slice(start, end);
+
+  assert.equal(validateSource.includes("message.startsWith"), false);
+  assert.equal(validateSource.includes("sequenceMissions"), false);
+  assert.match(validateSource, /BibleContractV01\.validateCatalog/);
+});
+
+test("sequence-actions-bridge conserve sameTarget sans réécrire contrat ni compilateur", () => {
+  const source = fs.readFileSync("engine/sequence-actions-bridge.js", "utf8");
+
+  assert.match(source, /sequenceTarget:/);
+  assert.match(source, /installEventBinding/);
+  assert.match(source, /installActionTargeting/);
+  assert.equal(source.includes("installContractExtension"), false);
+  assert.equal(source.includes("validateSequenceMission"), false);
+  assert.match(source, /BF\.compileSequenceMission\s*=\s*\(mission\)/);
+  assert.equal(source.includes("Runtime.prototype.compileMission"), false);
 });
 
 test("T11 compile les deux ingrédients actuels de la ration dans SEQUENCE_ACTIONS", () => {

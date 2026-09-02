@@ -646,6 +646,95 @@
     });
   };
 
+  const validateDynamicSequence = (
+    mission,
+    pattern,
+    errors
+  ) => {
+    const missionId = mission?.id;
+    if (!Array.isArray(mission?.sequence)) {
+      add(errors, missionId, "sequence", "tableau requis.");
+      return;
+    }
+
+    const steps = mission.sequence
+      .filter((step) => isObject(step));
+    const configuredMinimum = Math.max(
+      1,
+      Number(pattern?.minSteps) || 1
+    );
+    const minimumSteps =
+      mission?.constructionMission === true ? 1 : configuredMinimum;
+
+    if (steps.length < minimumSteps) {
+      add(
+        errors,
+        missionId,
+        "sequence",
+        `minimum ${minimumSteps} étape${minimumSteps > 1 ? "s" : ""}.`
+      );
+      return;
+    }
+
+    const slots = new Set();
+    steps.forEach((step, index) => {
+      const slot = isNonEmptyString(step.slot)
+        ? step.slot.trim()
+        : `step${index + 1}`;
+
+      if (slots.has(slot)) {
+        add(
+          errors,
+          missionId,
+          `sequence[${index}].slot`,
+          "identifiant dupliqué."
+        );
+      }
+      slots.add(slot);
+
+      const action = String(step.action || "").trim().toLowerCase();
+      const supportedActions = Object.values(
+        BF.Missions?.ActionType || {}
+      );
+      if (
+        !action ||
+        (supportedActions.length && !supportedActions.includes(action))
+      ) {
+        add(
+          errors,
+          missionId,
+          `sequence[${index}].action`,
+          "action non supportée."
+        );
+      }
+
+      if (
+        step.target != null &&
+        (!Number.isFinite(Number(step.target)) || Number(step.target) < 1)
+      ) {
+        add(
+          errors,
+          missionId,
+          `sequence[${index}].target`,
+          "doit être >= 1."
+        );
+      }
+    });
+
+    steps.forEach((step, index) => {
+      asArray(step.requires).forEach((required) => {
+        if (!slots.has(required)) {
+          add(
+            errors,
+            missionId,
+            `sequence[${index}].requires`,
+            `slot inconnu ${required}.`
+          );
+        }
+      });
+    });
+  };
+
   const validatePatternUse = (
     mission,
     patterns,
@@ -658,6 +747,11 @@
 
     if (!pattern) {
       add(errors, missionId, "pattern", `patron inconnu : ${mission?.pattern}.`);
+      return;
+    }
+
+    if (pattern.dynamicSequence === true) {
+      validateDynamicSequence(mission, pattern, errors);
       return;
     }
 
@@ -717,7 +811,8 @@
     if (!isNonEmptyString(mission.pattern)) {
       add(errors, missionId, "pattern", "patron requis.");
     }
-    if (!isObject(mission.slots)) {
+    const pattern = patterns?.[mission.pattern];
+    if (pattern?.dynamicSequence !== true && !isObject(mission.slots)) {
       add(errors, missionId, "slots", "objet requis.");
     }
     if (
@@ -838,7 +933,12 @@
     placementModes: PLACEMENT_MODES,
     legacyTriggerToV01,
     validateMission,
-    validateCatalog
+    validateCatalog,
+    sequenceActions: Object.freeze({
+      version: "sequence-actions-v1",
+      minSteps: 2
+    }),
+    __sequenceActionsContractV1: true
   });
 
   console.info("[BlueFox] Bible Contract V0.1 chargé.", {
