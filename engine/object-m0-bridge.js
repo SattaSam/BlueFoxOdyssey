@@ -354,7 +354,100 @@
     };
   };
 
-  const eventMatchesNode = (event, node, missionId = null) => {
+  const STEP_RELATION_FIELDS = new Set([
+    "objectId",
+    "cuoType",
+    "family",
+    "subject",
+    "category",
+    "mapId",
+    "instanceId"
+  ]);
+
+  const relationEvidence = (metadata = {}, mapId = null, instanceId = null) => ({
+    objectId: lower(metadata.objectId),
+    cuoType: lower(metadata.cuoType),
+    family: lower(metadata.family),
+    subject: lower(metadata.subject),
+    category: lower(metadata.category),
+    mapId: String(mapId || ""),
+    instanceId: String(instanceId || "")
+  });
+
+  const relationEvidenceFromEvent = (event) =>
+    relationEvidence(
+      eventMissionMetadata(event),
+      event?.mapId,
+      event?.instanceId
+    );
+
+  const relationEvidenceFromResolved = (resolved, mapId) =>
+    relationEvidence(
+      {
+        ...definitionMissionMetadata(resolved?.definition),
+        ...identityOf(resolved)
+      },
+      mapId,
+      identityOf(resolved).instanceId
+    );
+
+  const parsedRelationEvidence = (node) =>
+    (node?.historyValues || []).map((value) => {
+      try {
+        const parsed = JSON.parse(value);
+        return parsed?.owner === "object-m0" ? parsed.evidence || null : null;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+
+  const relationMatches = (tree, node, evidence) => {
+    const relation = node?.params?.relation;
+    if (!relation) return true;
+    const fromSlot = String(relation.fromSlot || "").trim();
+    const source = tree?.find?.(`${tree.id}:${fromSlot}`);
+    if (!source) return false;
+    const sameBy = asArray(relation.sameBy).filter((field) => STEP_RELATION_FIELDS.has(field));
+    const differentBy = asArray(relation.differentBy).filter((field) => STEP_RELATION_FIELDS.has(field));
+    return parsedRelationEvidence(source).some((reference) => {
+      const same = sameBy.every((field) =>
+        String(reference[field] || "") &&
+        String(evidence[field] || "") &&
+        String(reference[field]) === String(evidence[field])
+      );
+      if (!same) return false;
+      return differentBy.every((field) =>
+        String(reference[field] || "") &&
+        String(evidence[field] || "") &&
+        String(reference[field]) !== String(evidence[field])
+      );
+    });
+  };
+
+  const nodeIsRelationSource = (tree, node) => {
+    if (!tree?.root || !node) return false;
+    const slot = String(node.params?.sequenceSlot || "").trim();
+    if (!slot) return false;
+    let referenced = false;
+    tree.root.walk?.((candidate) => {
+      if (String(candidate?.params?.relation?.fromSlot || "").trim() === slot) {
+        referenced = true;
+      }
+    });
+    return referenced;
+  };
+
+  const rememberRelationEvidence = (tree, node, event) => {
+    if (!nodeIsRelationSource(tree, node)) return false;
+    const evidence = relationEvidenceFromEvent(event);
+    if (!evidence.objectId && !evidence.cuoType && !evidence.instanceId) return false;
+    return node.pushHistoryValue?.(JSON.stringify({
+      owner: "object-m0",
+      evidence
+    })) || false;
+  };
+
+  const eventMatchesNode = (event, node, missionId = null, tree = null) => {
     if (node.params?.catalogManaged) return false;
     const type = Missions.normalizeActionType(node.type);
     const detail = event.detail || {};
@@ -375,7 +468,8 @@
           originMissionId === String(missionId || "");
         if (sameOriginMission && detail.missionNodeId !== node.id) return false;
       }
-      return metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {});
+      return metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}) &&
+        relationMatches(tree, node, relationEvidenceFromEvent(event));
     }
     if (![BF.ObjectEvents?.types.OBJECT_INSPECTED, BF.ObjectEvents?.types.PHENOMENON_OBSERVED, BF.ObjectEvents?.types.OBJECT_ANALYZED].includes(event.type)) return false;
     if (!isStudyAction(type)) return false;
@@ -399,6 +493,7 @@
     if (!metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}, { skipSubject: true })) {
       return false;
     }
+    if (!relationMatches(tree, node, relationEvidenceFromEvent(event))) return false;
     const subject = String(node.params.subject || "").toLowerCase();
     if (!subject) return true;
     if (subject === "structure") return detail.kind === "structure" || tags.has("ruin") || tags.has("landmark");
@@ -467,8 +562,9 @@
       let treeChanged = false;
       tree.availableLeaves().forEach((node) => {
         if (!requiredMapMatches(manager, node, event.mapId)) return;
-        if (node.isComplete || !eventMatchesNode(event, node, missionId)) return;
+        if (node.isComplete || !eventMatchesNode(event, node, missionId, tree)) return;
         if (progressNodeFromEvent(node, event)) {
+          rememberRelationEvidence(tree, node, event);
           changed += 1;
           treeChanged = true;
           if (current?.missionId === missionId && current?.nodeId === node.id) {
@@ -756,8 +852,10 @@
         if (!object.userData.active) return false;
         const resolved = resolveMissionCandidate(object);
         const definition = resolved.definition;
-        const node = engine?.missionManager?.trees?.get?.(action.missionId)?.find?.(action.nodeId);
+        const tree = engine?.missionManager?.trees?.get?.(action.missionId);
+        const node = tree?.find?.(action.nodeId);
         if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return false;
+        if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return false;
         const distinctValue = node ? distinctValueFromResolved(node, resolved) : null;
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return false;
         return definition &&
@@ -780,7 +878,10 @@
         const resolved = resolveMissionCandidate(object);
         const definition = resolved.definition;
         const caps = capabilities(definition);
+        const tree = engine?.missionManager?.trees?.get?.(action.missionId);
+        const node = tree?.find?.(action.nodeId);
         if (!definition || !caps.collectable) return false;
+        if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return false;
         if (
           action.type === Missions.ActionType.EXTRACT &&
           !caps.extractable
@@ -822,6 +923,7 @@
         if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
+        if (!relationMatches(tree, node, relationEvidenceFromResolved(missionResolved, engine.currentMapId))) continue;
         if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;
         const distinctValue = distinctValueFromResolved(node, missionResolved);
         if (distinctValue != null && node.hasDistinctValue?.(distinctValue)) continue;

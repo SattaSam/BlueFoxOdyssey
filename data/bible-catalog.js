@@ -1338,6 +1338,57 @@
     })
   });
 
+  const FLO02 = Object.freeze({
+    id: "FLO-02",
+    title: "Même espèce, autre monde",
+    description:
+      "Comparer une même lignée végétale sur deux maps afin de confirmer son adaptation à des environnements différents.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FLO-01",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FLO-01"]),
+    priority: 285,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "referencePlant",
+        title: "Analyser une espèce végétale de référence",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "flora"
+        })
+      }),
+      Object.freeze({
+        slot: "comparePlant",
+        title: "Analyser la même espèce sur une autre map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["referencePlant"]),
+        params: Object.freeze({
+          subject: "flora",
+          relation: Object.freeze({
+            fromSlot: "referencePlant",
+            sameBy: Object.freeze(["objectId"]),
+            differentBy: Object.freeze(["mapId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Une même lignée pourrait changer selon le monde qui l’abrite. Il faut comparer sans confondre les espèces."
+      ]),
+      completed: Object.freeze([
+        "Une adaptation végétale entre deux territoires est confirmée."
+      ])
+    })
+  });
+
   const SUR03 = Object.freeze({
     id: "SUR-03",
     title: "Composer une ration stable",
@@ -1537,6 +1588,7 @@
     T12,
     T13,
     FLO01,
+    FLO02,
     SUR03,
     COL_PLANT_20,
     COL_FIBER_20

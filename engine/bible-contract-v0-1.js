@@ -287,6 +287,81 @@
     }
   };
 
+  const STEP_RELATION_FIELDS = Object.freeze([
+    "objectId",
+    "cuoType",
+    "family",
+    "subject",
+    "category",
+    "mapId",
+    "instanceId"
+  ]);
+
+  const validateStepRelations = (mission, errors) => {
+    const steps = asArray(mission?.sequence)
+      .filter((step) => isObject(step));
+    if (!steps.length) return;
+
+    const slotIndexes = new Map();
+    steps.forEach((step, index) => {
+      const slot = isNonEmptyString(step.slot) ? step.slot.trim() : `step${index + 1}`;
+      slotIndexes.set(slot, index);
+    });
+
+    steps.forEach((step, index) => {
+      const relation = step?.params?.relation;
+      if (relation == null) return;
+      const path = `sequence[${index}].params.relation`;
+      if (!isObject(relation)) {
+        add(errors, mission?.id, path, "doit être un objet.");
+        return;
+      }
+
+      const fromSlot = String(relation.fromSlot || "").trim();
+      if (!fromSlot || !slotIndexes.has(fromSlot)) {
+        add(errors, mission?.id, `${path}.fromSlot`, "doit référencer un slot existant.");
+        return;
+      }
+      if (slotIndexes.get(fromSlot) >= index) {
+        add(errors, mission?.id, `${path}.fromSlot`, "doit référencer une étape antérieure.");
+      }
+
+      const sameBy = asArray(relation.sameBy);
+      const differentBy = asArray(relation.differentBy);
+      if (!sameBy.length && !differentBy.length) {
+        add(errors, mission?.id, path, "doit déclarer sameBy et/ou differentBy.");
+      }
+
+      [["sameBy", sameBy], ["differentBy", differentBy]].forEach(([key, fields]) => {
+        if (relation[key] != null && !Array.isArray(relation[key])) {
+          add(errors, mission?.id, `${path}.${key}`, "doit être un tableau.");
+          return;
+        }
+        fields.forEach((field) => {
+          if (!STEP_RELATION_FIELDS.includes(field)) {
+            add(
+              errors,
+              mission?.id,
+              `${path}.${key}`,
+              `champ non supporté : ${field}.`
+            );
+          }
+        });
+      });
+
+      sameBy.forEach((field) => {
+        if (differentBy.includes(field)) {
+          add(
+            errors,
+            mission?.id,
+            path,
+            `le champ ${field} ne peut pas être à la fois identique et différent.`
+          );
+        }
+      });
+    });
+  };
+
   const validateNarrative = (mission, errors, warnings, compatibility) => {
     const missionId = mission?.id;
     const narrative = mission?.narrative || {};
@@ -678,6 +753,7 @@
     );
     validateTrigger(mission, errors, warnings, compatibility);
     validateTriggerTargetRelation(mission, errors, compatibility);
+    validateStepRelations(mission, errors);
     validateNarrative(mission, errors, warnings, compatibility);
     validateCompletionGate(mission, errors);
     validateEffects(mission, errors);
