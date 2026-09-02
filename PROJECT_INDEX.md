@@ -1,20 +1,20 @@
 # Index du projet — BlueFoxOdyssey
 
-_Généré automatiquement le 23/08/2026 à 11:50:36._
+_Généré automatiquement le 02/09/2026 à 09:23:23._
 
 ## Résumé
 
-- Fichiers : **389**
-- Taille totale : **449.84 Mo**
-- Lignes de texte/code : **105142**
+- Fichiers : **396**
+- Taille totale : **448.88 Mo**
+- Lignes de texte/code : **112108**
 
 ### Répartition par catégorie
 
 | Catégorie | Nombre |
 |---|---:|
 | Asset | 156 |
-| Autre | 7 |
-| Texte / Code | 226 |
+| Autre | 10 |
+| Texte / Code | 230 |
 
 ## Arborescence
 
@@ -148,7 +148,9 @@ BlueFoxOdyssey
 │   └── music-catalog.js
 ├── docs
 │   ├── ARCHITECTURE_TECHNIQUE.md
-│   ├── BlueFox_BIBLE_MAIN_MISSIONS_NORMALISEES_V1.docx
+│   ├── BlueFox_2026-08-27_Inventaire_et_Strategie_MAJ_2026-08-28.docx
+│   ├── BlueFox_BIBLE_MAIN_MISSIONS_NORMALISEES_V2.docx
+│   ├── BlueFox_Contrat_Gameplay_Operationnel_V2_Historique_2026-08-28_MAJ.docx
 │   ├── BlueFox_CUM_V2_Refonte_Passe_16C_menus_deroulants_restaures.xlsx
 │   ├── BlueFox_CUO_v2_Production_complet.xlsx
 │   ├── BlueFox_Game.glb
@@ -157,12 +159,16 @@ BlueFoxOdyssey
 │   ├── CUM_COMPLET_audit_psychologique.xlsx
 │   ├── CUO_Lab_BANC_VALIDATION_3D.md
 │   ├── DEV_HISTORIQUE.md
+│   ├── GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md
 │   ├── GENERER_CATALOGUE_IMAGES.bat
 │   ├── IMI — CONTRAT IA D'INTÉGRATION DES MISSIONS.txt
 │   ├── MASTER.md
 │   ├── MUSIC_SYSTEM_V1.md
 │   ├── README.txt
-│   └── ROADMAP_TODO.md
+│   ├── RECOVERY_CHECKPOINT_2026-08-28.md
+│   ├── RECOVERY_CHECKPOINT_2026-09-01.md
+│   ├── ROADMAP_TODO.md
+│   └── ~$ueFox_BIBLE_MAIN_MISSIONS_NORMALISEES_V1.docx
 ├── engine
 │   ├── action-bridge.js
 │   ├── adaptive-music-engine-v1.js
@@ -407,15 +413,6 @@ BlueFoxOdyssey
 │   │   └── custom-micro-scenes.js
 │   └── engine
 │       └── legacy-msc-adjust-r6.js
-├── saves
-│   ├── autosave-1.json
-│   ├── autosave-2.json
-│   ├── autosave-3.json
-│   ├── autosave-4.json
-│   ├── autosave-5.json
-│   ├── autosave.json
-│   ├── recovery.json
-│   └── slot-1.json
 ├── tests
 │   ├── bible-mission-actions.integration.test.js
 │   ├── bible-runtime-v0.test.js
@@ -425,9 +422,18 @@ BlueFoxOdyssey
 │   ├── map-exploration-tracker.test.js
 │   ├── map-test-evolution-preset.test.js
 │   ├── map-texture-fallback.integration.test.js
+│   ├── mission-double-interaction.sentinel.test.js
+│   ├── pass3-lifecycle-generic.contract.test.js
+│   ├── pass4-persistence.contract.test.js
 │   ├── patron-locking.test.js
 │   ├── patrons-research-regression.test.js
-│   └── survival-ux.integration.test.js
+│   ├── recovery-ownership.contract.test.js
+│   ├── recovery-return.contract.test.js
+│   ├── recovery-runtime.contract.test.js
+│   ├── shelter-base-upgrade.test.js
+│   ├── survival-ux.integration.test.js
+│   ├── trigger-target-relation.integration.test.js
+│   └── tutorial-t10-loc.integration.test.js
 └── tools
     ├── bluefox-local-server.ps1
     ├── generer-catalogue-images.mjs
@@ -438,8 +444,8 @@ BlueFoxOdyssey
 
 | Chemin | Catégorie | Taille | Lignes |
 |---|---|---:|---:|
-| `00_AI_PROJECT_RULES.md` | Texte / Code | 5.32 Ko | 86 |
-| `01_BFO - Prompt -  Nouveau chantier.txt` | Texte / Code | 4.04 Ko | 77 |
+| `00_AI_PROJECT_RULES.md` | Texte / Code | 5.40 Ko | 88 |
+| `01_BFO - Prompt -  Nouveau chantier.txt` | Texte / Code | 6.15 Ko | 130 |
 | `assets/BFO icone.png` | Asset | 769.01 Ko |  |
 | `assets/Capsule.png` | Asset | 4.04 Mo |  |
 | `assets/maps/CONVENTION_IMAGES.txt` | Texte / Code | 1.43 Ko | 36 |
@@ -533,16 +539,18 @@ BlueFoxOdyssey
 | `cuo-lab/vendor/OrbitControls.js` | Texte / Code | 37.80 Ko | 1860 |
 | `cuo-lab/vendor/three.core.min.js` | Texte / Code | 371.46 Ko | 6 |
 | `cuo-lab/vendor/three.module.min.js` | Texte / Code | 330.89 Ko | 6 |
-| `data/bible-catalog.js` | Texte / Code | 25.23 Ko | 810 |
+| `data/bible-catalog.js` | Texte / Code | 48.77 Ko | 1551 |
 | `data/bible-patterns.js` | Texte / Code | 3.56 Ko | 160 |
 | `data/config.json` | Texte / Code | 238 o | 16 |
 | `data/custom-maps.js` | Texte / Code | 1.27 Ko | 64 |
 | `data/custom-maps.json` | Texte / Code | 1.46 Ko | 77 |
-| `data/custom-micro-scenes.js` | Texte / Code | 160.49 Ko | 1 |
+| `data/custom-micro-scenes.js` | Texte / Code | 166.18 Ko | 1 |
 | `data/custom-micro-scenes.json` | Texte / Code | 344.27 Ko | 19300 |
-| `data/music-catalog.js` | Texte / Code | 23.61 Ko | 542 |
-| `docs/ARCHITECTURE_TECHNIQUE.md` | Texte / Code | 12.42 Ko | 205 |
-| `docs/BlueFox_BIBLE_MAIN_MISSIONS_NORMALISEES_V1.docx` | Autre | 188.96 Ko |  |
+| `data/music-catalog.js` | Texte / Code | 23.74 Ko | 544 |
+| `docs/ARCHITECTURE_TECHNIQUE.md` | Texte / Code | 14.17 Ko | 219 |
+| `docs/BlueFox_2026-08-27_Inventaire_et_Strategie_MAJ_2026-08-28.docx` | Autre | 47.92 Ko |  |
+| `docs/BlueFox_BIBLE_MAIN_MISSIONS_NORMALISEES_V2.docx` | Autre | 232.46 Ko |  |
+| `docs/BlueFox_Contrat_Gameplay_Operationnel_V2_Historique_2026-08-28_MAJ.docx` | Autre | 72.93 Ko |  |
 | `docs/BlueFox_CUM_V2_Refonte_Passe_16C_menus_deroulants_restaures.xlsx` | Autre | 551.56 Ko |  |
 | `docs/BlueFox_CUO_v2_Production_complet.xlsx` | Autre | 47.87 Ko |  |
 | `docs/BlueFox_Game.glb` | Asset | 9.10 Mo |  |
@@ -550,57 +558,61 @@ BlueFoxOdyssey
 | `docs/CONVENTIONS_MAPS_IMAGES.md` | Texte / Code | 2.83 Ko | 84 |
 | `docs/CUM_COMPLET_audit_psychologique.xlsx` | Autre | 229.72 Ko |  |
 | `docs/CUO_Lab_BANC_VALIDATION_3D.md` | Texte / Code | 5.28 Ko | 137 |
-| `docs/DEV_HISTORIQUE.md` | Texte / Code | 11.68 Ko | 265 |
+| `docs/DEV_HISTORIQUE.md` | Texte / Code | 13.05 Ko | 247 |
+| `docs/GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md` | Texte / Code | 2.99 Ko | 62 |
 | `docs/GENERER_CATALOGUE_IMAGES.bat` | Texte / Code | 348 o | 14 |
-| `docs/IMI — CONTRAT IA D'INTÉGRATION DES MISSIONS.txt` | Texte / Code | 3.17 Ko | 93 |
-| `docs/MASTER.md` | Texte / Code | 11.61 Ko | 188 |
+| `docs/IMI — CONTRAT IA D'INTÉGRATION DES MISSIONS.txt` | Texte / Code | 5.74 Ko | 144 |
+| `docs/MASTER.md` | Texte / Code | 5.92 Ko | 122 |
 | `docs/MUSIC_SYSTEM_V1.md` | Texte / Code | 2.28 Ko | 54 |
-| `docs/README.txt` | Texte / Code | 533 o | 11 |
-| `docs/ROADMAP_TODO.md` | Texte / Code | 6.80 Ko | 130 |
-| `engine/action-bridge.js` | Texte / Code | 7.12 Ko | 184 |
-| `engine/adaptive-music-engine-v1.js` | Texte / Code | 25.77 Ko | 279 |
-| `engine/adaptive-music-gameplay-bridge-v1.js` | Texte / Code | 12.80 Ko | 166 |
+| `docs/README.txt` | Texte / Code | 2.14 Ko | 43 |
+| `docs/RECOVERY_CHECKPOINT_2026-08-28.md` | Texte / Code | 2.80 Ko | 63 |
+| `docs/RECOVERY_CHECKPOINT_2026-09-01.md` | Texte / Code | 2.51 Ko | 77 |
+| `docs/ROADMAP_TODO.md` | Texte / Code | 6.42 Ko | 124 |
+| `docs/~$ueFox_BIBLE_MAIN_MISSIONS_NORMALISEES_V1.docx` | Autre | 162 o |  |
+| `engine/action-bridge.js` | Texte / Code | 10.56 Ko | 275 |
+| `engine/adaptive-music-engine-v1.js` | Texte / Code | 27.14 Ko | 297 |
+| `engine/adaptive-music-gameplay-bridge-v1.js` | Texte / Code | 12.83 Ko | 172 |
 | `engine/adaptive-music-ui-v1.css` | Texte / Code | 2.23 Ko | 115 |
 | `engine/adaptive-music-ui-v1.js` | Texte / Code | 10.09 Ko | 255 |
-| `engine/behavior-arbitration-core.js` | Texte / Code | 26.26 Ko | 832 |
-| `engine/behavior-arbitration-integration.js` | Texte / Code | 52.25 Ko | 1368 |
-| `engine/bible-contract-v0-1.js` | Texte / Code | 19.31 Ko | 705 |
+| `engine/behavior-arbitration-core.js` | Texte / Code | 26.51 Ko | 839 |
+| `engine/behavior-arbitration-integration.js` | Texte / Code | 52.16 Ko | 1366 |
+| `engine/bible-contract-v0-1.js` | Texte / Code | 21.20 Ko | 773 |
 | `engine/bible-exploration-micro-scenes-v19.js` | Texte / Code | 1.85 Ko | 54 |
 | `engine/bible-exploration-world-v19.js` | Texte / Code | 3.73 Ko | 93 |
-| `engine/bible-map-prescription-v19.js` | Texte / Code | 18.00 Ko | 499 |
-| `engine/bible-runtime-v0-1-unified.js` | Texte / Code | 92.47 Ko | 2731 |
+| `engine/bible-map-prescription-v19.js` | Texte / Code | 23.93 Ko | 661 |
+| `engine/bible-runtime-v0-1-unified.js` | Texte / Code | 124.10 Ko | 3534 |
 | `engine/bible-validation-v0-1.js` | Texte / Code | 2.32 Ko | 93 |
 | `engine/biome-population-policy-r3.js` | Texte / Code | 9.27 Ko | 129 |
-| `engine/biome-rules.js` | Texte / Code | 39.46 Ko | 549 |
+| `engine/biome-rules.js` | Texte / Code | 40.96 Ko | 577 |
 | `engine/bluefox3d-core.js` | Texte / Code | 1.77 Ko | 54 |
 | `engine/camera-controller.js` | Texte / Code | 18.50 Ko | 533 |
 | `engine/camera-extended-look.js` | Texte / Code | 5.50 Ko | 168 |
-| `engine/character-controller.js` | Texte / Code | 21.01 Ko | 566 |
-| `engine/context-msc-bridge.js` | Texte / Code | 6.33 Ko | 209 |
+| `engine/character-controller.js` | Texte / Code | 21.68 Ko | 584 |
+| `engine/context-msc-bridge.js` | Texte / Code | 6.65 Ko | 222 |
 | `engine/cuo-catalog-consistency-r3.js` | Texte / Code | 3.81 Ko | 137 |
 | `engine/custom-map-registry.js` | Texte / Code | 2.77 Ko | 51 |
 | `engine/custom-micro-scenes-runtime.js` | Texte / Code | 1.17 Ko | 29 |
 | `engine/environment-geometry-fix.js` | Texte / Code | 15.38 Ko | 440 |
 | `engine/exploration-hud.css` | Texte / Code | 4.00 Ko | 204 |
-| `engine/explore-scope-bridge.js` | Texte / Code | 5.15 Ko | 156 |
+| `engine/explore-scope-bridge.js` | Texte / Code | 5.76 Ko | 172 |
 | `engine/fauna-motion-correction-r3.js` | Texte / Code | 1.31 Ko | 1 |
 | `engine/fauna-no-spin-r6.js` | Texte / Code | 1.34 Ko | 8 |
 | `engine/fauna-runtime.js` | Texte / Code | 18.05 Ko | 498 |
 | `engine/fauna-tool-ball-return-r2.js` | Texte / Code | 3.31 Ko | 115 |
-| `engine/flora-runtime.js` | Texte / Code | 10.11 Ko | 288 |
+| `engine/flora-runtime.js` | Texte / Code | 10.16 Ko | 291 |
 | `engine/flora-wind-runtime.js` | Texte / Code | 8.18 Ko | 274 |
-| `engine/inventory-capacity-ai.js` | Texte / Code | 4.38 Ko | 180 |
-| `engine/inventory-ui-bridge.css` | Texte / Code | 2.05 Ko | 117 |
+| `engine/inventory-capacity-ai.js` | Texte / Code | 5.09 Ko | 201 |
+| `engine/inventory-ui-bridge.css` | Texte / Code | 3.54 Ko | 182 |
 | `engine/inventory-ui-bridge.js` | Texte / Code | 15.14 Ko | 399 |
-| `engine/inventory-ui-clean-v0-2.js` | Texte / Code | 19.36 Ko | 696 |
+| `engine/inventory-ui-clean-v0-2.js` | Texte / Code | 23.25 Ko | 812 |
 | `engine/legacy-msc-adjust-r6.js` | Texte / Code | 594 o | 17 |
-| `engine/map-exploration-tracker.js` | Texte / Code | 13.57 Ko | 354 |
+| `engine/map-exploration-tracker.js` | Texte / Code | 19.51 Ko | 506 |
 | `engine/map-generation-no5-v20-1.js` | Texte / Code | 640 o | 22 |
 | `engine/map-generation-rules.js` | Texte / Code | 11.52 Ko | 259 |
-| `engine/map-generator-bible-overrides-v19.js` | Texte / Code | 3.03 Ko | 94 |
-| `engine/map-generator.js` | Texte / Code | 16.69 Ko | 433 |
-| `engine/map-integrity-v20.js` | Texte / Code | 10.82 Ko | 304 |
-| `engine/map-population-hierarchy.js` | Texte / Code | 15.62 Ko | 328 |
+| `engine/map-generator-bible-overrides-v19.js` | Texte / Code | 5.30 Ko | 163 |
+| `engine/map-generator.js` | Texte / Code | 25.52 Ko | 672 |
+| `engine/map-integrity-v20.js` | Texte / Code | 8.98 Ko | 229 |
+| `engine/map-population-hierarchy.js` | Texte / Code | 16.50 Ko | 349 |
 | `engine/map-registry.js` | Texte / Code | 34.68 Ko | 978 |
 | `engine/micro-scene-integrity-r6.js` | Texte / Code | 782 o | 3 |
 | `engine/micro-scene-pivot-r6.js` | Texte / Code | 1.76 Ko | 28 |
@@ -608,31 +620,31 @@ BlueFoxOdyssey
 | `engine/mission-aware-analysis.js` | Texte / Code | 2.40 Ko | 78 |
 | `engine/mission-catalog.js` | Texte / Code | 1.10 Ko | 42 |
 | `engine/mission-empty-core.js` | Texte / Code | 6.14 Ko | 224 |
-| `engine/mission-manager-bible-fix-v19.js` | Texte / Code | 3.30 Ko | 113 |
-| `engine/mission-manager.js` | Texte / Code | 31.70 Ko | 872 |
+| `engine/mission-manager-bible-fix-v19.js` | Texte / Code | 513 o | 13 |
+| `engine/mission-manager.js` | Texte / Code | 51.41 Ko | 1442 |
 | `engine/mission-memory.js` | Texte / Code | 5.53 Ko | 179 |
-| `engine/mission-planner.js` | Texte / Code | 2.96 Ko | 94 |
-| `engine/mission-runtime-integration-v19-7.js` | Texte / Code | 10.54 Ko | 261 |
+| `engine/mission-planner.js` | Texte / Code | 4.64 Ko | 129 |
+| `engine/mission-runtime-integration-v19-7.js` | Texte / Code | 11.14 Ko | 276 |
 | `engine/mission-target-arbitration-v19-12.js` | Texte / Code | 15.45 Ko | 508 |
 | `engine/mission-tree.js` | Texte / Code | 6.83 Ko | 223 |
-| `engine/mission-types.js` | Texte / Code | 3.56 Ko | 129 |
-| `engine/mission-ui-bridge.css` | Texte / Code | 8.14 Ko | 409 |
-| `engine/mission-ui-bridge.js` | Texte / Code | 30.52 Ko | 801 |
+| `engine/mission-types.js` | Texte / Code | 3.50 Ko | 128 |
+| `engine/mission-ui-bridge.css` | Texte / Code | 8.28 Ko | 417 |
+| `engine/mission-ui-bridge.js` | Texte / Code | 32.83 Ko | 866 |
 | `engine/multicorrectif-r3-loader.js` | Texte / Code | 704 o | 1 |
 | `engine/nearest-interaction-r3.js` | Texte / Code | 675 o | 1 |
 | `engine/npc-runtime.js` | Texte / Code | 15.24 Ko | 406 |
-| `engine/object-event-registry.js` | Texte / Code | 3.14 Ko | 75 |
+| `engine/object-event-registry.js` | Texte / Code | 3.60 Ko | 88 |
 | `engine/object-library-flora-patch.js` | Texte / Code | 6.81 Ko | 206 |
 | `engine/object-library-height-r6.js` | Texte / Code | 4.15 Ko | 60 |
 | `engine/object-library-p2-1.js` | Texte / Code | 15.58 Ko | 437 |
-| `engine/object-library.js` | Texte / Code | 153.90 Ko | 2589 |
-| `engine/object-m0-bridge.js` | Texte / Code | 64.20 Ko | 1577 |
-| `engine/object-spawner.js` | Texte / Code | 45.65 Ko | 1006 |
+| `engine/object-library.js` | Texte / Code | 156.31 Ko | 2623 |
+| `engine/object-m0-bridge.js` | Texte / Code | 67.19 Ko | 1653 |
+| `engine/object-spawner.js` | Texte / Code | 49.92 Ko | 1097 |
 | `engine/offline-progression.js` | Texte / Code | 3.69 Ko | 32 |
-| `engine/passive-object-runtime.js` | Texte / Code | 12.16 Ko | 304 |
+| `engine/passive-object-runtime.js` | Texte / Code | 12.21 Ko | 307 |
 | `engine/path-planner.js` | Texte / Code | 6.67 Ko | 200 |
 | `engine/persistence-write-buffer.js` | Texte / Code | 3.78 Ko | 163 |
-| `engine/persistent-micro-scenes-v20.js` | Texte / Code | 10.83 Ko | 345 |
+| `engine/persistent-micro-scenes-v20.js` | Texte / Code | 14.37 Ko | 434 |
 | `engine/phenomenon-runtime.js` | Texte / Code | 11.32 Ko | 317 |
 | `engine/planet-globe-ui.css` | Texte / Code | 9.87 Ko | 330 |
 | `engine/planet-globe-ui.js` | Texte / Code | 9.75 Ko | 325 |
@@ -644,26 +656,26 @@ BlueFoxOdyssey
 | `engine/progression-registry.js` | Texte / Code | 14.95 Ko | 454 |
 | `engine/reconnaissance-pattern-validation-v19-10.js` | Texte / Code | 4.84 Ko | 159 |
 | `engine/runtime-budget.js` | Texte / Code | 5.63 Ko | 223 |
-| `engine/save-ui-bridge.css` | Texte / Code | 3.08 Ko | 147 |
-| `engine/save-ui-bridge.js` | Texte / Code | 23.15 Ko | 729 |
+| `engine/save-ui-bridge.css` | Texte / Code | 3.82 Ko | 179 |
+| `engine/save-ui-bridge.js` | Texte / Code | 26.62 Ko | 842 |
 | `engine/sequence-actions-bridge.js` | Texte / Code | 11.15 Ko | 304 |
 | `engine/settings-ui-bridge.css` | Texte / Code | 5.83 Ko | 243 |
-| `engine/settings-ui-bridge.js` | Texte / Code | 22.40 Ko | 748 |
+| `engine/settings-ui-bridge.js` | Texte / Code | 21.36 Ko | 715 |
 | `engine/special-object-runtime.js` | Texte / Code | 17.12 Ko | 383 |
 | `engine/spore-static-r3.js` | Texte / Code | 714 o | 1 |
-| `engine/start-map-crystal.js` | Texte / Code | 9.42 Ko | 265 |
-| `engine/survival-ai-bridge.js` | Texte / Code | 15.74 Ko | 738 |
-| `engine/survival-rations-ai-v0-3.js` | Texte / Code | 13.80 Ko | 642 |
-| `engine/survival-rations-v0-3.js` | Texte / Code | 3.07 Ko | 146 |
-| `engine/survival-tuning-r3.js` | Texte / Code | 910 o | 1 |
+| `engine/start-map-crystal.js` | Texte / Code | 9.63 Ko | 268 |
+| `engine/survival-ai-bridge.js` | Texte / Code | 17.68 Ko | 807 |
+| `engine/survival-rations-ai-v0-3.js` | Texte / Code | 20.92 Ko | 833 |
+| `engine/survival-rations-v0-3.js` | Texte / Code | 3.27 Ko | 152 |
+| `engine/survival-tuning-r3.js` | Texte / Code | 228 o | 1 |
 | `engine/topology-persistence-bridge.js` | Texte / Code | 6.29 Ko | 214 |
-| `engine/travel-cycle-bridge.js` | Texte / Code | 5.71 Ko | 182 |
+| `engine/travel-cycle-bridge.js` | Texte / Code | 9.84 Ko | 292 |
 | `engine/ui-enhancements.css` | Texte / Code | 24.49 Ko | 1155 |
-| `engine/ui-enhancements.js` | Texte / Code | 96.00 Ko | 2577 |
+| `engine/ui-enhancements.js` | Texte / Code | 101.01 Ko | 2729 |
 | `engine/ui-hotfix-v3.css` | Texte / Code | 1.18 Ko | 53 |
 | `engine/ui-hotfix-v3.js` | Texte / Code | 4.76 Ko | 165 |
-| `engine/vegetation-performance.js` | Texte / Code | 11.94 Ko | 403 |
-| `engine/world-engine.js` | Texte / Code | 134.24 Ko | 3595 |
+| `engine/vegetation-performance.js` | Texte / Code | 11.74 Ko | 397 |
+| `engine/world-engine.js` | Texte / Code | 138.11 Ko | 3702 |
 | `engine/world-topology-v3.js` | Texte / Code | 18.83 Ko | 579 |
 | `game.css` | Texte / Code | 10.65 Mo | 1 |
 | `game.js` | Texte / Code | 961.74 Ko | 3905 |
@@ -788,7 +800,7 @@ BlueFoxOdyssey
 | `Images/GENERER_CATALOGUE_IMAGES.ps1` | Texte / Code | 757 o | 22 |
 | `Images/images-catalog.js` | Texte / Code | 7.26 Ko | 1 |
 | `Images/LISEZ_MOI.txt` | Texte / Code | 744 o | 19 |
-| `index.html` | Texte / Code | 8.93 Ko | 124 |
+| `index.html` | Texte / Code | 8.92 Ko | 124 |
 | `journal.css` | Texte / Code | 4.08 Ko | 239 |
 | `LANCER_BLUEFOX.bat` | Texte / Code | 681 o | 25 |
 | `LANCER_CUO_LAB.bat` | Texte / Code | 414 o | 14 |
@@ -805,25 +817,26 @@ BlueFoxOdyssey
 | `map-test/msc-anchor-r6.js` | Texte / Code | 603 o | 5 |
 | `map-test/README.md` | Texte / Code | 1.72 Ko | 29 |
 | `README_LANCEMENT.txt` | Texte / Code | 31.08 Ko | 566 |
-| `saves/autosave-1.json` | Texte / Code | 217.56 Ko | 1 |
-| `saves/autosave-2.json` | Texte / Code | 217.56 Ko | 1 |
-| `saves/autosave-3.json` | Texte / Code | 217.56 Ko | 1 |
-| `saves/autosave-4.json` | Texte / Code | 217.56 Ko | 1 |
-| `saves/autosave-5.json` | Texte / Code | 217.56 Ko | 1 |
-| `saves/autosave.json` | Texte / Code | 217.56 Ko | 1 |
-| `saves/recovery.json` | Texte / Code | 7.80 Ko | 1 |
-| `saves/slot-1.json` | Texte / Code | 116.75 Ko | 1 |
-| `tests/bible-mission-actions.integration.test.js` | Texte / Code | 15.70 Ko | 342 |
-| `tests/bible-runtime-v0.test.js` | Texte / Code | 4.19 Ko | 108 |
-| `tests/biome-correctifs-r3.integration.test.js` | Texte / Code | 14.99 Ko | 343 |
+| `tests/bible-mission-actions.integration.test.js` | Texte / Code | 14.06 Ko | 307 |
+| `tests/bible-runtime-v0.test.js` | Texte / Code | 4.35 Ko | 111 |
+| `tests/biome-correctifs-r3.integration.test.js` | Texte / Code | 15.74 Ko | 358 |
 | `tests/cuo-lab-preload-return-route.test.js` | Texte / Code | 3.67 Ko | 69 |
 | `tests/exploration-mission-routing.test.js` | Texte / Code | 1.86 Ko | 61 |
 | `tests/map-exploration-tracker.test.js` | Texte / Code | 3.03 Ko | 102 |
-| `tests/map-test-evolution-preset.test.js` | Texte / Code | 1.57 Ko | 35 |
+| `tests/map-test-evolution-preset.test.js` | Texte / Code | 1.77 Ko | 38 |
 | `tests/map-texture-fallback.integration.test.js` | Texte / Code | 1.16 Ko | 29 |
+| `tests/mission-double-interaction.sentinel.test.js` | Texte / Code | 21.13 Ko | 668 |
+| `tests/pass3-lifecycle-generic.contract.test.js` | Texte / Code | 7.30 Ko | 106 |
+| `tests/pass4-persistence.contract.test.js` | Texte / Code | 8.93 Ko | 203 |
 | `tests/patron-locking.test.js` | Texte / Code | 4.44 Ko | 117 |
-| `tests/patrons-research-regression.test.js` | Texte / Code | 9.43 Ko | 338 |
-| `tests/survival-ux.integration.test.js` | Texte / Code | 4.18 Ko | 97 |
+| `tests/patrons-research-regression.test.js` | Texte / Code | 9.96 Ko | 348 |
+| `tests/recovery-ownership.contract.test.js` | Texte / Code | 2.79 Ko | 63 |
+| `tests/recovery-return.contract.test.js` | Texte / Code | 14.55 Ko | 223 |
+| `tests/recovery-runtime.contract.test.js` | Texte / Code | 8.03 Ko | 180 |
+| `tests/shelter-base-upgrade.test.js` | Texte / Code | 30.80 Ko | 734 |
+| `tests/survival-ux.integration.test.js` | Texte / Code | 4.65 Ko | 111 |
+| `tests/trigger-target-relation.integration.test.js` | Texte / Code | 7.81 Ko | 46 |
+| `tests/tutorial-t10-loc.integration.test.js` | Texte / Code | 9.47 Ko | 253 |
 | `tools/bluefox-local-server.ps1` | Texte / Code | 24.04 Ko | 575 |
 | `tools/generer-catalogue-images.mjs` | Autre | 980 o |  |
 | `tools/generer-catalogue-images.ps1` | Texte / Code | 931 o | 27 |

@@ -2,25 +2,26 @@
 
 ## État de référence
 
-Dernière mise à jour : **30 août 2026**
+Dernière mise à jour : **2 septembre 2026**
 
 ### Version de travail
-- Base GitHub de référence : commit `c75fa77b2afe59a0d3dc41fc00453c3dc47a1d64`.
-- Libellé : `RECOVERY_CHECKPOINT — moteur stabilisé, T11 return + T13 autocraft encore ouverts`.
-- Ce checkpoint remplace les cumulatifs intermédiaires comme base de reprise.
-- Il **ne vaut pas validation gameplay complète T01→T13** : T11 retour autonome et T13 autocraft restent ouverts.
-- Base PC historique : V16.20.
-- Version mobile/APK V16.14 : obsolète.
-- Objectif : consolider la base PC/Web avant reprise Android.
+- Base GitHub courante validée avant mise à jour documentaire : commit `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee`.
+- Commit : `spawn base fix`.
+- Le HEAD GitHub courant est la seule base technique de reprise.
+- Aucun nouveau recovery checkpoint n'est créé pour cette clôture.
+- Les recovery checkpoints existants restent historiques et ne priment pas sur le HEAD courant.
+- `ROADMAP_TODO.md` est la seule TODO active.
 
 ## Gouvernance documentaire officielle
 
 Les documents maintenus sont listés dans `docs/README.txt`.
-Depuis le 28 août 2026, les deux addenda de récupération font partie du corpus de reprise :
-- `RECOVERY_CHECKPOINT_2026-08-28.md`
-- `GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md`
 
-Les DOCX historiques restent des sources de décision, mais le HEAD et les documents officiels courants priment lorsqu’une ancienne traduction technique est dépassée.
+Règle de priorité :
+1. décision utilisateur la plus récente ;
+2. validation runtime en jeu ;
+3. Contrat Gameplay Opérationnel V2 + addendum courant ;
+4. MASTER / ARCHITECTURE / ROADMAP / DEV_HISTORIQUE ;
+5. documents historiques.
 
 ## Architecture de référence
 
@@ -30,9 +31,8 @@ Principes majeurs :
 - `MissionManager` : lifecycle + sélection action missionnelle ;
 - BAC : arbitrage comportemental, jamais propriétaire parallèle du choix missionnel ;
 - `WorldEngine` : monde, transitions, navigation et directive joueur persistante ;
-- `ObjectM0` : CUO, études dues, même instance, fan-out ;
-- `BibleRuntime` : interprétation Bible/effets/gates sans posséder le lifecycle ;
-- `save-ui-bridge` : snapshot global après flush ;
+- `ObjectM0` : CUO, matching missionnel, études dues, même instance, fan-out ;
+- `BibleRuntime` : interprétation Bible, effets, gates et sites persistants sans posséder le lifecycle ;
 - UI : jamais propriétaire du gameplay ;
 - `map-registry.js` : protégé.
 
@@ -43,25 +43,28 @@ Le joueur exprime une intention ; BlueFox conserve une marge de décision sauf o
 
 Suggestion de changement de map — règle B :
 - mémorisée immédiatement ;
-- n’interrompt pas l’action atomique en cours ;
-- reprise immédiatement après cette action, avant toute nouvelle décision missionnelle/BAC ;
+- n'interrompt pas l'action atomique en cours ;
+- reprise immédiatement après cette action avant toute nouvelle décision missionnelle/BAC ;
 - persistée au reload.
 
 ### Missions
 - plusieurs missions actives peuvent progresser en parallèle ;
 - une action réelle peut faire progresser plusieurs missions compatibles ;
-- une réévaluation ne révèle au maximum qu’une nouvelle mission ;
+- une réévaluation ne révèle au maximum qu'une nouvelle mission ;
 - une mission terminée ne reste pas principale ;
-- les missions tutoriel servent de banc d’industrialisation d’un moteur générique.
+- les missions tutoriel servent de banc d'industrialisation d'un moteur générique ;
+- aucune interaction finale fictive ne doit être ajoutée lorsqu'une mission se termine par un effet automatique réel.
 
-### CUO
-Observer/inspecter/analyser restent des nuances missionnelles d’une même étude physique quand le CUO le prévoit.
-Une acquisition missionnelle conserve la même instance après les études dues.
+### CUO / relation trigger-cible
+- observer / inspecter / analyser restent des nuances missionnelles d'une même étude physique lorsque le CUO le prévoit ;
+- une acquisition missionnelle conserve la même instance après les études dues ;
+- l'IMI distingue explicitement `REVEAL-ONLY`, `SAME-DEFINITION` et `SAME-INSTANCE` ;
+- aucune migration automatique de vieux bindings n'est autorisée sans preuve runtime complète.
 
 ### Navigation
 - trajet connu = déplacement physique ;
-- inconnue = génération au passage réellement demandé ;
-- pas de téléportation comme substitut d’un retour ;
+- destination inconnue = génération au passage réellement demandé ;
+- pas de téléportation comme substitut d'un retour ;
 - absence de chemin = échec de navigation, pas marche infinie contre obstacle.
 
 ### Survie
@@ -70,84 +73,50 @@ Après T12, les comportements ration autorisés redeviennent progressivement arb
 
 ## Sauvegarde
 
-La sauvegarde doit préserver le sens du gameplay :
+La sauvegarde doit préserver :
 - missions/lifecycles/faits ;
-- exploration ;
-- topologie ;
-- MSC persistantes ;
+- exploration et topologie ;
+- MSC/sites persistants ;
 - recettes/research unlocks ;
 - ration et compteurs de craft ;
 - directive joueur persistante.
 
 Les états différés doivent être flushés avant snapshot.
+Aucune propagation ou migration artificielle rejetée par le runtime ne doit être réintroduite.
 
-## Tutoriel T01→T13 — état de reprise
+## Tutoriel et constructions — état courant
 
-Les décisions gameplay du Contrat V2 restent la référence.
-
-- T01→T10 : comportements historiques à préserver ; aucune réinterprétation par le checkpoint.
-- T11 : **OUVERT** — retour autonome vers un abri non reproduit au runtime c75fa77, malgré validation historique antérieure.
-- T12 : preuve joueur de consommation réelle de ration ; autonomie ration ensuite selon déblocages.
-- T13 : **OUVERT** — fabrication autonome des 10 rations non déclenchée au runtime c75fa77.
+### T01 → T13
+- T01→T10 : comportements historiques validés à préserver.
+- T13 : chaîne de craft/excursion validée en jeu : collecte utile, fabrication réelle des rations, déplacement autonome, deuxième nouvelle map et Bosquet bio.
 - LOC : map-scopé ; progression conservée hors map, affichage uniquement map active.
-- Bosquet_bio : persistant, déclenché dans la séquence T13 prévue.
+- Les points encore ouverts sont suivis exclusivement dans `ROADMAP_TODO.md`.
 
-## Deux chantiers immédiats
-
-### 1. T11 — récupérer le retour historiquement validé
-Méthode :
-- retrouver le dernier cycle réellement validé ;
-- comparer `fin collecte → décision retour → BAC/returnPolicy → route connue → gate → transition → abri → completion`;
-- rétablir uniquement le maillon perdu dans le propriétaire courant ;
-- aucun nouveau système de retour.
-
-### 2. T13 — raccorder le craft autonome générique
-Tracer :
-`objectif CRAFT → MissionPlanner → BAC → propriétaire réel craft → ressources consommées → ration produite → événement → progression`.
-Le correctif doit fonctionner aussi pour une future mission de craft sans ID spécial.
+### Camp → Refuge → Base renforcée
+État validé et commité au commit moteur `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee` :
+- Camp : `MSC-CUSTOM-CAMP` ;
+- Refuge : `MSC-CUSTOM-CAMP-BASE` ;
+- Base renforcée : `MSC-CUSTOM-CAMP-BASE-REINFORCED` ;
+- Shelter démarre après Camp selon le lifecycle existant ;
+- Base renforcée devient activable après completion de Shelter ;
+- les objectifs historiques peuvent être complets alors que le stock physique courant reste insuffisant ;
+- le moteur attend alors le stock réel et réévalue sur événement d'inventaire, sans polling supplémentaire ;
+- Base renforcée consomme 500 fibres + 500 ressources du pool minéral/cristal et requiert 100 études rocheuses ;
+- le pool minéral est résolu par le matching sémantique existant ;
+- le spawn est tenté avant toute consommation ;
+- un échec de spawn ne consomme rien ;
+- la consommation est idempotente ;
+- les presets canoniques sont propriétaires lorsqu'ils existent et ne sont pas rejetés par l'arbitrage de placement générique ;
+- position Base renforcée sur crystal : `x=-2.7567, y=0.25, z=4.768`, rotation canonique inchangée ;
+- au succès de la Base renforcée, le Refuge autonome précédent est retiré visuellement et de la persistance ; le Camp reste présent ;
+- la composition finale validée en jeu est Camp + Base renforcée, la MSC renforcée embarquant elle-même la partie refuge attendue.
 
 ## Industrialisation
 
-Le moteur n’est déclaré prêt pour l’industrialisation massive qu’après validation des primitives génériques dont T11 et T13 sont actuellement les preuves manquantes.
-L’objectif reste de brancher les futures missions par patrons/paramètres/données, jamais mission par mission.
+Le moteur doit continuer à être généralisé par propriétaires et patrons existants :
+- données/contrats plutôt que branches par ID ;
+- propriétaires existants plutôt que bridges ;
+- tests de réfutation avec missions fictives `FUTURE-*` lorsque la primitive est générique ;
+- validation des consommateurs réels avant PASS.
 
-
----
-
-## Mise à jour de reprise — 30 août 2026
-
-### Base GitHub courante validée
-- HEAD de reprise : `a62c25ad75fc63dce4546dfe0bd8861d45842376`.
-- Parent avant Passe 4 : `b277d811756e980f4d6cae92c709fe147973ca04`.
-- Le checkpoint `c75fa77...` reste la borne documentaire historique du 28 août ; il n’est plus la base technique courante.
-
-### Validations post-checkpoint
-- T13 : le cumulatif P1→P3 + correction du compilateur Bible a été validé en jeu sur la chaîne de craft/excursion : collecte des ingrédients utiles, fabrication réelle des rations, déplacement autonome, deuxième nouvelle map et présence de `MSC-CUSTOM-BOSQUET-BIO`.
-- Passe 4 UI : commit `a62c25ad...` validé en jeu sur le conflit Recherche/Inventaire ; les cycles Recherche → Inventaire → Recherche et inversement ne provoquent plus d’écran noir ni de `NotFoundError: removeChild`.
-- L’UI reste non propriétaire du gameplay ; les bridges doivent masquer leurs injections tardives plutôt que supprimer les nœuds appartenant à React.
-
-### Chantier différé prioritaire — CPU / cadence / autorité missionnelle
-Symptômes runtime à reprendre :
-- consommation CPU perçue en hausse, y compris sur maps connues ;
-- délai anormal entre actions malgré plusieurs cibles proches et plusieurs missions compatibles ;
-- état prolongé « observation du terrain / choix de la prochaine action » ;
-- retour au camp puis actions locales aléatoires alors que plusieurs missions restent actives.
-
-Constats HEAD déjà établis :
-- garde-fou pathfinding encore actif mais limité : shortlist BAC de 6 candidats, puis cache d’approche 1,2 s / déplacement ≤ 0,5 ;
-- ce garde-fou ne couvre pas les rescans d’intérêt / ObjectEvents ni les décisions ultérieures ;
-- `MissionManager` contient une cadence de planification de 1,2 s et des `retryAfter` pouvant atteindre 4–5 s ;
-- pendant un voyage événementiel, `ensureMissionTransitionIntent()` est appelé depuis `MissionManager.update()` à chaque frame et le plan de frontière inconnue peut être recalculé avant validation du contexte mémorisé ;
-- le surcoût n’est pas prouvé comme introduit directement par Passe 4.
-
-### Chantier différé — cohérence Survival
-Propriétaire inchangé : `survival-ai-bridge.js`.
-
-État actuel :
-`énergie = 55 % repos + 32 % alimentation + 13 % sécurité`.
-
-À reprendre :
-- rapprocher la perception de la barre Énergie des composantes réellement utilisées par les décisions de repos/alimentation ;
-- lisser les divergences excessives `rest / food / energy` sans moteur parallèle ;
-- conserver des besoins distincts : la barre agrégée ne doit pas effacer un vrai déficit de repos ou d’alimentation ;
-- vérifier la pertinence du seuil `preventiveMicroRest` à partir des composantes réelles.
+Les travaux encore ouverts sont listés uniquement dans `ROADMAP_TODO.md`.

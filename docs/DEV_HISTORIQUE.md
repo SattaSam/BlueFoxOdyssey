@@ -1,5 +1,41 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Session du 2 septembre 2026 — Shelter / Base renforcée — validation runtime et commit
+
+### Base finale
+- HEAD moteur validé : `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee`
+- Commit : `spawn base fix`
+- Parent : `4e4c5e47ac5f717aa6c319b6e3b223f2397e23cf`
+- Aucun nouveau recovery checkpoint créé.
+
+### Objet du chantier
+Finaliser la chaîne `Camp → Refuge → Base renforcée` sans nouveau propriétaire, sans bridge et sans interaction BlueFox finale fictive.
+
+### Corrections validées
+- `GAME-shelter` et `GAME-base` restent portées par les propriétaires existants.
+- Base renforcée : 500 fibres + 500 ressources du pool minéral/cristal + 100 études rocheuses.
+- Progression historique distinguée du stock physique disponible au moment de construire.
+- Stock insuffisant : mission active + réévaluation sur événements d'inventaire pertinents, sans polling ajouté.
+- Spawn réussi avant consommation ; consommation unique/idempotente.
+- Preset canonique propriétaire lorsqu'il existe ; `autonomousPlacement()` reste le fallback des constructions sans preset.
+- Faux positif du gate Base corrigé : la finalisation exige le site réellement établi par la mission.
+- Position Base renforcée sur crystal : `x=-2.7567, y=0.25, z=4.768`.
+- Après succès réel de la Base renforcée, le Refuge autonome est retiré visuellement, ses colliders sont retirés et `sites.refuge` est supprimé ; le Camp reste présent.
+
+### Validation
+- batterie dédiée Shelter/Base : PASS ;
+- stock insuffisant, reprise événementielle, idempotence, faux gate, fallback sans preset, suppression Refuge et reload couverts ;
+- spawn final validé en jeu ;
+- commit `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee` vérifié contre le cumulatif livré : les 11 blobs Git correspondent bit-for-bit.
+
+### Décisions durables
+- pas de migration automatique de sauvegarde pour compenser ce chantier ;
+- pas d'action finale fictive lorsqu'une mission se termine par un effet automatique réel ;
+- un changement de stade ne retire le site précédent qu'après succès du nouveau stade ;
+- la TODO courante reste `ROADMAP_TODO.md`.
+
+---
+
 ## Session du 28 août 2026 — Recovery checkpoint / clarification des propriétaires
 
 ### Base finale
@@ -91,7 +127,6 @@ Validation en jeu : T06 et `GAME-shelter / plantStudy`.
 - narration souveraine ; technique traduit sans réécrire.
 - MSC : rôles `triggerContext`, `objectiveSubject`, `scenarioSupport`.
 - décision : limiter les patrons, mutualiser par paramètres, développer les raccords seulement sur besoin réel.
-
 
 ---
 
