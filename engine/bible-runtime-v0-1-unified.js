@@ -66,6 +66,10 @@
       this.proximityContextTimer = null;
       this.localExplorationReconciling = false;
       this.localExplorationSessionRestored = false;
+      this.pendingConstructionResourceMissions = new Set();
+      this.constructionResourceSignatures = new Map();
+      this.boundProgressionChanged = (event) =>
+        this.onProgressionChanged(event.detail || {});
     }
 
     defaultState() {
@@ -2235,6 +2239,49 @@
       return this.attachSiteRecords(records, site, engine);
     }
 
+    removeEstablishedSite(site, memory = this.manager()?.memory, engine = BF.currentEngine) {
+      if (!site?.id || !site?.mapId || !site?.kind || !memory) return false;
+
+      const map = engine?.currentMap;
+      if (map && String(engine?.currentMapId || "") === String(site.mapId)) {
+        const roots = [];
+        map.group?.traverse?.((object) => {
+          if (String(object?.userData?.establishedSite || "") === String(site.id)) {
+            roots.push(object);
+          }
+        });
+        roots.forEach((root) => {
+          if (typeof BF.disposeObject === "function") BF.disposeObject(root);
+          else root?.parent?.remove?.(root);
+        });
+
+        if (Array.isArray(map.interactables)) {
+          map.interactables = map.interactables.filter((object) =>
+            String(object?.userData?.establishedSite || object?.parent?.userData?.establishedSite || "") !== String(site.id)
+          );
+        }
+        if (Array.isArray(map.colliders)) {
+          map.colliders = map.colliders.filter((collider) =>
+            String(collider?.owner?.userData?.establishedSite || "") !== String(site.id)
+          );
+          engine.character?.setColliders?.(map.colliders);
+        }
+      }
+
+      const progression = memory.state?.siteProgression?.[site.mapId];
+      const sites = progression?.sites;
+      if (sites && typeof sites === "object") {
+        const persisted = sites[site.kind];
+        if (String(persisted?.id || "") === String(site.id)) {
+          delete sites[site.kind];
+        }
+      } else if (String(progression?.id || "") === String(site.id)) {
+        delete memory.state.siteProgression[site.mapId];
+      }
+      memory.save?.();
+      return true;
+    }
+
     storeSite(site, memory = this.manager()?.memory) {
       if (!memory || !site?.mapId || !site?.kind) return false;
       memory.state.siteProgression = memory.state.siteProgression || {};
@@ -2250,6 +2297,217 @@
         sites: previousSites
       };
       return true;
+    }
+
+    inventoryKeysForRequirement(requirement = {}) {
+      if (requirement.inventoryKey) return [String(requirement.inventoryKey)];
+      const subject = lower(requirement.subject);
+      if (!subject) return [];
+
+      const keys = new Set();
+      BF.ObjectLibrary?.list?.({ status: "active" }).forEach((definition) => {
+        const inventoryKey = definition?.resource?.inventoryKey;
+        if (!inventoryKey) return;
+        const descriptors = new Set([
+          definition?.semantic?.subject,
+          definition?.knowledge?.family,
+          definition?.resource?.family,
+          definition?.category,
+          definition?.type,
+          ...(definition?.spawn?.tags || []),
+          ...(definition?.situation?.tags || [])
+        ].map(lower).filter(Boolean));
+        if (descriptors.has(subject)) keys.add(String(inventoryKey));
+      });
+      return [...keys];
+    }
+
+    constructionResourceStatus(missionOrId) {
+      const mission = typeof missionOrId === "string"
+        ? this.byId.get(String(missionOrId))
+        : missionOrId;
+      if (!mission) return null;
+      const consumes = asArray(mission.effects)
+        .filter((effect) => effect?.type === "inventory.consume");
+      if (!consumes.length) {
+        return {
+          missionId: mission.id,
+          ready: true,
+          missingTotal: 0,
+          requirements: []
+        };
+      }
+      const requirements = consumes.map((consume, index) => {
+        const inventoryKeys = this.inventoryKeysForRequirement(consume);
+        const required = Math.max(0, Number(consume.quantity) || 0);
+        const available = inventoryKeys.length
+          ? Math.max(0, Number(BF.progression?.availableInventory?.(inventoryKeys)) || 0)
+          : 0;
+        const missing = Math.max(0, required - available);
+        return {
+          index,
+          inventoryKey: consume.inventoryKey || null,
+          subject: consume.subject || null,
+          inventoryKeys,
+          required,
+          available,
+          missing,
+          deficitRatio: required > 0 ? missing / required : 0
+        };
+      });
+      return {
+        missionId: mission.id,
+        ready: requirements.every((entry) => entry.missing <= 0),
+        missingTotal: requirements.reduce((sum, entry) => sum + entry.missing, 0),
+        requirements
+      };
+    }
+
+    constructionResourceSignature(status) {
+      if (!status) return "";
+      return status.requirements
+        .map((entry) => `${entry.index}:${entry.available}/${entry.required}`)
+        .join("|");
+    }
+
+    publishConstructionResourceStatus(mission, status = this.constructionResourceStatus(mission)) {
+      if (!mission?.id || !status) return false;
+      const signature = this.constructionResourceSignature(status);
+      const previous = this.constructionResourceSignatures.get(mission.id) || "";
+      this.constructionResourceSignatures.set(mission.id, signature);
+      if (signature === previous) return false;
+      global.dispatchEvent?.(new CustomEvent("bluefox:construction-resources-changed", {
+        detail: clone(status)
+      }));
+      return true;
+    }
+
+    progressionChangeAffectsInventory(detail = {}) {
+      const reason = String(detail.reason || "");
+      if (["inventory-consumed", "inventory-pool-consumed", "inventory-reset"].includes(reason)) {
+        return true;
+      }
+      if (reason !== "event-consumed") return false;
+      const type = String(detail.event?.type || "");
+      return [
+        String(BF.ObjectEvents?.types?.RESOURCE_COLLECTED || "RESOURCE_COLLECTED"),
+        String(BF.ObjectEvents?.types?.RESOURCE_EXTRACTED || "RESOURCE_EXTRACTED")
+      ].includes(type);
+    }
+
+    onProgressionChanged(detail = {}) {
+      if (!this.progressionChangeAffectsInventory(detail)) return false;
+      if (!this.pendingConstructionResourceMissions.size) return false;
+      let changed = false;
+      for (const missionId of [...this.pendingConstructionResourceMissions]) {
+        const mission = this.byId.get(missionId);
+        const manager = this.manager();
+        const tree = manager?.trees?.get?.(missionId);
+        const lifecycle = manager?.memory?.state?.missionLifecycle?.[missionId];
+        if (!mission || lifecycle?.status !== "active" || !tree?.root?.isComplete) {
+          this.pendingConstructionResourceMissions.delete(missionId);
+          this.constructionResourceSignatures.delete(missionId);
+          continue;
+        }
+        const status = this.constructionResourceStatus(mission);
+        changed = this.publishConstructionResourceStatus(mission, status) || changed;
+        if (!status?.ready) continue;
+        this.pendingConstructionResourceMissions.delete(missionId);
+        this.handleConstructionReady(mission);
+      }
+      return changed;
+    }
+
+    constructionCollectionCandidate(engine, now = performance.now()) {
+      if (!engine || !this.pendingConstructionResourceMissions.size) return null;
+      const manager = engine.missionManager;
+      const missions = [...this.pendingConstructionResourceMissions]
+        .map((missionId) => this.byId.get(missionId))
+        .filter(Boolean)
+        .map((mission) => ({ mission, status: this.constructionResourceStatus(mission) }))
+        .filter(({ mission, status }) => {
+          const tree = manager?.trees?.get?.(mission.id);
+          const lifecycle = manager?.memory?.state?.missionLifecycle?.[mission.id];
+          return lifecycle?.status === "active" && tree?.root?.isComplete && status && !status.ready;
+        })
+        .sort((left, right) =>
+          Math.max(...right.status.requirements.map((entry) => entry.deficitRatio), 0) -
+          Math.max(...left.status.requirements.map((entry) => entry.deficitRatio), 0) ||
+          Number(right.mission.priority || 0) - Number(left.mission.priority || 0)
+        );
+      const selected = missions[0];
+      if (!selected) return null;
+      const deficits = selected.status.requirements
+        .filter((entry) => entry.missing > 0)
+        .sort((left, right) =>
+          right.deficitRatio - left.deficitRatio ||
+          right.missing - left.missing
+        );
+      if (!deficits.length) return null;
+      const deficit = deficits[0];
+      const keySet = new Set(deficit.inventoryKeys);
+      const interactables = (engine.currentMap?.interactables || []).filter((object) => {
+        if (!object?.userData?.active || engine.canInteractWith?.(object, now) === false) return false;
+        const data = object.userData || {};
+        const definition = data.functional || BF.ObjectLibrary?.get?.(data.libraryType) || BF.ObjectLibrary?.get?.(data.kind) || {};
+        const key = definition?.resource?.inventoryKey || data.inventoryKey || null;
+        if (!key || !keySet.has(String(key))) return false;
+        const actions = new Set(definition?.interaction?.actions || []);
+        return actions.has("collect") || actions.has("extract") || definition?.gameplay?.collectable === true;
+      });
+      if (!interactables.length) return null;
+      const origin = engine.character?.root?.position;
+      const point = (object) => object?.userData?.worldAnchor?.position || object?.position || null;
+      const target = [...interactables].sort((left, right) => {
+        if (!origin) return 0;
+        const lp = point(left); const rp = point(right);
+        const ld = lp ? origin.distanceTo(lp) : Infinity;
+        const rd = rp ? origin.distanceTo(rp) : Infinity;
+        return ld - rd;
+      })[0];
+      if (!target) return null;
+      const definition = target.userData?.functional || BF.ObjectLibrary?.get?.(target.userData?.libraryType) || BF.ObjectLibrary?.get?.(target.userData?.kind) || {};
+      const actions = new Set(definition?.interaction?.actions || []);
+      const configured = String(definition?.interaction?.acquisitionAction || definition?.interaction?.afterInspectionAction || "").toLowerCase();
+      const action = configured === "extract" && actions.has("extract")
+        ? "extract"
+        : actions.has("collect") || definition?.gameplay?.collectable === true
+          ? "collect"
+          : actions.has("extract")
+            ? "extract"
+            : null;
+      if (!action) return null;
+      const ratio = Math.max(0, Math.min(1, deficit.deficitRatio));
+      const absoluteBoost = Math.min(18, Math.log2(1 + deficit.missing) * 2.4);
+      const missionPriorityBoost = Math.min(20, Math.max(0, Number(selected.mission.priority) || 0) / 10);
+      return {
+        id: "bible-construction-resource-deficit",
+        axis: "collection",
+        baseWeight: Math.round(44 + ratio * 30 + absoluteBoost + missionPriorityBoost),
+        available: true,
+        allowDuringPrimaryMission: manager?.primaryMissionId === selected.mission.id,
+        missionDriven: true,
+        missionId: selected.mission.id,
+        inventoryKeys: [...deficit.inventoryKeys],
+        missing: deficit.missing,
+        required: deficit.required,
+        availableQuantity: deficit.available,
+        execute: () => {
+          target.userData.requestedInteraction = action;
+          target.userData.requestedInteractionSource = "autonomy";
+          const accepted = engine.targetInteraction?.(target);
+          if (accepted === false) {
+            target.userData.requestedInteraction = null;
+            target.userData.requestedInteractionSource = null;
+            target.userData.lastInteractionAt = performance.now();
+            return false;
+          }
+          engine.callbacks?.onStatus?.(
+            `BlueFox cherche les composants manquants pour ${selected.mission.title}.`
+          );
+          return true;
+        }
+      };
     }
 
     applyEffects(mission, options = {}) {
@@ -2296,8 +2554,14 @@
 
       for (const consume of consumes) {
         const quantity = Math.max(0, Number(consume.quantity) || 0);
-        if ((BF.progression?.availableInventory?.([consume.inventoryKey]) || 0) < quantity) return false;
+        const inventoryKeys = this.inventoryKeysForRequirement(consume);
+        if (!inventoryKeys.length) return false;
+        if ((BF.progression?.availableInventory?.(inventoryKeys) || 0) < quantity) return false;
       }
+
+      const replacedRefuge = establish.kind === "base"
+        ? this.siteBucket(targetMapId).refuge
+        : null;
 
       const site = {
         id: `${targetMapId}:${establish.kind}:primary`,
@@ -2320,15 +2584,19 @@
       for (const [index, consume] of consumes.entries()) {
         const quantity = Math.max(0, Number(consume.quantity) || 0);
         if (!quantity) continue;
+        const inventoryKeys = this.inventoryKeysForRequirement(consume);
         const removed = BF.consumeInventoryPoolOnce?.(
           `${receiptId}:consume:${index}`,
-          [consume.inventoryKey],
+          inventoryKeys,
           quantity
         );
         if (removed !== quantity) return false;
       }
 
-      this.storeSite(site, memory);
+      if (!this.storeSite(site, memory)) return false;
+      if (replacedRefuge) {
+        this.removeEstablishedSite(replacedRefuge, memory, BF.currentEngine);
+      }
       memory.recordEffectReceipt?.(receiptId, { missionId: mission.id, siteId: site.id });
       memory.save?.();
       this.state.gatesSatisfied[mission.id] = Date.now();
@@ -2377,30 +2645,34 @@
       const effect = this.constructionPlacementEffect(mission);
       if (!engine?.character?.root || !effect) return null;
       const kind = lower(effect.kind);
+      const targetMapId = String(
+        mission.targetMapId ||
+        mission.completionGate?.mapId ||
+        engine.currentMapId ||
+        ""
+      );
 
-      if (kind === "refuge") {
-        const camp = this.siteBucket(mission.targetMapId).camp;
-        if (!camp?.anchor) return null;
-        const campPreset = this.sitePlacementPreset("MSC-CUSTOM-CAMP", engine);
-        const refugePreset = this.sitePlacementPreset(effect.microSceneId, engine);
-        const campYaw = Number(camp.rotation?.[1]) || 0;
-        let dx = 6;
-        let dz = 2;
-        if (campPreset?.position && refugePreset?.position) {
-          dx = Number(refugePreset.position.x) - Number(campPreset.position.x);
-          dz = Number(refugePreset.position.z) - Number(campPreset.position.z);
-        }
+      const referenceKind = lower(effect.placement?.referenceKind);
+      if (referenceKind) {
+        const referenceSite = this.siteBucket(targetMapId)[referenceKind];
+        if (!referenceSite?.anchor) return null;
+
+        // Fallback générique uniquement pour une future construction sans
+        // preset canonique : progression relative au site de référence.
+        const referenceYaw = Number(referenceSite.rotation?.[1]) || 0;
+        const dx = 6;
+        const dz = 2;
         const baseDistance = Math.max(5, Math.hypot(dx, dz));
-        const baseAngle = Math.atan2(dz, dx) + campYaw;
+        const baseAngle = Math.atan2(dz, dx) + referenceYaw;
         for (const angleOffset of [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]) {
           const angle = baseAngle + angleOffset;
           const placement = {
             anchor: {
-              x: Number(camp.anchor.x) + Math.cos(angle) * baseDistance,
-              y: Number(camp.anchor.y) || 0,
-              z: Number(camp.anchor.z) + Math.sin(angle) * baseDistance
+              x: Number(referenceSite.anchor.x) + Math.cos(angle) * baseDistance,
+              y: Number(referenceSite.anchor.y) || 0,
+              z: Number(referenceSite.anchor.z) + Math.sin(angle) * baseDistance
             },
-            rotation: [0, campYaw + angleOffset + Math.PI / 6, 0]
+            rotation: [0, referenceYaw + angleOffset + Math.PI / 6, 0]
           };
           if (this.sitePlacementValid(mission, placement, engine)) return placement;
         }
@@ -2652,16 +2924,32 @@
         }
         return false;
       }
-      if (this.gateSatisfied(mission)) {
+      if (this.canFinalizeMission(mission.id)) {
         manager.syncLifecycleFromTrees?.();
         return true;
       }
       const source = mission.activationSource || this.state.constructionInstances?.[mission.id]?.source || "player";
+      const resourceStatus = this.constructionResourceStatus(mission);
+      if (resourceStatus && !resourceStatus.ready) {
+        this.pendingConstructionResourceMissions.add(mission.id);
+        this.publishConstructionResourceStatus(mission, resourceStatus);
+        return false;
+      }
+      this.pendingConstructionResourceMissions.delete(mission.id);
+      this.publishConstructionResourceStatus(mission, resourceStatus);
       if (source === "autonomy") {
-        const placement = this.autonomousPlacement(mission);
+        const effect = this.constructionPlacementEffect(mission);
+        const preset = this.sitePlacementPreset(effect?.microSceneId, BF.currentEngine);
+        const placement = preset?.position
+          ? {
+              anchor: clone(preset.position),
+              rotation: Array.isArray(preset.rotation)
+                ? preset.rotation.map((value) => Number(value) || 0)
+                : [0, Number(preset.rotation) || 0, 0]
+            }
+          : this.autonomousPlacement(mission);
         if (
           !placement ||
-          !this.sitePlacementValid(mission, placement, BF.currentEngine) ||
           !this.applyEffects(mission, { placement, source: "autonomy" })
         ) return false;
         manager.syncLifecycleFromTrees?.();
@@ -2911,7 +3199,7 @@
 
     applyActivationInventoryCredits(mission) {
       const credits = asArray(mission?.activationInventoryCredits)
-        .filter((credit) => credit?.slot && credit?.inventoryKey);
+        .filter((credit) => credit?.slot && (credit?.inventoryKey || credit?.subject));
       if (!credits.length) return false;
 
       const key = `${mission.id}:v${mission.version || 1}`;
@@ -2925,9 +3213,11 @@
       credits.forEach((credit) => {
         const node = tree.find?.(`${mission.id}:${credit.slot}`);
         if (!node || node.isComplete) return;
+        const inventoryKeys = this.inventoryKeysForRequirement(credit);
+        if (!inventoryKeys.length) return;
         const available = Math.max(
           0,
-          Number(BF.progression?.availableInventory?.([credit.inventoryKey])) || 0
+          Number(BF.progression?.availableInventory?.(inventoryKeys)) || 0
         );
         const maximum = Math.max(0, Number(credit.maximum) || node.target || 0);
         const credited = Math.min(node.target, maximum || node.target, available);
@@ -3023,6 +3313,14 @@
       global.addEventListener?.(
         "bluefox:mission-state",
         this.boundMissionState
+      );
+      global.removeEventListener?.(
+        "bluefox:progression-changed",
+        this.boundProgressionChanged
+      );
+      global.addEventListener?.(
+        "bluefox:progression-changed",
+        this.boundProgressionChanged
       );
       global.removeEventListener?.(
         "bluefox:map-transition-completed",
@@ -3191,6 +3489,10 @@
     runtime.observationCoverage(mapId);
   BF.getObservationCoverageTotals = () =>
     runtime.observationTotals();
+  BF.getConstructionResourceStatus = (missionId) =>
+    clone(runtime.constructionResourceStatus(missionId));
+  BF.getConstructionCollectionCandidate = (engine, now) =>
+    runtime.constructionCollectionCandidate(engine || BF.currentEngine, now);
   BF.isTutorialSurvivalCapabilityUnlocked = (capability) =>
     runtime.survivalCapabilityUnlocked(capability);
 

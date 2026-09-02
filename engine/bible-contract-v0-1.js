@@ -514,8 +514,15 @@
       }
 
       if (effect.type === "inventory.consume") {
-        if (!isNonEmptyString(effect.inventoryKey)) {
-          add(errors, missionId, `${path}.inventoryKey`, "clé requise.");
+        const hasInventoryKey = isNonEmptyString(effect.inventoryKey);
+        const hasSubject = isNonEmptyString(effect.subject);
+        if (hasInventoryKey === hasSubject) {
+          add(
+            errors,
+            missionId,
+            `${path}.inventoryKey/subject`,
+            "déclarer exactement inventoryKey ou subject."
+          );
         }
         if (!Number.isFinite(Number(effect.quantity)) || Number(effect.quantity) < 1) {
           add(errors, missionId, `${path}.quantity`, "doit être >= 1.");
@@ -547,6 +554,17 @@
             missionId,
             `${path}.placement`,
             "specific exige x et z numériques."
+          );
+        }
+        if (
+          placement.referenceKind != null &&
+          !SHELTER_KINDS.includes(placement.referenceKind)
+        ) {
+          add(
+            errors,
+            missionId,
+            `${path}.placement.referenceKind`,
+            "camp, refuge ou base requis."
           );
         }
       }

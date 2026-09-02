@@ -3,6 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions = BF.Missions || {};
+  const PROGRESS_BALANCE_WEIGHT = 20;
 
   class MissionPlanner {
     constructor(memory) {
@@ -39,8 +40,14 @@
       let score = 100;
       const type = Missions.normalizeActionType(node.type);
       if ([Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(type)) {
-        const available = context.resources?.[node.params.kind] || 0;
-        score += available ? 60 : -100;
+        // Les objectifs ciblés par `kind` peuvent utiliser le résumé de ressources
+        // construit par ActionBridge. Les objectifs plus riches (`subject`, family,
+        // tags...) restent évaluables ici et sont filtrés par ObjectM0, propriétaire
+        // canonique du matching missionnel des objets.
+        if (node.params.kind) {
+          const available = context.resources?.[node.params.kind] || 0;
+          score += available ? 60 : -100;
+        }
       }
       if (type === Missions.ActionType.EXPLORE_ZONE) {
         score += context.unexploredZones > 0 ||
@@ -61,7 +68,15 @@
       if (type === Missions.ActionType.EAT) {
         score += context.needs?.food ? 100 : 5;
       }
-      score -= node.progress * 2;
+      // La progression sert uniquement à répartir le travail entre feuilles
+      // parallèles. Elle ne doit jamais rendre inexécutable un objectif long
+      // encore faisable (par exemple 51/100 analyses ou 81/100 collectes).
+      const target = Math.max(1, Number(node.target) || 1);
+      const progressRatio = Math.max(
+        0,
+        Math.min(1, (Number(node.progress) || 0) / target)
+      );
+      score -= progressRatio * PROGRESS_BALANCE_WEIGHT;
       return score;
     }
 

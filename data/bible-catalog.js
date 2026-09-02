@@ -215,6 +215,7 @@
     }),
     initialState: "active",
     prerequisites: Object.freeze(["T03"]),
+    activationSource: "autonomy",
     priority: 54,
     passivePriorityAxis: "collection",
     sequence: Object.freeze([
@@ -249,16 +250,6 @@
           kind: "wood"
         })
       }),
-      Object.freeze({
-        slot: "reinforce",
-        title: "Transformer le camp en refuge",
-        action: "analyze",
-        target: 1,
-        requires: Object.freeze(["fibers", "plantStudy", "wood"]),
-        params: Object.freeze({
-          kind: "camp"
-        })
-      })
     ]),
     completionGate: Object.freeze({
       type: "proximity.shelter",
@@ -283,7 +274,10 @@
         kind: "refuge",
         microSceneId: "MSC-CUSTOM-CAMP-BASE",
         stage: 2,
-        placement: Object.freeze({ mode: "near-camp" })
+        placement: Object.freeze({
+          mode: "near-camp",
+          referenceKind: "camp"
+        })
       })
     ]),
     rewards: Object.freeze([
@@ -297,6 +291,86 @@
         requiresShelter: false
       })
     ])
+  });
+
+  const base = Object.freeze({
+    id: "GAME-base",
+    title: "Construire une base renforcée",
+    description: "Projet de Base renforcée : réunir les matériaux et connaissances nécessaires puis faire évoluer automatiquement le Refuge.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "manual",
+      count: 1
+    }),
+    initialState: "active",
+    prerequisites: Object.freeze(["GAME-shelter"]),
+    activationSource: "autonomy",
+    priority: 52,
+    passivePriorityAxis: "collection",
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "fibers",
+        title: "Réunir 500 plantes fibreuses",
+        action: "collect",
+        target: 500,
+        requires: Object.freeze([]),
+        params: Object.freeze({ kind: "fiber" })
+      }),
+      Object.freeze({
+        slot: "minerals",
+        title: "Réunir 500 minéraux ou cristaux",
+        action: "extract",
+        target: 500,
+        requires: Object.freeze([]),
+        params: Object.freeze({ subject: "mineral" })
+      }),
+      Object.freeze({
+        slot: "rockStudy",
+        title: "Observer, inspecter ou analyser 100 éléments rocheux",
+        action: "analyze",
+        target: 100,
+        requires: Object.freeze([]),
+        params: Object.freeze({ subject: "mineral" })
+      })
+    ]),
+    activationInventoryCredits: Object.freeze([
+      Object.freeze({ slot: "fibers", inventoryKey: "fiber", maximum: 500 }),
+      Object.freeze({ slot: "minerals", subject: "mineral", maximum: 500 })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["base"]),
+      radius: 9999,
+      scope: "current-map"
+    }),
+    effects: Object.freeze([
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKey: "fiber",
+        quantity: 500
+      }),
+      Object.freeze({
+        type: "inventory.consume",
+        subject: "mineral",
+        quantity: 500
+      }),
+      Object.freeze({
+        type: "site.establish",
+        kind: "base",
+        microSceneId: "MSC-CUSTOM-CAMP-BASE-REINFORCED",
+        stage: 3,
+        placement: Object.freeze({
+          mode: "near-camp",
+          referenceKind: "refuge"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      completed: Object.freeze([
+        "Le Refuge est devenu une Base renforcée capable de soutenir des excursions plus lointaines."
+      ])
+    })
   });
 
   const T04 = Object.freeze({
@@ -1449,6 +1523,7 @@
     T02,
     T03,
     shelter,
+    base,
     T04,
     T05,
     T06,

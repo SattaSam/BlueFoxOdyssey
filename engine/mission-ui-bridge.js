@@ -9,6 +9,7 @@
   const HUD_COMPLETION_MS = 6000;
   const hudExpandedMissions = new Set();
   const browserExpandedMissions = new Set();
+  const constructionResourceStatusByMission = new Map();
   let hudInitialized = false;
 
   function rememberExpanded(container, selector, target) {
@@ -355,6 +356,38 @@
     return true;
   }
 
+  function constructionRequirementLabel(requirement) {
+    const key = String(
+      requirement?.inventoryKey ||
+      requirement?.subject ||
+      requirement?.inventoryKeys?.[0] ||
+      "composants"
+    ).toLowerCase();
+    const labels = {
+      fiber: "fibres",
+      wood: "bois",
+      mineral: "minéraux / cristaux"
+    };
+    return labels[key] || key.replaceAll("_", " ");
+  }
+
+  function constructionShortages(mission) {
+    if (!mission?.missionId || mission.lifecycleStatus !== "active") return [];
+    let status = constructionResourceStatusByMission.get(mission.missionId) || null;
+
+    // Initialisation bornée : une seule lecture lors de la première apparition
+    // d'une mission complète. Les mises à jour suivantes viennent de
+    // bluefox:construction-resources-changed, jamais d'un polling inventaire.
+    if (!status && Number(mission.progress || 0) >= 1) {
+      status = BF.getConstructionResourceStatus?.(mission.missionId) || null;
+      if (status) constructionResourceStatusByMission.set(mission.missionId, status);
+    }
+
+    return Array.isArray(status?.requirements)
+      ? status.requirements.filter((entry) => Number(entry?.missing) > 0)
+      : [];
+  }
+
   function renderStep(node, index, currentAction) {
     const descendants = [];
     const collectDescendants = (candidate) => {
@@ -459,6 +492,14 @@
       missionGuidanceEnabled: state.missionGuidanceEnabled !== false,
       missionGuidanceResumeAt: state.missionGuidanceResumeAt || 0,
       currentAction: state.currentAction?.id || null,
+      constructionResources: [...constructionResourceStatusByMission.entries()].map(
+        ([missionId, status]) => [
+          missionId,
+          ...(status?.requirements || []).map((entry) =>
+            `${entry.available}/${entry.required}`
+          )
+        ]
+      ),
       hudCompleted: transientCompleted.map((mission) => mission.missionId),
       missions: (state.missions || []).map((mission) => [
         mission.missionId,
@@ -535,6 +576,13 @@
       const body = document.createElement("div");
       body.className = "mission-card-entry-body";
       if (mission.description) body.appendChild(createTextElement("p", "", mission.description));
+      constructionShortages(mission).forEach((requirement) => {
+        body.appendChild(createTextElement(
+          "small",
+          "m2-construction-shortage",
+          `Attention : seulement ${Math.floor(Number(requirement.available) || 0)} / ${Math.floor(Number(requirement.required) || 0)} ${constructionRequirementLabel(requirement)} actuellement dans l’inventaire.`
+        ));
+      });
       (mission.tree?.root?.children || []).forEach((node, index) => {
         body.appendChild(renderStep(node, index, state.currentAction));
       });
@@ -757,6 +805,17 @@
     if (!toolButton || toolButton.classList.contains("mission-tool-button")) return;
     document.querySelector(".mission-browser")?.remove();
   }, true);
+
+  global.addEventListener("bluefox:construction-resources-changed", (event) => {
+    const status = event.detail || null;
+    if (!status?.missionId) return;
+    constructionResourceStatusByMission.set(status.missionId, status);
+    lastSignature = "";
+    if (latestState) {
+      render(latestState);
+      renderMissionBrowser(latestState);
+    }
+  });
 
   global.addEventListener("bluefox:mission-state", (event) => {
     latestState = event.detail;

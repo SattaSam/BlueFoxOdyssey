@@ -86,11 +86,11 @@
       rotation: Object.freeze([0, 2.356194, 0])
     }),
     "MSC-CUSTOM-CAMP-BASE": Object.freeze({
-      position: Object.freeze({ x: -0.4399, y: 1.25, z: 4.9833 }),
+      position: Object.freeze({ x: -0.4399, y: 0.25, z: 4.9833 }),
       rotation: Object.freeze([0, 1.308997, 0])
     }),
     "MSC-CUSTOM-CAMP-BASE-REINFORCED": Object.freeze({
-      position: Object.freeze({ x: -2.7567, y: 1.5, z: 4.768 }),
+      position: Object.freeze({ x: -2.7567, y: 0.25, z: 4.768 }),
       rotation: Object.freeze([0, 1.308997, 0])
     })
   });

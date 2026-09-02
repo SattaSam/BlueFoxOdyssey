@@ -984,6 +984,8 @@
         this.missionManager?.hasPrimaryMissionAuthority?.() === true;
       const rationCandidate =
         BF.RationPolicy?.autonomyCandidate?.(this, now) || null;
+      const constructionCandidate =
+        BF.getConstructionCollectionCandidate?.(this, now) || null;
       const tutorialRationConsumeUnlocked = Boolean(
         survivalDecision?.routine === "food" &&
         BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") === true
@@ -1063,7 +1065,8 @@
 
       if (
         primaryMissionOwnsAction &&
-        rationCandidate?.allowDuringPrimaryMission !== true
+        rationCandidate?.allowDuringPrimaryMission !== true &&
+        constructionCandidate?.allowDuringPrimaryMission !== true
       ) return;
       this.lastAutonomyAt = now;
       const decision = createDecisionContext(this);
@@ -1121,6 +1124,7 @@
       const shelterOpportunity = autonomousShelterOpportunity(this, survival);
 
       const options = [
+        ...(constructionCandidate ? [constructionCandidate] : []),
         ...(rationCandidate ? [rationCandidate] : []),
         {
           id: "survival-rest",
@@ -1241,7 +1245,8 @@
           Date.now() - activePreference.lastAt < PREFERENCE_COMMIT_MS &&
           preferredCollectables.length > 0 &&
           preferredCollectionOption?.available &&
-          rationCandidate?.missionDriven !== true
+          rationCandidate?.missionDriven !== true &&
+          constructionCandidate?.missionDriven !== true
         );
 
       const selected = preferenceCommitmentActive

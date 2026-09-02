@@ -56,11 +56,20 @@
       this.pendingPrimaryMissionReason = null;
       this.pendingPauseMissionId = null;
       this.lastPriorityReviewAt = 0;
-      this.syncMissionSelection();
       this.currentAction = null;
       this.lastPlanAt = 0;
       this.retryAfter = 0;
       this.enabled = true;
+      if (!this.hasActivePrimaryMission()) {
+        this.primaryMissionId = "";
+        this.activeMissionId = "";
+        this.tree = null;
+        this.selectionReason = this.activeMissionIds.length
+          ? "Mission principale restaurée depuis les missions actives."
+          : "Aucune mission active.";
+        this.selectBestPrimary(performance.now(), true);
+      }
+      this.syncMissionSelection();
       this.onMissionTrigger = (event) => this.notifyMissionEvent(
         event.detail?.type || "event",
         event.detail || {}
@@ -204,7 +213,11 @@
       if (!this.activeMissionIds.includes(missionId)) {
         this.activeMissionIds.push(missionId);
       }
-      if (this.currentAction || this.bridge.isEngineBusy()) {
+      const replacingActivePrimary = this.hasActivePrimaryMission();
+      if (
+        this.currentAction ||
+        (replacingActivePrimary && this.bridge.isEngineBusy())
+      ) {
         this.pendingPrimaryMissionId = missionId;
         this.pendingPrimaryMissionReason = reason;
         this.selectionReason = `Changement vers « ${this.trees.get(missionId).title} » après l’action en cours.`;
@@ -816,7 +829,11 @@
     }
 
     selectBestPrimary(now = performance.now(), force = false) {
-      if (this.currentAction || this.bridge.isEngineBusy()) return false;
+      const replacingActivePrimary = this.hasActivePrimaryMission();
+      if (
+        this.currentAction ||
+        (replacingActivePrimary && this.bridge.isEngineBusy())
+      ) return false;
       if (this.isPlayerSelectedPrimary()) {
         this.selectionReason = "Priorité suggérée par le joueur.";
         return false;
@@ -1065,7 +1082,14 @@
       if (!this.enabled) return false;
       this.applyPendingTransitions();
       this.ensureMissionTransitionIntent();
-      if (now - this.lastPriorityReviewAt > 5000) {
+      if (
+        now - this.lastPriorityReviewAt > 5000 &&
+        !this.currentAction &&
+        (
+          !this.hasActivePrimaryMission() ||
+          !this.bridge.isEngineBusy()
+        )
+      ) {
         this.lastPriorityReviewAt = now;
         this.selectBestPrimary(now);
       }

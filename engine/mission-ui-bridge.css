@@ -84,6 +84,14 @@
   font-size: 9px;
 }
 
+.m0-mission-panel .m2-construction-shortage {
+  display: block;
+  margin: 0 2px 7px;
+  color: #c9a675;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 .mission-card-entry {
   margin: 7px 0;
   border: 1px solid rgba(107, 214, 255, .16);
