@@ -81,6 +81,21 @@
     ])
   });
 
+  const NARRATIVE_AXES = Object.freeze([
+    "EXPLORATEUR",
+    "SCIENTIFIQUE",
+    "NATURALISTE",
+    "ARCHEOLOGUE",
+    "INGENIEUR",
+    "LOGISTICIEN",
+    "DIPLOMATE",
+    "PROTECTEUR",
+    "OPPORTUNISTE",
+    "DOMINATEUR",
+    "MYSTIQUE",
+    "HISTORIEN"
+  ]);
+
   const EFFECT_TYPES = Object.freeze([
     "inventory.add",
     "inventory.consume",
@@ -360,6 +375,63 @@
         }
       });
     });
+  };
+
+  const validatePsychology = (mission, errors) => {
+    const missionId = mission?.id;
+
+    if (mission.ponderation != null) {
+      const value = Number(mission.ponderation);
+      if (!Number.isFinite(value) || value < -1 || value > 1) {
+        add(errors, missionId, "ponderation", "doit être comprise entre -1 et 1.");
+      }
+    }
+
+    if (mission.obsessionEligible != null && typeof mission.obsessionEligible !== "boolean") {
+      add(errors, missionId, "obsessionEligible", "doit être booléen.");
+    }
+    if (mission.obsessionIntensity != null) {
+      const value = Number(mission.obsessionIntensity);
+      if (!Number.isInteger(value) || value < 1 || value > 5) {
+        add(errors, missionId, "obsessionIntensity", "doit être un entier de 1 à 5.");
+      }
+    }
+
+    if (mission.souvenir != null && typeof mission.souvenir !== "boolean") {
+      add(errors, missionId, "souvenir", "doit être booléen.");
+    }
+    if (mission.memoryValence != null && !["positive", "negative"].includes(mission.memoryValence)) {
+      add(errors, missionId, "memoryValence", "doit valoir positive ou negative.");
+    }
+    if (mission.scoreTrauma != null) {
+      const value = Number(mission.scoreTrauma);
+      if (!Number.isFinite(value) || value < 0 || value > 100) {
+        add(errors, missionId, "scoreTrauma", "doit être compris entre 0 et 100.");
+      }
+    }
+    if (mission.souvenir === true && !mission.memoryValence) {
+      add(errors, missionId, "memoryValence", "requis lorsqu’un souvenir est déclaré.");
+    }
+    if (mission.souvenir === true && mission.scoreTrauma == null) {
+      add(errors, missionId, "scoreTrauma", "requis lorsqu’un souvenir est déclaré.");
+    }
+
+    if (mission.narrativeAxis != null && !NARRATIVE_AXES.includes(mission.narrativeAxis)) {
+      add(errors, missionId, "narrativeAxis", `axe narratif non supporté : ${mission.narrativeAxis}.`);
+    }
+    if (mission.reinforcesNarrativeAxis != null) {
+      const reinforcement = mission.reinforcesNarrativeAxis;
+      if (!isObject(reinforcement)) {
+        add(errors, missionId, "reinforcesNarrativeAxis", "doit être un objet.");
+      } else {
+        if (!NARRATIVE_AXES.includes(reinforcement.axis)) {
+          add(errors, missionId, "reinforcesNarrativeAxis.axis", "axe narratif non supporté.");
+        }
+        if (reinforcement.weight != null && !Number.isFinite(Number(reinforcement.weight))) {
+          add(errors, missionId, "reinforcesNarrativeAxis.weight", "doit être numérique.");
+        }
+      }
+    }
   };
 
   const validateNarrative = (mission, errors, warnings, compatibility) => {
@@ -849,6 +921,7 @@
     validateTrigger(mission, errors, warnings, compatibility);
     validateTriggerTargetRelation(mission, errors, compatibility);
     validateStepRelations(mission, errors);
+    validatePsychology(mission, errors);
     validateNarrative(mission, errors, warnings, compatibility);
     validateCompletionGate(mission, errors);
     validateEffects(mission, errors);

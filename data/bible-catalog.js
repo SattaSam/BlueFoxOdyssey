@@ -887,6 +887,14 @@
     localVisibility: "current-map",
     priority: 35,
     passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    narrativeAxis: "EXPLORATEUR",
+    reinforcesNarrativeAxis: Object.freeze({
+      axis: "EXPLORATEUR",
+      weight: 1
+    }),
     localExploration: Object.freeze({
       unlockMissionId: "T10",
       activationThreshold: 15,
@@ -931,6 +939,14 @@
     localVisibility: "current-map",
     priority: 30,
     passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    narrativeAxis: "EXPLORATEUR",
+    reinforcesNarrativeAxis: Object.freeze({
+      axis: "EXPLORATEUR",
+      weight: 1
+    }),
     localExploration: Object.freeze({
       unlockMissionId: "T10",
       activationThreshold: 60,

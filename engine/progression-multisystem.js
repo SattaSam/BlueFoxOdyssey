@@ -41,6 +41,12 @@
       maps: {}
     },
     mapIndicators: {},
+    psychology: {
+      narrativeAxes: {},
+      missionObsessions: {},
+      missionMemories: {},
+      completedMissionPsychology: {}
+    },
     journal: [],
     processedEventIds: []
   });
@@ -54,6 +60,14 @@
       research: { ...base.research, ...(saved.research || {}) },
       masteries: { ...base.masteries, ...(saved.masteries || {}) },
       mapIndicators: { ...(saved.mapIndicators || {}) },
+      psychology: {
+        ...base.psychology,
+        ...(saved.psychology || {}),
+        narrativeAxes: { ...(saved.psychology?.narrativeAxes || {}) },
+        missionObsessions: { ...(saved.psychology?.missionObsessions || {}) },
+        missionMemories: { ...(saved.psychology?.missionMemories || {}) },
+        completedMissionPsychology: { ...(saved.psychology?.completedMissionPsychology || {}) }
+      },
       journal: Array.isArray(saved.journal)
         ? saved.journal.slice(-MAX_JOURNAL_ENTRIES)
         : [],
@@ -258,6 +272,90 @@
       return true;
     }
 
+    narrativeAxisScore(axis) {
+      const key = cleanKey(axis, "");
+      return key ? Number(this.state.psychology?.narrativeAxes?.[key]) || 0 : 0;
+    }
+
+    missionObsessionPressure(missionId) {
+      const key = cleanKey(missionId, "");
+      return key ? Number(this.state.psychology?.missionObsessions?.[key]?.pressure) || 0 : 0;
+    }
+
+    memoryScoreForContext(context = {}) {
+      const missionId = cleanKey(context.missionId, "");
+      const narrativeAxis = cleanKey(context.narrativeAxis, "");
+      const memories = Object.values(this.state.psychology?.missionMemories || {});
+      let score = 0;
+      memories.forEach((memory) => {
+        if (!memory) return;
+        const sameMission = missionId && cleanKey(memory.missionId, "") === missionId;
+        const sameAxis = narrativeAxis && cleanKey(memory.narrativeAxis, "") === narrativeAxis;
+        if (!sameMission && !sameAxis) return;
+        const weight = Math.max(0, Math.min(100, Number(memory.scoreTrauma) || 0));
+        if (memory.valence === "positive") score += weight;
+        if (memory.valence === "negative") score -= weight;
+      });
+      return Math.max(-100, Math.min(100, score));
+    }
+
+    deferObsessiveMission(missionId, intensity = 1, now = Date.now()) {
+      const key = cleanKey(missionId, "");
+      if (!key) return 0;
+      const level = Math.max(1, Math.min(5, Number(intensity) || 1));
+      const bucket = this.state.psychology.missionObsessions;
+      const previous = bucket[key] || { pressure: 0, lastDeferredAt: 0, deferrals: 0 };
+      if (now - Number(previous.lastDeferredAt || 0) < 4500) return Number(previous.pressure) || 0;
+      const increments = { 1: 1.5, 2: 2.5, 3: 4, 4: 6, 5: 9 };
+      bucket[key] = {
+        pressure: Math.min(240, (Number(previous.pressure) || 0) + increments[level]),
+        lastDeferredAt: now,
+        deferrals: (Number(previous.deferrals) || 0) + 1,
+        intensity: level
+      };
+      this.save();
+      return bucket[key].pressure;
+    }
+
+    completeMissionPsychology(mission) {
+      if (!mission?.id) return false;
+      const psychology = this.state.psychology;
+      if (psychology.completedMissionPsychology[mission.id]) return false;
+
+      const reinforcement = mission.reinforcesNarrativeAxis;
+      if (reinforcement?.axis) {
+        const axis = cleanKey(reinforcement.axis);
+        const weight = Number.isFinite(Number(reinforcement.weight))
+          ? Number(reinforcement.weight)
+          : 1;
+        psychology.narrativeAxes[axis] =
+          (Number(psychology.narrativeAxes[axis]) || 0) + weight;
+      }
+
+      if (mission.souvenir === true) {
+        const valence = mission.memoryValence === "negative"
+          ? "negative"
+          : mission.memoryValence === "positive" ? "positive" : "neutral";
+        const scoreTrauma = Math.max(0, Math.min(100, Number(mission.scoreTrauma) || 0));
+        const narrativeAxis = cleanKey(
+          mission.narrativeAxis || reinforcement?.axis,
+          ""
+        );
+        psychology.missionMemories[mission.id] = {
+          missionId: mission.id,
+          acquiredAt: Date.now(),
+          valence,
+          scoreTrauma,
+          narrativeAxis: narrativeAxis || null
+        };
+      }
+
+      delete psychology.missionObsessions[mission.id];
+      psychology.completedMissionPsychology[mission.id] = Date.now();
+      this.save();
+      return true;
+    }
+
     unlockResearchSkill(skill) {
       if (!skill?.id) return false;
       this.state.research.skills = this.state.research.skills || {};
@@ -353,6 +451,12 @@
     };
   };
   BF.getMapProgressionIndicators = (mapId) => system.getMapIndicators(mapId);
+  BF.getNarrativeAxisScore = (axis) => system.narrativeAxisScore(axis);
+  BF.getMissionObsessionPressure = (missionId) => system.missionObsessionPressure(missionId);
+  BF.getPsychologicalMemoryScore = (context) => system.memoryScoreForContext(context);
+  BF.deferObsessiveMission = (missionId, intensity, now) =>
+    system.deferObsessiveMission(missionId, intensity, now);
+  BF.completeMissionPsychology = (mission) => system.completeMissionPsychology(mission);
   BF.addJournalEntry = (entry) => system.addJournalEntry(entry);
   BF.unlockResearchSkill = (skill) => system.unlockResearchSkill(skill);
   BF.resetMultiProgression = () => system.reset();

@@ -503,6 +503,19 @@
       const pattern = this.patterns[mission?.pattern];
       if (!mission || !pattern) return null;
 
+      const psychology = {
+        ponderation: mission.ponderation ?? null,
+        obsessionEligible: mission.obsessionEligible === true,
+        obsessionIntensity: mission.obsessionIntensity ?? null,
+        souvenir: mission.souvenir === true,
+        memoryValence: mission.memoryValence ?? null,
+        scoreTrauma: mission.scoreTrauma ?? null,
+        narrativeAxis: mission.narrativeAxis ?? null,
+        reinforcesNarrativeAxis: mission.reinforcesNarrativeAxis
+          ? clone(mission.reinforcesNarrativeAxis)
+          : null
+      };
+
       if (mission.pattern === "SEQUENCE_ACTIONS") {
         const steps = asArray(mission.sequence)
           .filter((step) => step && typeof step === "object");
@@ -568,6 +581,7 @@
             mission.passivePriorityAxis ||
             pattern.autonomyAxis ||
             null,
+          ...psychology,
           journalIntro: mission.narrative?.revealed?.[0] || "",
           navigation: mission.navigation ? clone(mission.navigation) : null,
           returnPolicy: mission.returnPolicy ? clone(mission.returnPolicy) : null,
@@ -669,6 +683,7 @@
           mission.passivePriorityAxis ||
           pattern.autonomyAxis ||
           null,
+        ...psychology,
         journalIntro: mission.narrative?.revealed?.[0] || "",
         navigation: mission.navigation ? clone(mission.navigation) : null,
         returnPolicy: mission.returnPolicy ? clone(mission.returnPolicy) : null,
@@ -3209,6 +3224,7 @@
         }
         if (!effectsReady) continue;
 
+        BF.completeMissionPsychology?.(mission);
         this.unlockResearchRewards(mission);
         this.emitCompletedOnce(mission);
       }

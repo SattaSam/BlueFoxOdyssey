@@ -6,6 +6,13 @@
   const VERSION = "BAC-3.0";
   const PRIORITY_BUDGET = 225;
   const MAX_DECISION_INFLUENCE = 0.25;
+  const MISSION_PSYCHOLOGY_TUNING = Object.freeze({
+    ponderationRatio: 0.15,
+    memoryRatio: 0.10,
+    narrativeRatioPerPoint: 0.02,
+    narrativeRatioCap: 0.25,
+    obsessionBaseRatios: Object.freeze({ 1: 0.01, 2: 0.02, 3: 0.035, 4: 0.055, 5: 0.08 })
+  });
   const RELATION_STORAGE_KEY = "bluefox_bac_relation_v1";
   const TRUST_TUNING = Object.freeze({
     alignedSuccess: 1.15,
@@ -468,6 +475,59 @@
     return { axis: normalized, priority, modifier };
   };
 
+  const missionPsychologyModifier = (definition, baseScore, missionId) => {
+    const score = Math.max(0, Number(baseScore) || 0);
+    if (!score) {
+      return { modifier: 0, parts: {} };
+    }
+
+    const ponderation = Math.max(-1, Math.min(1, Number(definition?.ponderation) || 0));
+    const ponderationModifier =
+      score * MISSION_PSYCHOLOGY_TUNING.ponderationRatio * ponderation;
+
+    const memoryScore = Math.max(
+      -100,
+      Math.min(
+        100,
+        Number(BF.getPsychologicalMemoryScore?.({
+          missionId,
+          narrativeAxis: definition?.narrativeAxis || null
+        })) || 0
+      )
+    );
+    const memoryModifier =
+      score * MISSION_PSYCHOLOGY_TUNING.memoryRatio * (memoryScore / 100);
+
+    const narrativeScore = definition?.narrativeAxis
+      ? Math.max(0, Number(BF.getNarrativeAxisScore?.(definition.narrativeAxis)) || 0)
+      : 0;
+    const narrativeRatio = Math.min(
+      MISSION_PSYCHOLOGY_TUNING.narrativeRatioCap,
+      narrativeScore * MISSION_PSYCHOLOGY_TUNING.narrativeRatioPerPoint
+    );
+    const narrativeModifier = score * narrativeRatio;
+
+    const intensity = Math.max(1, Math.min(5, Number(definition?.obsessionIntensity) || 1));
+    const obsessionBaseModifier = definition?.obsessionEligible === true
+      ? score * (MISSION_PSYCHOLOGY_TUNING.obsessionBaseRatios[intensity] || 0)
+      : 0;
+    const obsessionPressure = definition?.obsessionEligible === true
+      ? Math.max(0, Number(BF.getMissionObsessionPressure?.(missionId)) || 0)
+      : 0;
+
+    const parts = {
+      ponderation: ponderationModifier,
+      memory: memoryModifier,
+      narrative: narrativeModifier,
+      obsessionBase: obsessionBaseModifier,
+      obsessionPressure
+    };
+    return {
+      modifier: Object.values(parts).reduce((sum, value) => sum + value, 0),
+      parts
+    };
+  };
+
   const installMissionOverlay = () => {
     const Planner = BF.Missions?.MissionPlanner;
     const Manager = BF.Missions?.MissionManager;
@@ -545,15 +605,59 @@
             `BAC ${axis} ${influence.modifier >= 0 ? "+" : ""}${Math.round(influence.modifier)}`
           );
         }
+
+        const psychology = missionPsychologyModifier(
+          definition,
+          result.score,
+          missionId
+        );
+        result.score += psychology.modifier;
+        if (Math.abs(psychology.modifier) >= 0.5) {
+          result.reasons.push(
+            `psychologie ${psychology.modifier >= 0 ? "+" : ""}${Math.round(psychology.modifier)}`
+          );
+        }
         result.bac = {
           axis,
           priority: influence.priority,
-          modifier: influence.modifier
+          modifier: influence.modifier,
+          psychology
         };
         return result;
       };
       Manager.prototype.assessMission.__bluefoxBAC2 = true;
       Manager.prototype.__bluefoxBAC2AssessInstalled = true;
+      installed = true;
+    }
+
+    if (
+      Manager?.prototype &&
+      typeof Manager.prototype.selectBestPrimary === "function" &&
+      !Manager.prototype.__bluefoxMissionObsessionInstalled
+    ) {
+      const originalSelectBestPrimary = Manager.prototype.selectBestPrimary;
+      Manager.prototype.selectBestPrimary = function selectBestPrimaryWithObsession(...args) {
+        const changed = originalSelectBestPrimary.apply(this, args);
+        const context = this.bridge?.context?.() || {};
+        const selectedMissionId = this.primaryMissionId || "";
+        (this.activeMissionIds || []).forEach((missionId) => {
+          if (!missionId || missionId === selectedMissionId) return;
+          const lifecycle = this.ensureLifecycle?.(missionId);
+          if (lifecycle?.status !== "active" || lifecycle.autoPrimaryEligible === false) return;
+          const definition = this.definition?.(missionId) || {};
+          if (definition.obsessionEligible !== true) return;
+          const assessment = this.assessMission?.(missionId, context);
+          if (!assessment?.action) return;
+          BF.deferObsessiveMission?.(
+            missionId,
+            definition.obsessionIntensity || 1,
+            Date.now()
+          );
+        });
+        return changed;
+      };
+      Manager.prototype.selectBestPrimary.__bluefoxMissionObsession = true;
+      Manager.prototype.__bluefoxMissionObsessionInstalled = true;
       installed = true;
     }
 
@@ -710,6 +814,8 @@
     missionOverlayInstalled: state.missionOverlayInstalled,
     relationOverlayInstalled: state.relationOverlayInstalled,
     maxDecisionInfluence: MAX_DECISION_INFLUENCE,
+    missionPsychologyTuning: clone(MISSION_PSYCHOLOGY_TUNING),
+    psychology: BF.getMultiProgressionState?.().psychology || null,
     profile: readProfile(),
     relation: {
       awareness: relation.awareness,
