@@ -47,6 +47,11 @@
       at: Date.now(),
       objectId: data.catalogId || root?.userData?.catalogId || definition.id || null,
       instanceId: data.instanceId || root?.userData?.instanceId || null,
+      persistentMicroSceneId:
+        detail.persistentMicroSceneId ||
+        data.persistentMicroSceneId ||
+        root?.userData?.persistentMicroSceneId ||
+        null,
       family: definition.resource?.family || definition.knowledge?.family || definition.category || null,
       inventoryKey: detail.inventoryKey || definition.resource?.inventoryKey || null,
       knowledgeFamily: definition.knowledge?.family || null,

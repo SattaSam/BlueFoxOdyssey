@@ -1483,6 +1483,108 @@
     })
   });
 
+  const GEO01 = Object.freeze({
+    id: "GEO-01",
+    title: "Lire les couches",
+    description:
+      "Comparer trois falaises d’une même map en observant une roche géologique sur chacune pour lire les strates du terrain.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "east",
+      count: 1
+    }),
+    priority: 315,
+    passivePriorityAxis: "collection",
+    ponderation: 1,
+    mapGeneration: Object.freeze({
+      size: 6,
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-FALAISE1",
+          instanceId: "FALAISE1-A",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "geologyLayerA"
+        }),
+        Object.freeze({
+          id: "MSC-CUSTOM-FALAISE2",
+          instanceId: "FALAISE2",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "geologyLayerB"
+        }),
+        Object.freeze({
+          id: "MSC-CUSTOM-FALAISE1",
+          instanceId: "FALAISE1-B",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "geologyLayerC"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "layerA",
+        title: "Observer une roche de FALAISE1-A",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          family: "geology",
+          persistentMicroSceneId: "FALAISE1-A",
+          requiredMapFact: "tutorialExcursion:GEO-01",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "layerB",
+        title: "Observer une roche de FALAISE2",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          family: "geology",
+          persistentMicroSceneId: "FALAISE2",
+          requiredMapFact: "tutorialExcursion:GEO-01",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "layerC",
+        title: "Observer une roche de FALAISE1-B",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          family: "geology",
+          persistentMicroSceneId: "FALAISE1-B",
+          requiredMapFact: "tutorialExcursion:GEO-01",
+          requiredMapField: "generatedTargetMapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ces parois se répondent. Chaque strate ressemble à une époque comprimée dans la pierre ; je veux les lire sans confondre les falaises."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          at: 0.34,
+          text: "Une première couche se dessine. Il faut confronter les autres falaises avant de tirer une conclusion."
+        }),
+        Object.freeze({
+          at: 0.67,
+          text: "Deux falaises racontent déjà des histoires différentes. La troisième doit confirmer la lecture."
+        })
+      ]),
+      completed: Object.freeze([
+        "Trois falaises, trois lectures d’un même territoire : les strates forment une histoire géologique cohérente."
+      ])
+    })
+  });
+
   const SUR03 = Object.freeze({
     id: "SUR-03",
     title: "Composer une ration stable",
@@ -1683,6 +1785,7 @@
     T13,
     FLO01,
     FLO02,
+    GEO01,
     SUR03,
     COL_PLANT_20,
     COL_FIBER_20

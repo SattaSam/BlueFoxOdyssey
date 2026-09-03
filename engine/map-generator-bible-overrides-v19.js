@@ -92,6 +92,7 @@
           prescription.missionId ||
           "BIBLE-V01-RECONNAISSANCE",
         microSceneId: scene.id,
+        instanceId: scene.instanceId || null,
         contextRole: scene.contextRole || null,
         persistent: scene.persistent !== false,
         spawnOnce: scene.spawnOnce !== false,

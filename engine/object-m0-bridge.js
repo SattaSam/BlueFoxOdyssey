@@ -286,7 +286,8 @@
       kind: metadata.kind,
       family: metadata.family,
       subject: metadata.subject,
-      category: metadata.category
+      category: metadata.category,
+      persistentMicroSceneId: metadata.persistentMicroSceneId
     };
 
     for (const [key, actual] of Object.entries(exact)) {
@@ -345,6 +346,10 @@
         definition?.category ||
         event?.family,
       category: event?.category || definition?.category,
+      persistentMicroSceneId:
+        event?.persistentMicroSceneId ||
+        detail.persistentMicroSceneId ||
+        null,
       tags: [
         ...(event?.tags || []),
         ...(detail.tags || []),
@@ -361,24 +366,36 @@
     "subject",
     "category",
     "mapId",
-    "instanceId"
+    "instanceId",
+    "persistentMicroSceneId"
   ]);
 
-  const relationEvidence = (metadata = {}, mapId = null, instanceId = null) => ({
+  const relationEvidence = (
+    metadata = {},
+    mapId = null,
+    instanceId = null,
+    persistentMicroSceneId = null
+  ) => ({
     objectId: lower(metadata.objectId),
     cuoType: lower(metadata.cuoType),
     family: lower(metadata.family),
     subject: lower(metadata.subject),
     category: lower(metadata.category),
     mapId: String(mapId || ""),
-    instanceId: String(instanceId || "")
+    instanceId: String(instanceId || ""),
+    persistentMicroSceneId: String(
+      persistentMicroSceneId ||
+      metadata.persistentMicroSceneId ||
+      ""
+    )
   });
 
   const relationEvidenceFromEvent = (event) =>
     relationEvidence(
       eventMissionMetadata(event),
       event?.mapId,
-      event?.instanceId
+      event?.instanceId,
+      event?.persistentMicroSceneId
     );
 
   const relationEvidenceFromResolved = (resolved, mapId) =>
@@ -388,7 +405,10 @@
         ...identityOf(resolved)
       },
       mapId,
-      identityOf(resolved).instanceId
+      identityOf(resolved).instanceId,
+      resolved?.object?.userData?.persistentMicroSceneId ||
+        resolved?.anchor?.userData?.persistentMicroSceneId ||
+        null
     );
 
   const parsedRelationEvidence = (node) =>

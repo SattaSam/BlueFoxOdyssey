@@ -309,7 +309,8 @@
     "subject",
     "category",
     "mapId",
-    "instanceId"
+    "instanceId",
+    "persistentMicroSceneId"
   ]);
 
   const validateStepRelations = (mission, errors) => {

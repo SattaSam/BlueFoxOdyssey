@@ -159,6 +159,28 @@
       missionStatus(engine, mission.id) === "active"
     ) || null;
 
+  const prerequisitesSatisfied = (engine, mission) =>
+    (mission?.prerequisites || []).every((missionId) =>
+      missionStatus(engine, missionId) === "completed"
+    );
+
+  const dormantMapDiscoveryPrescriptionMission = (engine, direction) =>
+    catalog()
+      .filter((mission) => {
+        if (!mission?.id || !mission?.mapGeneration) return false;
+        if (missionStatus(engine, mission.id) != null) return false;
+        if (mission?.trigger?.type !== "exploration.map_discovered") return false;
+        if (
+          mission.trigger.direction != null &&
+          String(mission.trigger.direction) !== String(direction)
+        ) return false;
+        return prerequisitesSatisfied(engine, mission);
+      })
+      .sort((left, right) =>
+        (Number(right.priority) || 0) - (Number(left.priority) || 0) ||
+        catalog().indexOf(left) - catalog().indexOf(right)
+      )[0] || null;
+
   const unknownTravelUnlocked = (engine) => {
     const controlled = controlledNavigationMissions();
     if (!controlled.length) return true;
@@ -516,7 +538,12 @@
           const explicitMission = meta?.bibleMissionId
             ? missionById(meta.bibleMissionId)
             : null;
-          const mission = explicitMission || activeControlledNavigationMission(engine);
+          const activeMission = activeControlledNavigationMission(engine);
+          const dormantMission =
+            !explicitMission && !activeMission
+              ? dormantMapDiscoveryPrescriptionMission(engine, direction)
+              : null;
+          const mission = explicitMission || activeMission || dormantMission;
 
           if (!mission && !unknownTravelUnlocked(engine)) {
             engine.clearPersistentNavigationIntent?.();
