@@ -103,6 +103,9 @@
     definition.generator ||= {};
     definition.generator.bibleMissionId = prescription.missionId || null;
     definition.generator.biblePrescriptionApplied = true;
+    if (Array.isArray(prescription.requiredObjects)) {
+      definition.generator.requiredObjects = clone(prescription.requiredObjects);
+    }
     persist(definition);
     return definition;
   };

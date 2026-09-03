@@ -377,6 +377,66 @@
     });
   };
 
+  const REQUIRED_OBJECT_IDENTITY_FIELDS = Object.freeze([
+    "objectId",
+    "cuoType"
+  ]);
+
+  const validateMapGenerationRequiredObjects = (mission, errors) => {
+    const required = mission?.mapGeneration?.requiredObjects;
+    if (required == null) return;
+    const missionId = mission?.id;
+    const path = "mapGeneration.requiredObjects";
+    if (!Array.isArray(required) || !required.length) {
+      add(errors, missionId, path, "doit être un tableau non vide.");
+      return;
+    }
+
+    const steps = asArray(mission?.sequence).filter((step) => isObject(step));
+    const slotIndexes = new Map();
+    steps.forEach((step, index) => {
+      const slot = isNonEmptyString(step.slot) ? step.slot.trim() : `step${index + 1}`;
+      slotIndexes.set(slot, index);
+    });
+    const firstTravelIndex = steps.findIndex((step) =>
+      String(step?.action || "").trim().toLowerCase() === "travel"
+    );
+
+    required.forEach((entry, index) => {
+      const entryPath = `${path}[${index}]`;
+      if (!isObject(entry)) {
+        add(errors, missionId, entryPath, "doit être un objet.");
+        return;
+      }
+      if (entry.count != null) {
+        const count = Number(entry.count);
+        if (!Number.isInteger(count) || count < 1) {
+          add(errors, missionId, `${entryPath}.count`, "doit être un entier >= 1.");
+        }
+      }
+
+      const staticIdentity = isNonEmptyString(entry.objectId) || isNonEmptyString(entry.type);
+      const sourceSlot = String(entry.sourceSlot || "").trim();
+      if (staticIdentity && sourceSlot) {
+        add(errors, missionId, entryPath, "ne doit pas mélanger identité statique et sourceSlot.");
+        return;
+      }
+      if (staticIdentity) return;
+
+      if (!sourceSlot || !slotIndexes.has(sourceSlot)) {
+        add(errors, missionId, `${entryPath}.sourceSlot`, "doit référencer un slot existant.");
+        return;
+      }
+      if (firstTravelIndex < 0 || slotIndexes.get(sourceSlot) >= firstTravelIndex) {
+        add(errors, missionId, `${entryPath}.sourceSlot`, "doit référencer une étape antérieure au voyage de génération.");
+      }
+      const identityField = String(entry.identityField || "objectId").trim();
+      if (!REQUIRED_OBJECT_IDENTITY_FIELDS.includes(identityField)) {
+        add(errors, missionId, `${entryPath}.identityField`, `champ non supporté : ${identityField}.`);
+      }
+    });
+  };
+
   const validatePsychology = (mission, errors) => {
     const missionId = mission?.id;
 
@@ -921,6 +981,7 @@
     validateTrigger(mission, errors, warnings, compatibility);
     validateTriggerTargetRelation(mission, errors, compatibility);
     validateStepRelations(mission, errors);
+    validateMapGenerationRequiredObjects(mission, errors);
     validatePsychology(mission, errors);
     validateNarrative(mission, errors, warnings, compatibility);
     validateCompletionGate(mission, errors);

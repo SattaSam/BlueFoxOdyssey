@@ -24,6 +24,84 @@
     ) || null;
   };
 
+  const parsedMissionEvidence = (node) =>
+    (node?.historyValues || []).map((value) => {
+      try {
+        const parsed = JSON.parse(value);
+        return parsed?.owner === "object-m0" ? parsed.evidence || null : null;
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+
+  const resolveRequiredObjects = (engine, mission, prescription) => {
+    const required = Array.isArray(prescription?.requiredObjects)
+      ? prescription.requiredObjects
+      : [];
+    if (!required.length) return { requiredObjects: [], unresolved: false };
+
+    const tree = engine?.missionManager?.trees?.get?.(mission.id);
+    const resolved = [];
+    let unresolved = false;
+
+    required.forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      if (entry.objectId || entry.type) {
+        resolved.push(JSON.parse(JSON.stringify(entry)));
+        return;
+      }
+
+      const sourceSlot = String(entry.sourceSlot || "").trim();
+      const identityField = String(entry.identityField || "objectId").trim();
+      const sourceNode = sourceSlot
+        ? tree?.find?.(`${tree.id}:${sourceSlot}`)
+        : null;
+      const evidence = parsedMissionEvidence(sourceNode)
+        .slice()
+        .reverse()
+        .find((candidate) => candidate?.[identityField] != null);
+      const identity = evidence?.[identityField];
+
+      if (identity == null || identity === "") {
+        unresolved = true;
+        return;
+      }
+
+      const concrete = {
+        ...JSON.parse(JSON.stringify(entry)),
+        [identityField]: identity
+      };
+      if (identityField === "objectId") {
+        const normalizedId = String(identity).toLowerCase();
+        const definition =
+          BF.ObjectLibrary?.getById?.(identity) ||
+          BF.ObjectLibrary?.list?.({ status: "active" })?.find?.((candidate) =>
+            String(candidate?.id || "").toLowerCase() === normalizedId
+          ) ||
+          null;
+        if (!definition?.id || !definition?.type) {
+          unresolved = true;
+          return;
+        }
+        concrete.objectId = definition.id;
+        concrete.type = definition.type;
+      } else if (identityField === "cuoType") {
+        const definition = BF.ObjectLibrary?.get?.(String(identity));
+        if (!definition?.type) {
+          unresolved = true;
+          return;
+        }
+        concrete.type = definition.type;
+        concrete.objectId = definition.id || null;
+      }
+      delete concrete.sourceSlot;
+      delete concrete.identityField;
+      resolved.push(concrete);
+    });
+
+    return { requiredObjects: resolved, unresolved };
+  };
+
   const resolveMissionMapGeneration = (engine, mission) => {
     if (!mission?.id) return null;
     const travelNode = activeEventDrivenTravelNode(engine, mission);
@@ -32,9 +110,15 @@
       travelNode?.params?.mapGenerationOnCount?.[String(nextCount)] ||
       null;
     const prescription = staged || mission?.mapGeneration || null;
-    return prescription && typeof prescription === "object"
-      ? prescription
-      : null;
+    if (!prescription || typeof prescription !== "object") return null;
+
+    const resolved = JSON.parse(JSON.stringify(prescription));
+    if (Array.isArray(prescription.requiredObjects)) {
+      const dynamicObjects = resolveRequiredObjects(engine, mission, prescription);
+      resolved.requiredObjects = dynamicObjects.requiredObjects;
+      resolved.unresolvedRequiredObjects = dynamicObjects.unresolved;
+    }
+    return resolved;
   };
 
   const activeMapGenerationPrescription = () => {
@@ -347,13 +431,11 @@
     const previous = memory?.getFact?.(key, {}) || {};
     const repeatUntilComplete =
       mission?.navigation?.repeatUnknownTravelUntilComplete === true;
-    const travelNode = repeatUntilComplete
-      ? activeEventDrivenTravelNode(engine, mission)
-      : null;
+    const travelNode = activeEventDrivenTravelNode(engine, mission);
 
     if (previous.requesting === true) return false;
+    if (!travelNode || travelNode.isComplete) return false;
     if (repeatUntilComplete) {
-      if (!travelNode || travelNode.isComplete) return false;
       const progress = Math.max(0, Number(travelNode.progress) || 0);
       const requestedProgress = Math.max(
         0,
@@ -447,6 +529,12 @@
           if (!mission) return originalGenerateUnknownPassage(direction);
 
           const prescription = resolveMissionMapGeneration(engine, mission);
+          if (prescription?.unresolvedRequiredObjects === true) {
+            engine.callbacks?.onStatus?.(
+              "Le contenu requis par la mission doit être identifié avant de générer la prochaine zone."
+            );
+            return false;
+          }
 
           const manager = engine.missionManager;
           const excursionKey = `tutorialExcursion:${mission.id}`;

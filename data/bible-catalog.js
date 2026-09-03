@@ -1294,19 +1294,30 @@
     id: "FLO-01",
     title: "Inventaire vivant",
     description:
-      "Explorer une nouvelle map marquée par un bosquet biologique et distinguer plusieurs fonctions de sa flore.",
+      "Élargir l’étude de la map de comparaison et distinguer plusieurs fonctions de sa flore.",
     pattern: "SEQUENCE_ACTIONS",
     trigger: Object.freeze({
       type: "progression.mission_completed",
-      missionId: "T13",
+      missionId: "FLO-02",
       count: 1
     }),
     initialState: "active",
-    prerequisites: Object.freeze(["T13"]),
+    prerequisites: Object.freeze(["FLO-02"]),
     priority: 330,
     autoPrimaryEligible: true,
     primaryOnActivation: true,
     passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 30,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({
+      axis: "NATURALISTE",
+      weight: 1
+    }),
     proximityContexts: Object.freeze([
       Object.freeze({
         id: "bosquet-bio-world-open",
@@ -1325,8 +1336,8 @@
         params: Object.freeze({
           subject: "flora",
           distinctBy: "objectId",
-          requiredMapFact: "tutorialExcursion:FLO-01",
-          requiredMapField: "toMapId"
+          requiredMapFact: "tutorialExcursion:FLO-02",
+          requiredMapField: "generatedTargetMapId"
         })
       }),
       Object.freeze({
@@ -1339,8 +1350,8 @@
           scope: "map",
           metric: "surfacePercent",
           threshold: 40,
-          requiredMapFact: "tutorialExcursion:FLO-01",
-          requiredMapField: "toMapId"
+          requiredMapFact: "tutorialExcursion:FLO-02",
+          requiredMapField: "generatedTargetMapId"
         })
       })
     ]),
@@ -1358,16 +1369,59 @@
     id: "FLO-02",
     title: "Même espèce, autre monde",
     description:
-      "Comparer une même lignée végétale sur deux maps afin de confirmer son adaptation à des environnements différents.",
+      "Choisir une plante de référence puis comparer cette même espèce sur une nouvelle map.",
     pattern: "SEQUENCE_ACTIONS",
     trigger: Object.freeze({
       type: "progression.mission_completed",
-      missionId: "FLO-01",
+      missionId: "T13",
       count: 1
     }),
-    prerequisites: Object.freeze(["FLO-01"]),
-    priority: 285,
+    prerequisites: Object.freeze(["T13"]),
+    priority: 330,
+    autoPrimaryEligible: true,
+    primaryOnActivation: true,
     passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 30,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({
+      axis: "NATURALISTE",
+      weight: 1
+    }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-FERN-CLEARING-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "comparisonContext"
+        }),
+        Object.freeze({
+          id: "MSC-CUSTOM-BOSQUET-BIO",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "floraContext"
+        })
+      ]),
+      requiredObjects: Object.freeze([
+        Object.freeze({
+          sourceSlot: "referencePlant",
+          identityField: "objectId",
+          count: 1,
+          contextRole: "comparisonTarget"
+        })
+      ])
+    }),
     sequence: Object.freeze([
       Object.freeze({
         slot: "referencePlant",
@@ -1380,11 +1434,23 @@
         })
       }),
       Object.freeze({
+        slot: "reachComparisonMap",
+        title: "Rejoindre une nouvelle map pour comparer cette espèce",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["referencePlant"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
         slot: "comparePlant",
         title: "Analyser la même espèce sur une autre map",
         action: "analyze",
         target: 1,
-        requires: Object.freeze(["referencePlant"]),
+        requires: Object.freeze(["reachComparisonMap"]),
         params: Object.freeze({
           subject: "flora",
           relation: Object.freeze({
@@ -1397,7 +1463,19 @@
     ]),
     narrative: Object.freeze({
       revealed: Object.freeze([
-        "Une même lignée pourrait changer selon le monde qui l’abrite. Il faut comparer sans confondre les espèces."
+        "Je vais choisir une plante ici, puis vérifier si cette même lignée existe ailleurs et comment elle s’y adapte."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "referencePlant",
+          atCount: 1,
+          text: "J’ai ma référence. Je peux maintenant chercher cette même espèce sur un autre territoire."
+        }),
+        Object.freeze({
+          slot: "reachComparisonMap",
+          atCount: 1,
+          text: "Nouveau territoire. Si la même espèce est présente ici, la comparaison devient possible."
+        })
       ]),
       completed: Object.freeze([
         "Une adaptation végétale entre deux territoires est confirmée."

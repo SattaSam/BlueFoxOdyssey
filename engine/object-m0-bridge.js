@@ -424,21 +424,33 @@
     });
   };
 
-  const nodeIsRelationSource = (tree, node) => {
+  const nodeNeedsObjectEvidence = (tree, node) => {
     if (!tree?.root || !node) return false;
     const slot = String(node.params?.sequenceSlot || "").trim();
     if (!slot) return false;
-    let referenced = false;
+
+    let referencedByRelation = false;
     tree.root.walk?.((candidate) => {
       if (String(candidate?.params?.relation?.fromSlot || "").trim() === slot) {
-        referenced = true;
+        referencedByRelation = true;
       }
     });
-    return referenced;
+    if (referencedByRelation) return true;
+
+    const catalog = Array.isArray(BF.BibleCatalog)
+      ? BF.BibleCatalog
+      : Object.values(BF.BibleCatalog || {});
+    const mission =
+      BF.bibleRuntime?.byId?.get?.(tree.id) ||
+      catalog.find((entry) => entry?.id === tree.id) ||
+      null;
+    return asArray(mission?.mapGeneration?.requiredObjects).some((entry) =>
+      String(entry?.sourceSlot || "").trim() === slot
+    );
   };
 
   const rememberRelationEvidence = (tree, node, event) => {
-    if (!nodeIsRelationSource(tree, node)) return false;
+    if (!nodeNeedsObjectEvidence(tree, node)) return false;
     const evidence = relationEvidenceFromEvent(event);
     if (!evidence.objectId && !evidence.cuoType && !evidence.instanceId) return false;
     return node.pushHistoryValue?.(JSON.stringify({

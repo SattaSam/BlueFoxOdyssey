@@ -984,6 +984,54 @@
           if (center) placeObject(type, center.x, center.z, guard % 3, next() * Math.PI * 2);
         }
       };
+
+      const missionRequiredObjects = Array.isArray(definition.generator?.requiredObjects)
+        ? definition.generator.requiredObjects
+        : [];
+      missionRequiredObjects.forEach((requirement) => {
+        const byId = requirement?.objectId
+          ? BF.ObjectLibrary.getById?.(requirement.objectId)
+          : null;
+        const objectDefinition = byId || (
+          requirement?.type ? BF.ObjectLibrary.get(requirement.type) : null
+        );
+        const type = objectDefinition?.type || requirement?.type || null;
+        if (!type || !BF.ObjectLibrary.get(type)) return;
+
+        const target = Math.max(1, Math.floor(Number(requirement.count) || 1));
+        let guard = 0;
+        while ((placedTypeCounts.get(type) || 0) < target && guard < target * 96) {
+          guard += 1;
+          const radius = placement(type).radius;
+          const center = randomPosition(3.5, 24, radius, type, true);
+          if (!center) break;
+          const object = placeObject(
+            type,
+            center.x,
+            center.z,
+            guard % 3,
+            next() * Math.PI * 2
+          );
+          if (object?.root?.userData) {
+            object.root.userData.bibleMissionRequiredObject = true;
+            object.root.userData.bibleMissionId =
+              definition.generator?.bibleMissionId || null;
+            object.root.userData.bibleRequiredObjectId =
+              objectDefinition?.id || requirement.objectId || null;
+            object.root.userData.bibleRequiredContextRole =
+              requirement.contextRole || null;
+          }
+          if (object?.hitbox?.userData) {
+            object.hitbox.userData.bibleMissionRequiredObject = true;
+            object.hitbox.userData.bibleMissionId =
+              definition.generator?.bibleMissionId || null;
+            object.hitbox.userData.bibleRequiredObjectId =
+              objectDefinition?.id || requirement.objectId || null;
+            object.hitbox.userData.bibleRequiredContextRole =
+              requirement.contextRole || null;
+          }
+        }
+      });
       if (glassSteppe || vitrifiedLand) ensureCount("crystalline_tree", 2 + (populationRoll >= 0.5 ? 1 : 0));
       if (magneticContext) ensureCount("crystalline_tree", 2 + Math.floor(populationRoll * 5));
       if (fungalMushroomMap || swampMushroomMap) {

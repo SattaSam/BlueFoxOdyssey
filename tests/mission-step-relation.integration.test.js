@@ -78,7 +78,7 @@ function fixture() {
 
   window.BlueFox3D.mount = async (options) => options.engine;
   load("engine/object-m0-bridge.js");
-  return { window, storage };
+  return { window, storage, load };
 }
 
 function game(window) {
@@ -183,7 +183,7 @@ test("le contrat refuse les relations inter-etapes ambiguës", () => {
 });
 
 test("FLO-02 exige la même définition sur une autre map et guide l'autonomie vers elle", async () => {
-  const { window } = fixture();
+  const { window, load } = fixture();
   const { BF, engine, manager, position } = game(window);
   await BF.mount({ engine });
   activateFlo02(BF, manager);
@@ -196,14 +196,29 @@ test("FLO-02 exige la même définition sur une autre map et guide l'autonomie v
   emitStudy(BF, source, "map-a", "FLO-02:referencePlant");
   const tree = manager.trees.get("FLO-02");
   const reference = tree.find("FLO-02:referencePlant");
+  const travel = tree.find("FLO-02:reachComparisonMap");
   const compare = tree.find("FLO-02:comparePlant");
   assert.equal(reference.progress, 1);
+  assert.equal(travel.progress, 0);
   assert.equal(compare.progress, 0);
   assert.equal(reference.historyValues.length, 1);
 
-  // Même définition, même map : interdit.
+  // La prescription générique résout l'objet choisi depuis la preuve du slot source.
+  load("engine/bible-map-prescription-v19.js");
+  const prescription = BF.resolveBibleMapGenerationPrescription();
+  assert.equal(prescription.unresolvedRequiredObjects, false);
+  assert.equal(String(prescription.requiredObjects[0].objectId).toLowerCase(), String(sameDefinition.id).toLowerCase());
+  assert.equal(prescription.requiredObjects[0].type, sameDefinition.type);
+
+  // Tant que le voyage n'est pas réalisé, la comparaison reste verrouillée.
   emitStudy(BF, object(sameDefinition, "same-map", position(2)), "map-a", "FLO-02:comparePlant");
   assert.equal(compare.progress, 0);
+
+  // Une vraie transition missionnelle ouvre ensuite la feuille de comparaison.
+  travel.increment(1);
+  tree.refresh();
+  manager.memory.saveTree(tree);
+  assert.equal(travel.progress, 1);
 
   // Autre définition, autre map : interdit.
   emitStudy(BF, object(otherDefinition, "wrong-species", position(1)), "map-b", "FLO-02:comparePlant");
@@ -239,8 +254,73 @@ test("la preuve relationnelle FLO-02 survit à la sérialisation de l'arbre", as
   manager.tree = restored;
 
   const reference = restored.find("FLO-02:referencePlant");
+  const travel = restored.find("FLO-02:reachComparisonMap");
   const compare = restored.find("FLO-02:comparePlant");
   assert.equal(reference.historyValues.length, 1);
+  travel.increment(1);
+  restored.refresh();
+  manager.memory.saveTree(restored);
   emitStudy(BF, object(definition, "persist-target", position(2)), "map-b", "FLO-02:comparePlant");
   assert.equal(compare.progress, 1);
+});
+
+test("requiredObjects dynamique conserve sa preuve même sans relation inter-étapes", async () => {
+  const { window, load } = fixture();
+  const { BF, engine, manager, position } = game(window);
+  const mission = {
+    id: "REQ-OBJECT-GENERIC",
+    title: "Exigence objet générique",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: { type: "manual" },
+    slots: {},
+    priority: 200,
+    passivePriorityAxis: "research",
+    navigation: { autonomousUnknownTravel: true },
+    mapGeneration: {
+      requiredObjects: [
+        { sourceSlot: "source", identityField: "objectId", count: 1 }
+      ]
+    },
+    sequence: [
+      { slot: "source", title: "source", action: "analyze", target: 1, requires: [], params: { subject: "flora" } },
+      { slot: "travel", title: "travel", action: "travel", target: 1, requires: ["source"], params: { eventDriven: true, newOnly: true } }
+    ]
+  };
+
+  const validation = BF.BibleContractV01.validateMission(mission, BF.BiblePatterns);
+  assert.equal(validation.ok, true, validation.errors?.join("\n"));
+  const bad = BF.BibleContractV01.validateMission({
+    ...mission,
+    id: "REQ-OBJECT-BAD",
+    mapGeneration: { requiredObjects: [{ sourceSlot: "missing", identityField: "objectId" }] }
+  }, BF.BiblePatterns);
+  assert.equal(bad.ok, false);
+
+  const compiled = BF.bibleRuntime.compileMission(mission);
+  BF.bibleRuntime.byId.set(mission.id, mission);
+  BF.BibleCatalog = Object.freeze([...BF.BibleCatalog, mission]);
+  BF.registerMissionDefinitions([compiled]);
+  assert.equal(manager.startMission(mission.id, { primary: true }), true);
+  await BF.mount({ engine });
+
+  const definition = BF.ObjectLibrary.get("luminescent_tree");
+  assert.ok(definition);
+  const source = object(definition, "generic-source", position(1));
+  BF.ObjectEvents.emit(BF.ObjectEvents.types.PHENOMENON_OBSERVED, source, {
+    mapId: "map-a",
+    missionId: mission.id,
+    missionNodeId: `${mission.id}:source`,
+    subject: "flora",
+    cuoType: definition.type,
+    interactionSource: "mission"
+  });
+
+  const sourceNode = manager.trees.get(mission.id).find(`${mission.id}:source`);
+  assert.equal(sourceNode.historyValues.length, 1, "la preuve doit être persistée sans relation sameBy/differentBy");
+
+  load("engine/bible-map-prescription-v19.js");
+  const prescription = BF.resolveBibleMapGenerationPrescription();
+  assert.equal(prescription.unresolvedRequiredObjects, false);
+  assert.equal(String(prescription.requiredObjects[0].objectId).toLowerCase(), String(definition.id).toLowerCase());
+  assert.equal(prescription.requiredObjects[0].type, definition.type);
 });
