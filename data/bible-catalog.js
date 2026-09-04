@@ -2245,7 +2245,7 @@
     }
     const previous =
       threshold === 500
-        ? 100
+        ? 250
         : threshold === 1000
           ? 500
           : threshold === 250
@@ -2264,7 +2264,7 @@
     if (threshold === 20) return Object.freeze([]);
     const previous =
       threshold === 500
-        ? 100
+        ? 250
         : threshold === 1000
           ? 500
           : threshold === 250
