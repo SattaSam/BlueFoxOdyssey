@@ -1968,6 +1968,142 @@
     })
   });
 
+  const GEO07 = Object.freeze({
+    id: "GEO-07",
+    title: "Cartographie énergétique",
+    description:
+      "Comparer une même signature énergétique sur trois nouvelles maps afin de relier plusieurs anomalies à un réseau énergétique planétaire ; le réseau reste une interprétation narrative.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GEO-06",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GEO-06"]),
+    priority: 309,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CHARGED-CRYSTALS-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "energyNetworkSample"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachEnergyMap1",
+        title: "Découvrir une première nouvelle map énergétique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "measureEnergyMap1",
+        title: "Analyser le cristal chargé de la première map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["reachEnergyMap1"]),
+        params: Object.freeze({
+          objectId: "RES-ENER-M-001",
+          requiredMapFact: "tutorialExcursion:GEO-07",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "reachEnergyMap2",
+        title: "Découvrir une deuxième nouvelle map énergétique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["measureEnergyMap1"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "measureEnergyMap2",
+        title: "Comparer le même cristal chargé sur la deuxième map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["reachEnergyMap2"]),
+        params: Object.freeze({
+          objectId: "RES-ENER-M-001",
+          requiredMapFact: "tutorialExcursion:GEO-07",
+          requiredMapField: "generatedTargetMapId",
+          relation: Object.freeze({
+            fromSlot: "measureEnergyMap1",
+            sameBy: Object.freeze(["objectId"]),
+            differentBy: Object.freeze(["mapId"])
+          })
+        })
+      }),
+      Object.freeze({
+        slot: "reachEnergyMap3",
+        title: "Découvrir une troisième nouvelle map énergétique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["measureEnergyMap2"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "measureEnergyMap3",
+        title: "Comparer le même cristal chargé sur la troisième map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["reachEnergyMap3"]),
+        params: Object.freeze({
+          objectId: "RES-ENER-M-001",
+          requiredMapFact: "tutorialExcursion:GEO-07",
+          requiredMapField: "generatedTargetMapId",
+          relation: Object.freeze({
+            fromSlot: "measureEnergyMap2",
+            sameBy: Object.freeze(["objectId"]),
+            differentBy: Object.freeze(["mapId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Les anomalies se répondent à travers les maps. Je veux vérifier si une même signature énergétique réapparaît sur trois territoires distincts."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "measureEnergyMap1",
+          atCount: 1,
+          text: "Première mesure enregistrée. Une anomalie isolée ne suffit pas encore à dessiner un réseau."
+        }),
+        Object.freeze({
+          slot: "measureEnergyMap2",
+          atCount: 1,
+          text: "Deuxième signature concordante. La répétition dépasse maintenant le simple phénomène local."
+        })
+      ]),
+      completed: Object.freeze([
+        "Trois maps portent la même signature de cristal chargé. La cartographie énergétique révèle un système planétaire interconnecté."
+      ])
+    })
+  });
+
   const SUR03 = Object.freeze({
     id: "SUR-03",
     title: "Composer une ration stable",
@@ -2174,6 +2310,7 @@
     GEO04,
     GEO05,
     GEO06,
+    GEO07,
     SUR03,
     COL_PLANT_20,
     COL_FIBER_20

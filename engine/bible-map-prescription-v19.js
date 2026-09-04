@@ -466,7 +466,11 @@
       // Une génération déjà demandée doit produire une vraie transition et
       // créditer la feuille TRAVEL avant qu'une seconde demande soit possible.
       if (requestedProgress > progress) return false;
-    } else if (previous.generatedTargetMapId || previous.arrived === true) {
+    } else if (
+      (previous.generatedTargetMapId || previous.arrived === true) &&
+      String(previous.travelNodeId || travelNode?.id || "") ===
+        String(travelNode?.id || "")
+    ) {
       return false;
     }
 
@@ -485,6 +489,7 @@
       ...previous,
       direction,
       fromMapId: engine.currentMapId,
+      travelNodeId: String(travelNode?.id || ""),
       requesting: true,
       requestedProgress: repeatUntilComplete
         ? (Math.max(0, Number(travelNode?.progress) || 0) + 1)
