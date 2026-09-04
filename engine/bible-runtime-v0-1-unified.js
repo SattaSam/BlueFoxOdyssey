@@ -644,7 +644,10 @@
                 ...(requirement.params || {}),
                 bibleMissionId: mission.id,
                 biblePattern: mission.pattern,
-                bibleRequirementIndex: index
+                bibleRequirementIndex: index,
+                catalogManaged:
+                  requirement.params?.historicalCollection === true ||
+                  specific.params?.historicalCollection === true
               },
               requires: (step.requires || [])
                 .map((slot) => nodeIds[slot])
@@ -1646,6 +1649,7 @@
         this.emitRevealedOnce(mission, event);
         this.initializeRuntimeCounters(mission);
         this.reconcileRuntimeCounters(mission.id);
+        this.reconcileHistoricalCollections(mission.id);
         this.refreshProximityContextMonitor();
         this.lastActivationAttempt = diagnostic;
 
@@ -2323,6 +2327,98 @@
       return true;
     }
 
+    progressionChangeAffectsHistoricalCollections(detail = {}) {
+      return (
+        String(detail.reason || "") === "event-consumed" &&
+        String(detail.event?.type || "") === String(
+          BF.ObjectEvents?.types?.RESOURCE_COLLECTED || "RESOURCE_COLLECTED"
+        )
+      );
+    }
+
+    reconcileHistoricalCollections(missionFilter = null) {
+      const manager = this.manager();
+      if (!manager) return false;
+      let changed = false;
+
+      this.catalog.forEach((mission) => {
+        if (missionFilter && mission.id !== missionFilter) return;
+        if (!this.missionLifecycle(mission.id).active) return;
+        const tree = manager.trees?.get?.(mission.id);
+        if (!tree?.root) return;
+
+        let treeChanged = false;
+        tree.root.walk?.((node) => {
+          if (node?.params?.historicalCollection !== true) return;
+          const total = Math.max(
+            0,
+            Number(
+              BF.progression?.historicalCollectionTotal?.(node.params) ??
+              BF.getHistoricalCollectionTotal?.(node.params)
+            ) || 0
+          );
+          const absolute = Math.min(
+            Math.max(0, Number(node.target) || 0),
+            total
+          );
+          if (Number(node.progress || 0) === absolute) return;
+          node.progress = absolute;
+          treeChanged = true;
+        });
+
+        if (!treeChanged) return;
+        tree.refresh?.();
+        manager.memory?.saveTree?.(tree);
+        changed = true;
+      });
+
+      if (changed) {
+        manager.syncLifecycleFromTrees?.();
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+        manager.publish?.();
+      }
+      return changed;
+    }
+
+    isHistoricalCollectionMission(mission) {
+      const requirements = asArray(mission?.slots?.collect?.requirements);
+      return requirements.some((requirement) =>
+        requirement?.params?.historicalCollection === true
+      );
+    }
+
+    activateHistoricalCollectionFollowers() {
+      let activated = 0;
+      this.catalog.forEach((mission) => {
+        if (!this.isHistoricalCollectionMission(mission)) return;
+        if (mission?.trigger?.type !== "progression.mission_completed") return;
+        const sourceId = String(mission.trigger?.missionId || "");
+        if (!sourceId || !this.missionLifecycle(sourceId).completed) return;
+        const lifecycle = this.missionLifecycle(mission.id);
+        if (lifecycle.active || lifecycle.completed) return;
+        if (!this.prerequisitesSatisfied(mission)) return;
+        if (this.activateMission(mission, {
+          type: "progression.mission_completed",
+          missionId: sourceId,
+          amount: 1
+        })) activated += 1;
+      });
+      return activated;
+    }
+
+    reconcileHistoricalCollectionChains() {
+      let changed = false;
+      const limit = Math.max(1, this.catalog.length + 1);
+      for (let guard = 0; guard < limit; guard += 1) {
+        const progressed = this.reconcileHistoricalCollections();
+        const activated = this.activateHistoricalCollectionFollowers();
+        if (!progressed && !activated) break;
+        changed = true;
+      }
+      return changed;
+    }
+
     progressionChangeAffectsInventory(detail = {}) {
       const reason = String(detail.reason || "");
       if (["inventory-consumed", "inventory-pool-consumed", "inventory-reset"].includes(reason)) {
@@ -2337,9 +2433,12 @@
     }
 
     onProgressionChanged(detail = {}) {
-      if (!this.progressionChangeAffectsInventory(detail)) return false;
-      if (!this.pendingConstructionResourceMissions.size) return false;
       let changed = false;
+      if (this.progressionChangeAffectsHistoricalCollections(detail)) {
+        changed = this.reconcileHistoricalCollectionChains() || changed;
+      }
+      if (!this.progressionChangeAffectsInventory(detail)) return changed;
+      if (!this.pendingConstructionResourceMissions.size) return changed;
       for (const missionId of [...this.pendingConstructionResourceMissions]) {
         const mission = this.byId.get(missionId);
         const manager = this.manager();
@@ -3190,6 +3289,7 @@
 
       this.migrateLegacyRationUnlock();
       this.reconcileRuntimeCounters();
+      this.reconcileHistoricalCollectionChains();
       this.refreshProximityContextMonitor();
       this.reconcileLocalExploration(state);
       this.restoreLocalExplorationSession();
@@ -3386,6 +3486,7 @@
       if (!registration.ok) return registration;
 
       this.connect();
+      this.reconcileHistoricalCollectionChains();
       this.migrateLegacyRationUnlock();
       // Le chargement initial de Crystal ne garantit pas l'émission d'une
       // transition après que WorldEngine et ObjectSpawner soient prêts.

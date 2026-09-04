@@ -216,6 +216,107 @@
       });
     }
 
+    historicalCollectionDefinition(objectId) {
+      const id = String(objectId || "");
+      if (!id) return null;
+      return (
+        BF.ObjectLibrary?.getById?.(id) ||
+        BF.ObjectLibrary?.get?.(id) ||
+        BF.ObjectLibrary?.list?.({ status: "active" })?.find?.(
+          (definition) =>
+            String(definition?.id || "") === id ||
+            String(definition?.type || "") === id
+        ) ||
+        null
+      );
+    }
+
+    historicalCollectionMetadata(definition = {}) {
+      const lower = (value) => String(value ?? "").trim().toLowerCase();
+      return {
+        objectId: lower(definition.id),
+        cuoType: lower(definition.type),
+        kind: lower(
+          definition?.resource?.inventoryKey ||
+          definition?.type
+        ),
+        family: lower(
+          definition?.knowledge?.family ||
+          definition?.category
+        ),
+        resourceFamily: lower(definition?.resource?.family),
+        category: lower(definition?.category),
+        subject: lower(
+          definition?.semantic?.subject ||
+          definition?.knowledge?.family ||
+          definition?.category ||
+          definition?.type
+        ),
+        tags: [...new Set([
+          ...(definition?.spawn?.tags || []),
+          ...(definition?.situation?.tags || [])
+        ].map(lower).filter(Boolean))]
+      };
+    }
+
+    historicalCollectionMatches(criteria = {}, metadata = {}) {
+      const lower = (value) => String(value ?? "").trim().toLowerCase();
+      const list = (value) =>
+        (Array.isArray(value) ? value : value == null ? [] : [value])
+          .map(lower)
+          .filter(Boolean);
+
+      for (const key of [
+        "objectId", "cuoType", "kind", "family",
+        "resourceFamily", "category", "subject"
+      ]) {
+        if (
+          criteria[key] != null &&
+          lower(criteria[key]) !== lower(metadata[key])
+        ) return false;
+      }
+
+      const tags = new Set(list(metadata.tags));
+      const tagsAny = list(criteria.tagsAny);
+      if (tagsAny.length && !tagsAny.some((tag) => tags.has(tag))) return false;
+      const tagsAll = list(criteria.tagsAll);
+      if (tagsAll.length && !tagsAll.every((tag) => tags.has(tag))) return false;
+
+      const exclusions = {
+        excludeObjectIds: metadata.objectId,
+        excludeCuoTypes: metadata.cuoType,
+        excludeKinds: metadata.kind,
+        excludeFamilies: metadata.family,
+        excludeResourceFamilies: metadata.resourceFamily,
+        excludeCategories: metadata.category,
+        excludeSubjects: metadata.subject
+      };
+      for (const [key, actual] of Object.entries(exclusions)) {
+        if (list(criteria[key]).includes(lower(actual))) return false;
+      }
+
+      const excludedTags = list(criteria.excludeTagsAny);
+      return !excludedTags.some((tag) => tags.has(tag));
+    }
+
+    historicalCollectionTotal(criteria = {}) {
+      const eventType = String(
+        BF.ObjectEvents?.types?.RESOURCE_COLLECTED || "RESOURCE_COLLECTED"
+      );
+      const prefix = `${eventType}:object:`;
+      let total = 0;
+      Object.entries(this.state.counters.global || {}).forEach(([key, amount]) => {
+        if (!String(key).startsWith(prefix)) return;
+        const objectId = String(key).slice(prefix.length);
+        const definition = this.historicalCollectionDefinition(objectId);
+        if (!definition) return;
+        const metadata = this.historicalCollectionMetadata(definition);
+        if (!this.historicalCollectionMatches(criteria, metadata)) return;
+        total += Math.max(0, Number(amount) || 0);
+      });
+      return total;
+    }
+
     rememberDiscovery(collection, key, event) {
       if (key == null || key === "") return false;
       const safeKey = cleanKey(key);
@@ -438,6 +539,8 @@
   BF.ProgressionRegistry = ProgressionRegistry;
   BF.progression = registry;
   BF.getProgressionState = () => registry.snapshot();
+  BF.getHistoricalCollectionTotal = (criteria) =>
+    registry.historicalCollectionTotal(criteria);
   BF.consumeInventory = (key, amount) => registry.consumeInventory(key, amount);
   BF.availableInventory = (keys) => registry.availableInventory(keys);
   BF.consumeInventoryPool = (keys, amount) =>

@@ -2152,64 +2152,177 @@
     ])
   });
 
-  const COL_PLANT_20 = Object.freeze({
-    id: "COL-PLANT-20",
-    title: "Premiers échantillons — Plantes 20",
-    description:
-      "Collecter historiquement 20 unités de plantes afin d’ouvrir les connaissances avancées liées à la survie et à la recherche.",
-    pattern: "COLLECT_THEN_REWARD",
-    trigger: Object.freeze({
-      type: "interaction.collect",
-      count: 1,
-      subject: "flora"
+  const COLLECTION_FAMILIES = Object.freeze({
+    WOOD: Object.freeze({
+      key: "WOOD",
+      label: "Bois",
+      axis: "collection",
+      params: Object.freeze({ kind: "wood" }),
+      description: "menuiserie et construction"
     }),
-    triggerOnly: true,
-    requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
-    priority: 150,
-    passivePriorityAxis: "survival",
-    slots: Object.freeze({
-      collect: Object.freeze({
-        title: "Collecter 20 unités de plantes",
-        requirements: Object.freeze([
-          Object.freeze({
-            target: 20,
-            params: Object.freeze({
-              subject: "flora",
-              excludeKinds: Object.freeze(["wood"])
-            })
-          })
-        ])
-      })
+    FIBER: Object.freeze({
+      key: "FIBER",
+      label: "Fibres",
+      axis: "collection",
+      params: Object.freeze({ kind: "fiber" }),
+      description: "tissage et conservation"
+    }),
+    MINERAL: Object.freeze({
+      key: "MINERAL",
+      label: "Minerais",
+      axis: "research",
+      params: Object.freeze({
+        subject: "mineral",
+        excludeKinds: Object.freeze(["crystal"])
+      }),
+      description: "métallurgie et ingénierie"
+    }),
+    CRYSTAL: Object.freeze({
+      key: "CRYSTAL",
+      label: "Cristaux",
+      axis: "collection",
+      params: Object.freeze({ kind: "crystal" }),
+      description: "énergie et recherche"
+    }),
+    PLANT: Object.freeze({
+      key: "PLANT",
+      label: "Plantes",
+      axis: "survival",
+      params: Object.freeze({
+        subject: "flora",
+        excludeKinds: Object.freeze(["wood"])
+      }),
+      description: "survie, recettes et recherche"
     })
   });
 
-  const COL_FIBER_20 = Object.freeze({
-    id: "COL-FIBER-20",
-    title: "Premiers échantillons — Fibres 20",
-    description:
-      "Collecter historiquement 20 unités de fibres afin d’ouvrir les connaissances avancées liées au tissage et à la conservation.",
-    pattern: "COLLECT_THEN_REWARD",
-    trigger: Object.freeze({
-      type: "interaction.collect",
-      count: 1,
-      kind: "fiber"
-    }),
-    triggerOnly: true,
-    requiredFacts: Object.freeze(["worldContext:bosquet-bio"]),
-    priority: 149,
-    passivePriorityAxis: "collection",
-    slots: Object.freeze({
-      collect: Object.freeze({
-        title: "Collecter 20 unités de fibres",
-        requirements: Object.freeze([
-          Object.freeze({
-            target: 20,
-            params: Object.freeze({ kind: "fiber" })
-          })
+  const COLLECTION_THRESHOLDS = Object.freeze([20, 50, 100, 250, 500, 1000]);
+
+  const collectionTitle = (threshold) =>
+    threshold === 20
+      ? "Premiers échantillons"
+      : threshold === 50
+        ? "Réserve fiable"
+        : threshold === 100
+          ? "Maîtrise de collecte"
+          : threshold === 250
+            ? "Réserve confirmée"
+            : threshold === 500
+              ? "Maîtrise avancée"
+              : "Expertise de ressource";
+
+  const collectionPsychology = (threshold) => {
+    if (threshold === 250) return {};
+    if (threshold === 500) {
+      return {
+        ponderation: 1,
+        souvenir: true,
+        memoryValence: "positive",
+        scoreTrauma: 16
+      };
+    }
+    if (threshold === 1000) {
+      return {
+        ponderation: 1,
+        obsessionEligible: true,
+        obsessionIntensity: 3,
+        souvenir: true,
+        memoryValence: "negative",
+        scoreTrauma: 38
+      };
+    }
+    return { ponderation: 1 };
+  };
+
+  const collectionTrigger = (family, threshold) => {
+    if (threshold === 20) {
+      return Object.freeze({
+        type: "interaction.collect",
+        count: 1,
+        uniqueOnly: true,
+        ...family.params
+      });
+    }
+    const previous =
+      threshold === 500
+        ? 100
+        : threshold === 1000
+          ? 500
+          : threshold === 250
+            ? 100
+            : threshold === 100
+              ? 50
+              : 20;
+    return Object.freeze({
+      type: "progression.mission_completed",
+      missionId: `COL-${family.key}-${previous}`,
+      count: 1
+    });
+  };
+
+  const collectionPrerequisites = (family, threshold) => {
+    if (threshold === 20) return Object.freeze([]);
+    const previous =
+      threshold === 500
+        ? 100
+        : threshold === 1000
+          ? 500
+          : threshold === 250
+            ? 100
+            : threshold === 100
+              ? 50
+              : 20;
+    return Object.freeze([`COL-${family.key}-${previous}`]);
+  };
+
+  const createCollectionMission = (family, threshold, familyIndex) => {
+    const id = `COL-${family.key}-${threshold}`;
+    const psychology = collectionPsychology(threshold);
+    return Object.freeze({
+      id,
+      title: `${collectionTitle(threshold)} — ${family.label} ${threshold}`,
+      description:
+        `Collecter historiquement ${threshold} unités de ${family.label.toLowerCase()} ` +
+        `afin d’ouvrir les connaissances avancées liées à ${family.description}.`,
+      pattern: "COLLECT_THEN_REWARD",
+      trigger: collectionTrigger(family, threshold),
+      triggerOnly: true,
+      prerequisites: collectionPrerequisites(family, threshold),
+      priority: 150 - familyIndex,
+      passivePriorityAxis: family.axis,
+      ...psychology,
+      slots: Object.freeze({
+        collect: Object.freeze({
+          title: `Collecter historiquement ${threshold} unités de ${family.label.toLowerCase()}`,
+          requirements: Object.freeze([
+            Object.freeze({
+              target: threshold,
+              params: Object.freeze({
+                ...family.params,
+                historicalCollection: true
+              })
+            })
+          ])
+        })
+      }),
+      narrative: Object.freeze({
+        revealed: Object.freeze([
+          "À ce volume, je ne collecte plus au hasard : je commence à comprendre la place de cette ressource dans mon organisation."
+        ]),
+        completed: Object.freeze([
+          `Palier de collecte atteint : ${threshold} unités de ${family.label.toLowerCase()}.`
         ])
       })
-    })
-  });
+    });
+  };
+
+  const COLLECTION_MISSIONS = Object.freeze(
+    Object.values(COLLECTION_FAMILIES).flatMap((family, familyIndex) =>
+      COLLECTION_THRESHOLDS.map((threshold) =>
+        createCollectionMission(family, threshold, familyIndex)
+      )
+    )
+  );
 
 
 
@@ -2312,8 +2425,7 @@
     GEO06,
     GEO07,
     SUR03,
-    COL_PLANT_20,
-    COL_FIBER_20
+    ...COLLECTION_MISSIONS
   ]);
 
   BF.BibleRuntimeReference = Object.freeze({

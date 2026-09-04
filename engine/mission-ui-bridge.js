@@ -32,13 +32,13 @@
       energyMeter?.classList.add("survival-energy-meter");
     }
     let missionMeters = [...container.querySelectorAll("label:not(.survival-energy-meter)")];
-    while (missionMeters.length < 3 && missionMeters[0]) {
+    while (missionMeters.length < 2 && missionMeters[0]) {
       const clone = missionMeters[0].cloneNode(true);
       clone.classList.add("tracked-mission-meter");
       container.appendChild(clone);
       missionMeters.push(clone);
     }
-    const meters = missionMeters.slice(0, 3);
+    const meters = missionMeters.slice(0, 2);
     if (!meters.length) return;
     const tracked = [...(state.missions || [])]
       .filter((mission) => mission.lifecycleStatus === "active")
@@ -47,7 +47,7 @@
         const rightRank = Number(right.priorityRank) || (right.isPrimary ? 1 : 99);
         return leftRank - rightRank;
       })
-      .slice(0, 3);
+      .slice(0, 2);
     meters.forEach((meter, index) => {
       meter.classList.add("tracked-mission-meter");
       const mission = tracked[index];
@@ -543,6 +543,10 @@
     }
     const activeMissions = [...(state.missions || [])]
       .filter((mission) => mission.lifecycleStatus === "active")
+      .filter((mission) =>
+        !String(mission.missionId || "").startsWith("COL-") ||
+        Number(mission.priorityRank) > 0
+      )
       .sort((left, right) => {
         const leftRank = Number(left.priorityRank) || (left.isPrimary ? 1 : 99);
         const rightRank = Number(right.priorityRank) || (right.isPrimary ? 1 : 99);

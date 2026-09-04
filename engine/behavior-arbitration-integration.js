@@ -719,7 +719,7 @@
         ].filter(Boolean))]
           .filter((id) => this.trees?.has(id))
           .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
-          .slice(0, 3);
+          .slice(0, 4);
         this.prioritizedMissionIds = valid;
         if (this.memory?.state) {
           this.memory.state.prioritizedMissionIds = [...valid];
@@ -789,7 +789,7 @@
           ]
             .filter((id) => this.trees?.has(id))
             .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
-            .slice(0, 3);
+            .slice(0, 4);
           this.prioritizedMissionIds = queue;
           this.memory.state.prioritizedMissionIds = [...queue];
           this.memory.save?.();
@@ -838,7 +838,7 @@
             ]
               .filter(Boolean)
               .filter((id, index, values) => values.indexOf(id) === index)
-              .slice(0, 3);
+              .slice(0, 4);
             this.memory.state.prioritizedMissionIds = [
               ...this.prioritizedMissionIds
             ];
