@@ -29,7 +29,7 @@ function emit(BF,o,mapId,node){return BF.ObjectEvents.emit(BF.ObjectEvents.types
 
 test('GEO-01 catalogue/contrat: 3 falaises stables, 6 plateaux, psychologie minimale',()=>{
  const {window}=ctx(coreFiles); const BF=window.BlueFox3D; const m=BF.BibleCatalog.find(x=>x.id==='GEO-01'); assert.ok(m);
- assert.equal(BF.BibleCatalog.length,23); assert.equal(m.trigger.type,'exploration.map_discovered'); assert.equal(m.trigger.direction,'east'); assert.equal(m.mapGeneration.size,6); assert.equal(m.passivePriorityAxis,'collection'); assert.equal(m.ponderation,1); assert.equal(m.obsessionEligible,undefined); assert.equal(m.souvenir,undefined);
+ assert.equal(BF.BibleCatalog.length,26); assert.equal(m.trigger.type,'exploration.map_discovered'); assert.equal(m.trigger.direction,'east'); assert.equal(m.mapGeneration.size,6); assert.equal(m.passivePriorityAxis,'collection'); assert.equal(m.ponderation,1); assert.equal(m.obsessionEligible,undefined); assert.equal(m.souvenir,undefined);
  assert.deepEqual(Array.from(m.mapGeneration.requiredMicroScenes,x=>x.instanceId),['FALAISE1-A','FALAISE2','FALAISE1-B']);
  assert.equal(BF.BibleContractV01.validateMission(m,BF.BiblePatterns).ok,true);
  assert.equal(BF.BibleContractV01.validateMission({...m,id:'REL-PMS',sequence:[{slot:'a',action:'observe',target:1,params:{family:'geology'}},{slot:'b',action:'observe',target:1,requires:['a'],params:{family:'geology',relation:{fromSlot:'a',sameBy:['persistentMicroSceneId']}}}]},BF.BiblePatterns).ok,true);

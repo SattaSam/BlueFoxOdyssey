@@ -1585,6 +1585,199 @@
     })
   });
 
+
+  const GEO02 = Object.freeze({
+    id: "GEO-02",
+    title: "Reconnaître les minerais",
+    description:
+      "Distinguer plusieurs minerais réels par l’analyse puis en extraire des échantillons selon leur contrat CUO.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "west",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GEO-01"]),
+    priority: 314,
+    passivePriorityAxis: "collection",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "analyzeMinerals",
+        title: "Analyser 3 minerais différents",
+        action: "analyze",
+        target: 3,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "mineral",
+          distinctBy: "objectId"
+        })
+      }),
+      Object.freeze({
+        slot: "extractMinerals",
+        title: "Extraire 3 minerais différents",
+        action: "extract",
+        target: 3,
+        requires: Object.freeze(["analyzeMinerals"]),
+        params: Object.freeze({
+          subject: "mineral",
+          distinctBy: "objectId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La couleur ne suffit pas. La densité et la structure racontent davantage ; je vais comparer plusieurs minerais avant d’en prélever des échantillons."
+      ]),
+      completed: Object.freeze([
+        "Trois signatures minérales distinctes sont confirmées et leurs échantillons peuvent maintenant servir de références fiables."
+      ])
+    })
+  });
+
+  const GEO03 = Object.freeze({
+    id: "GEO-03",
+    title: "Failles actives",
+    description:
+      "Étudier un basalte résonant dans une faille puis extraire ce même spécimen pour confirmer l’activité géologique observée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "west",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GEO-02"]),
+    priority: 313,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-BASALT-RIFT",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "geologicalActivityContext"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "analyzeBasalt",
+        title: "Analyser le basalte résonant de la faille",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "resonant_basalt"
+        })
+      }),
+      Object.freeze({
+        slot: "extractBasalt",
+        title: "Extraire ce même basalte résonant",
+        action: "extract",
+        target: 1,
+        requires: Object.freeze(["analyzeBasalt"]),
+        params: Object.freeze({
+          cuoType: "resonant_basalt",
+          relation: Object.freeze({
+            fromSlot: "analyzeBasalt",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La roche bouge encore, lentement mais sûrement. Le basalte de cette faille devrait conserver une signature mesurable."
+      ]),
+      completed: Object.freeze([
+        "La résonance appartient bien au matériau de la faille : l’échantillon extrait confirme une activité géologique récente."
+      ])
+    })
+  });
+
+  const GEO04 = Object.freeze({
+    id: "GEO-04",
+    title: "Veines profondes",
+    description:
+      "Prendre un basalte résonant comme référence puis retrouver cette même définition minérale sur une autre map.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GEO-03",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GEO-03"]),
+    priority: 312,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredObjects: Object.freeze([
+        Object.freeze({
+          sourceSlot: "referenceBasalt",
+          identityField: "objectId",
+          count: 1,
+          contextRole: "geologicalContinuityTarget"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "referenceBasalt",
+        title: "Analyser un basalte résonant de référence",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "resonant_basalt"
+        })
+      }),
+      Object.freeze({
+        slot: "reachOtherMap",
+        title: "Rejoindre une nouvelle map pour suivre le filon",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["referenceBasalt"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "compareBasalt",
+        title: "Analyser le même basalte résonant sur une autre map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["reachOtherMap"]),
+        params: Object.freeze({
+          cuoType: "resonant_basalt",
+          relation: Object.freeze({
+            fromSlot: "referenceBasalt",
+            sameBy: Object.freeze(["objectId"]),
+            differentBy: Object.freeze(["mapId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ce filon ne s’arrête pas ici. S’il traverse le sous-sol à l’échelle régionale, je dois retrouver la même signature sur un autre territoire."
+      ]),
+      completed: Object.freeze([
+        "La même définition de basalte résonant réapparaît sur une autre map : la continuité géologique est confirmée sans inventer de nouvel objet moteur."
+      ])
+    })
+  });
+
   const SUR03 = Object.freeze({
     id: "SUR-03",
     title: "Composer une ration stable",
@@ -1786,6 +1979,9 @@
     FLO01,
     FLO02,
     GEO01,
+    GEO02,
+    GEO03,
+    GEO04,
     SUR03,
     COL_PLANT_20,
     COL_FIBER_20
