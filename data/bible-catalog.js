@@ -1778,6 +1778,196 @@
     })
   });
 
+  const GEO05 = Object.freeze({
+    id: "GEO-05",
+    title: "Roches en suspension",
+    description:
+      "Étudier les indices réels d’un secteur occidental où des îlots mobiles et des minerais magnétiques donnent un contexte aux roches en suspension ; le champ magnétique reste narratif.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "west",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GEO-04"]),
+    priority: 311,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-ILES-SUSPENDUES2",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "suspendedRocksContext"
+        }),
+        Object.freeze({
+          id: "MSC-SUSPENDED-ISLAND-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "mobileIsletContext"
+        })
+      ]),
+      requiredObjects: Object.freeze([
+        Object.freeze({
+          type: "magnetic_ore",
+          count: 1,
+          contextRole: "magneticOreContext"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "analyzeMagneticOre",
+        title: "Analyser un minerai magnétique",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "magnetic_ore"
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeMobileIslet",
+        title: "Analyser un îlot mobile",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "mobile_islet"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Vers l’ouest, certaines masses rocheuses semblent suspendues. Je vais m’en tenir aux indices mesurables : minerais magnétiques et îlots réellement mobiles."
+      ]),
+      completed: Object.freeze([
+        "Les roches en suspension ont des indices matériels cohérents. Le « champ magnétique » reste mon interprétation du phénomène, pas un nouvel objet du moteur."
+      ])
+    })
+  });
+
+  const GEO06 = Object.freeze({
+    id: "GEO-06",
+    title: "Le cœur magnétique",
+    description:
+      "Poursuivre deux cartes vers l’ouest, atteindre en second un territoire magnétique à cristaux chargés puis analyser ses objets et phénomènes réels.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GEO-05",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GEO-05"]),
+    priority: 310,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      repeatUnknownTravelUntilComplete: true
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "newMapsWest",
+        title: "Découvrir 2 nouvelles maps vers l’ouest",
+        action: "travel",
+        target: 2,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          direction: "west",
+          mapGenerationOnCount: Object.freeze({
+            2: Object.freeze({
+              size: "random",
+              biome: "magnetic",
+              requiredMicroScenes: Object.freeze([
+                Object.freeze({
+                  id: "MSC-CHARGED-CRYSTALS-001",
+                  persistent: true,
+                  spawnOnce: true,
+                  contextRole: "magneticCoreContext"
+                })
+              ]),
+              requiredObjects: Object.freeze([
+                Object.freeze({
+                  type: "magnetic_ore",
+                  count: 1,
+                  contextRole: "magneticCoreOre"
+                }),
+                Object.freeze({
+                  type: "electrostatic_storm",
+                  count: 1,
+                  contextRole: "magneticCoreStorm"
+                })
+              ])
+            })
+          })
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeMagneticOre",
+        title: "Analyser un minerai magnétique sur la seconde map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["newMapsWest"]),
+        params: Object.freeze({
+          cuoType: "magnetic_ore",
+          requiredMapFact: "tutorialExcursion:GEO-06",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeEnergyCrystal",
+        title: "Analyser un cristal d’énergie sur la seconde map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["newMapsWest"]),
+        params: Object.freeze({
+          cuoType: "energy_crystal",
+          requiredMapFact: "tutorialExcursion:GEO-06",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeStorm",
+        title: "Analyser une tempête électrostatique sur la seconde map",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["newMapsWest"]),
+        params: Object.freeze({
+          cuoType: "electrostatic_storm",
+          requiredMapFact: "tutorialExcursion:GEO-06",
+          requiredMapField: "generatedTargetMapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Les indices deviennent plus nets vers l’ouest. Deux nouvelles zones devraient suffire pour atteindre le foyer le plus chargé sans inventer un « champ magnétique » comme objet."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "newMapsWest",
+          atCount: 1,
+          text: "Première zone franchie vers l’ouest. Je poursuis : la signature la plus forte devrait être plus loin."
+        }),
+        Object.freeze({
+          slot: "newMapsWest",
+          atCount: 2,
+          text: "La seconde zone est magnétique. Cristaux chargés, minerai et phénomènes électrostatiques donnent enfin des cibles mesurables."
+        })
+      ]),
+      completed: Object.freeze([
+        "Le cœur magnétique est décrit par des phénomènes réels et convergents. Le champ lui-même reste une lecture narrative de leurs effets."
+      ])
+    })
+  });
+
   const SUR03 = Object.freeze({
     id: "SUR-03",
     title: "Composer une ration stable",
@@ -1982,6 +2172,8 @@
     GEO02,
     GEO03,
     GEO04,
+    GEO05,
+    GEO06,
     SUR03,
     COL_PLANT_20,
     COL_FIBER_20

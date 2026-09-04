@@ -472,9 +472,14 @@
 
     const directions = unknownDirectionsFrom(engine);
     if (!directions.length) return false;
-    const direction = directions[
-      Math.floor(Math.random() * directions.length)
-    ] || directions[0];
+    const preferredDirection = String(travelNode?.params?.direction || "")
+      .trim()
+      .toLowerCase();
+    const direction = directions.includes(preferredDirection)
+      ? preferredDirection
+      : (directions[
+          Math.floor(Math.random() * directions.length)
+        ] || directions[0]);
 
     memory?.setFact?.(key, {
       ...previous,
