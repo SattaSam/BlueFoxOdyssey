@@ -3061,6 +3061,7 @@
       prerequisites: collectionPrerequisites(family, threshold),
       priority: 150 - familyIndex,
       passivePriorityAxis: family.axis,
+      backgroundHud: true,
       ...psychology,
       slots: Object.freeze({
         collect: Object.freeze({
@@ -3094,6 +3095,281 @@
       )
     )
   );
+
+
+  const ENV_THRESHOLDS = Object.freeze([20, 50, 100, 250, 500, 1000]);
+  const ENV_FAMILIES = Object.freeze({
+    RELIC: Object.freeze({
+      key: "RELIC",
+      label: "vestiges",
+      titles: Object.freeze({
+        20: "Premiers vestiges",
+        50: "Motifs récurrents",
+        100: "Lecture des traces",
+        250: "Géographie des vestiges",
+        500: "Mémoire du paysage",
+        1000: "Atlas des présences anciennes"
+      }),
+      revealed: Object.freeze({
+        20: "Quelques formes reviennent déjà. Ce ne sont plus des accidents isolés : je veux garder la trace de chaque vestige.",
+        50: "Les stèles et les arches commencent à dessiner une grammaire. Je reconnais des motifs avant même d’en comprendre l’origine.",
+        100: "Les traces se répondent. Je peux commencer à distinguer les formes isolées des présences qui structurent un territoire.",
+        250: "À cette échelle, les vestiges cessent d’être des points : ils dessinent une géographie.",
+        500: "À cette échelle, les vestiges forment une mémoire inscrite dans le relief. Je peux comparer des régions entières.",
+        1000: "Mille présences anciennes : ce relevé devient un atlas plutôt qu’une suite de découvertes."
+      })
+    }),
+    ROCK: Object.freeze({
+      key: "ROCK",
+      label: "roches",
+      titles: Object.freeze({
+        20: "Premiers reliefs",
+        50: "Formes récurrentes",
+        100: "Lecture du substrat",
+        250: "Variations de terrain",
+        500: "Structure du monde",
+        1000: "Atlas lithique"
+      }),
+      revealed: Object.freeze({
+        20: "Vingt roches ne font pas une planète, mais elles suffisent pour arrêter de regarder le sol comme un simple décor.",
+        50: "Les mêmes formes de relief reviennent. Je veux comprendre ce qui appartient au hasard et ce qui appartient au terrain.",
+        100: "Le substrat commence à parler : certaines formes reviennent assez souvent pour devenir des repères.",
+        250: "Les variations du terrain ne sont plus des détails. Elles dessinent des familles de paysages.",
+        500: "À cette échelle, les reliefs décrivent la structure du monde bien mieux qu’une poignée d’échantillons.",
+        1000: "Mille observations lithiques : je peux enfin comparer les terrains comme un atlas cohérent."
+      })
+    }),
+    PLANT: Object.freeze({
+      key: "PLANT",
+      label: "plantes",
+      titles: Object.freeze({
+        20: "Premières silhouettes végétales",
+        50: "Formes d’occupation",
+        100: "Inventaire du vivant fixe",
+        250: "Adaptations locales",
+        500: "Architecture des biomes",
+        1000: "Atlas naturaliste"
+      }),
+      revealed: Object.freeze({
+        20: "Les plantes que je ne prélève pas comptent autant que les ressources. Elles donnent sa forme au milieu.",
+        50: "Arbres, lianes, fougères : leur présence n’est pas aléatoire. Elles occupent le terrain selon des règles que je commence à voir.",
+        100: "Le vivant fixe n’est plus un décor : il devient un inventaire de formes, de fonctions et d’occupations.",
+        250: "Les mêmes familles changent avec le terrain. Je commence à lire leurs adaptations locales.",
+        500: "Certaines absences deviennent aussi parlantes que les présences. La végétation dessine l’architecture des biomes.",
+        1000: "Mille observations végétales : mon journal ressemble enfin à l’atlas d’un naturaliste plutôt qu’à une liste de trouvailles."
+      })
+    })
+  });
+
+  const envPreviousThreshold = (threshold) => {
+    const index = ENV_THRESHOLDS.indexOf(threshold);
+    return index > 0 ? ENV_THRESHOLDS[index - 1] : null;
+  };
+
+  const envPsychology = (threshold, localPercent = null, worldThreshold = null) => {
+    if (worldThreshold === 10) {
+      return Object.freeze({
+        ponderation: 0.35,
+        obsessionEligible: true,
+        obsessionIntensity: 3,
+        souvenir: true,
+        memoryValence: "positive",
+        scoreTrauma: 38,
+        narrativeAxis: "NATURALISTE",
+        reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 0.45 })
+      });
+    }
+    if (worldThreshold === 20) {
+      return Object.freeze({
+        ponderation: 0.45,
+        obsessionEligible: true,
+        obsessionIntensity: 4,
+        souvenir: true,
+        memoryValence: "positive",
+        scoreTrauma: 55,
+        narrativeAxis: "NATURALISTE",
+        reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 0.55 })
+      });
+    }
+    if (localPercent === 50) {
+      return Object.freeze({
+        ponderation: 0.08,
+        obsessionEligible: false,
+        obsessionIntensity: 1,
+        narrativeAxis: "NATURALISTE"
+      });
+    }
+    if (localPercent === 100) {
+      return Object.freeze({
+        ponderation: 0.15,
+        obsessionEligible: true,
+        obsessionIntensity: 2,
+        souvenir: true,
+        memoryValence: "positive",
+        scoreTrauma: 20,
+        narrativeAxis: "NATURALISTE",
+        reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 0.18 })
+      });
+    }
+    const weights = { 20: 0.10, 50: 0.10, 100: 0.20, 250: 0.15, 500: 0.30, 1000: 0.45 };
+    if (threshold === 50 || threshold === 250) {
+      return Object.freeze({
+        ponderation: weights[threshold],
+        narrativeAxis: "NATURALISTE"
+      });
+    }
+    const intensity = { 20: 1, 100: 2, 500: 3, 1000: 4 }[threshold] || 1;
+    const score = { 20: 12, 100: 24, 500: 36, 1000: 52 }[threshold] || 0;
+    return Object.freeze({
+      ponderation: weights[threshold] || 0.10,
+      obsessionEligible: threshold !== 20,
+      obsessionIntensity: intensity,
+      souvenir: true,
+      memoryValence: "positive",
+      scoreTrauma: score,
+      narrativeAxis: "NATURALISTE",
+      reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: weights[threshold] || 0.10 })
+    });
+  };
+
+  const createEnvGlobalMission = (family, threshold, familyIndex) => {
+    const previous = envPreviousThreshold(threshold);
+    const sourceId = previous ? `ENV-${family.key}-${previous}` : "T13";
+    return Object.freeze({
+      id: `ENV-${family.key}-${threshold}`,
+      title: `${family.titles[threshold]} — ${threshold}`,
+      description: `Construire progressivement une connaissance historique de ${family.label} environnementaux en créditant les observations déjà réalisées et les nouvelles observations.`,
+      pattern: "OBSERVE_TARGET",
+      trigger: Object.freeze({
+        type: "progression.mission_completed",
+        missionId: sourceId,
+        count: 1
+      }),
+      triggerOnly: true,
+      prerequisites: Object.freeze([sourceId]),
+      priority: 130 - familyIndex,
+      autoPrimaryEligible: false,
+      primaryOnActivation: false,
+      passivePriorityAxis: "research",
+      backgroundHud: true,
+      ...envPsychology(threshold),
+      slots: Object.freeze({
+        study: Object.freeze({
+          title: `Observer historiquement ${threshold} instances distinctes de ${family.label}`,
+          target: threshold,
+          params: Object.freeze({
+            eventDriven: true,
+            envHistoricalFamily: family.key,
+            catalogManaged: true
+          })
+        })
+      }),
+      narrative: Object.freeze({
+        revealed: Object.freeze([family.revealed[threshold]]),
+        progress: Object.freeze([`Mon relevé de ${family.label} s’épaissit. Ce qui semblait isolé commence à prendre place dans une lecture plus large du monde.`]),
+        completed: Object.freeze([`Palier ENV ${family.key} atteint : ${threshold} instances distinctes observées et intégrées à l’historique naturaliste.`])
+      })
+    });
+  };
+
+  const ENV_GLOBAL_MISSIONS = Object.freeze(
+    Object.values(ENV_FAMILIES).flatMap((family, familyIndex) =>
+      ENV_THRESHOLDS.map((threshold) => createEnvGlobalMission(family, threshold, familyIndex))
+    )
+  );
+
+  const createEnvMapMission = (family, percent, familyIndex) => Object.freeze({
+    id: `ENV-MAP-${family.key}-${percent}`,
+    title: percent === 50
+      ? `Lecture locale — ${family.label === "vestiges" ? "Vestiges" : family.label === "roches" ? "Roches" : "Végétation"} 50 %`
+      : `Inventaire local complet — ${family.label === "vestiges" ? "Vestiges" : family.label === "roches" ? "Roches" : "Végétation"} 100 %`,
+    description: "La couverture est calculée sur les instances ENV éligibles réellement présentes sur la map, par identités physiques distinctes.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    autoPrimaryEligible: false,
+    primaryOnActivation: false,
+    priority: 120 - familyIndex,
+    passivePriorityAxis: "research",
+    backgroundHud: true,
+    envLocal: Object.freeze({ family: family.key, targetPercent: percent }),
+    ...envPsychology(null, percent),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: `Observer ${percent} % des ${family.label} ENV de la map`,
+        target: percent,
+        params: Object.freeze({
+          eventDriven: true,
+          envLocalFamily: family.key,
+          targetPercent: percent,
+          catalogManaged: true
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([percent === 50
+        ? `Je ne veux pas traverser ce territoire en ne regardant que ce qui se ramasse. Je vais lire au moins la moitié de ses ${family.label}.`
+        : `La moitié donne une tendance ; pour prétendre connaître ce territoire, il faut aller jusqu’au bout des ${family.label} observables.`]),
+      progress: Object.freeze(["La carte se remplit autrement : chaque observation ajoute une pièce au portrait environnemental de cette zone."]),
+      completed: Object.freeze([`Couverture ENV ${family.key} de cette map : ${percent} % des instances éligibles ont été observées.`])
+    })
+  });
+
+  const ENV_MAP_MISSIONS = Object.freeze(
+    Object.values(ENV_FAMILIES).flatMap((family, familyIndex) => [
+      createEnvMapMission(family, 50, familyIndex),
+      createEnvMapMission(family, 100, familyIndex)
+    ])
+  );
+
+  const createEnvWorldMission = (threshold) => Object.freeze({
+    id: `ENV-WORLD-${threshold}`,
+    title: threshold === 10
+      ? "Première synthèse des biomes — 10 biomes"
+      : "Atlas naturaliste du monde — 20 biomes",
+    description: `Valider ${threshold} types de biomes distincts dont au moins une map est à 100 % d’exploration et à 100 % de couverture ENV RELIC, ROCK et PLANT.`,
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: threshold === 10 ? "T13" : "ENV-WORLD-10",
+      count: 1
+    }),
+    triggerOnly: true,
+    prerequisites: Object.freeze([threshold === 10 ? "T13" : "ENV-WORLD-10"]),
+    priority: threshold === 10 ? 118 : 116,
+    autoPrimaryEligible: false,
+    primaryOnActivation: false,
+    passivePriorityAxis: "research",
+    backgroundHud: true,
+    envWorld: Object.freeze({ targetBiomeTypes: threshold }),
+    ...envPsychology(null, null, threshold),
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: `Valider ${threshold} types de biomes distincts totalement étudiés`,
+        target: threshold,
+        params: Object.freeze({
+          eventDriven: true,
+          envWorldMastery: true,
+          distinctBy: "biomeId",
+          historicalBackfill: true,
+          catalogManaged: true
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([threshold === 10
+        ? "Explorer une map ne suffit plus. Je veux pouvoir dire que j’ai réellement lu dix milieux différents, jusque dans ce qu’ils montrent et pas seulement dans leurs chemins."
+        : "Dix biomes forment une première synthèse. Je veux maintenant étendre cette lecture à vingt milieux réellement qualifiés." ]),
+      progress: Object.freeze(["Les biomes cessent d’être des cases sur une carte. Chacun devient un ensemble de formes, de vestiges, de roches et de végétation que je peux réellement comparer."]),
+      completed: Object.freeze([`${threshold} types de biomes distincts sont maintenant totalement étudiés selon le protocole ENV.`])
+    })
+  });
+
+  const ENV_WORLD_MISSIONS = Object.freeze([
+    createEnvWorldMission(10),
+    createEnvWorldMission(20)
+  ]);
 
 
 
@@ -3210,7 +3486,10 @@
     GEO06,
     GEO07,
     SUR03,
-    ...COLLECTION_MISSIONS
+    ...COLLECTION_MISSIONS,
+    ...ENV_GLOBAL_MISSIONS,
+    ...ENV_MAP_MISSIONS,
+    ...ENV_WORLD_MISSIONS
   ]);
 
   BF.BibleRuntimeReference = Object.freeze({

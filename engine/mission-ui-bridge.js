@@ -435,6 +435,14 @@
     return row;
   }
 
+  function isBackgroundHudMission(mission) {
+    const missionId = String(mission?.missionId || mission?.id || "");
+    const definition = BF.Missions?.getDefinition?.(missionId) ||
+      (BF.BibleCatalog || []).find?.((entry) => entry?.id === missionId) ||
+      null;
+    return definition?.backgroundHud === true;
+  }
+
   function render(state) {
     renderTrackedMissionMeters(state||{});
     const card = document.querySelector(".mission-card");
@@ -544,7 +552,7 @@
     const activeMissions = [...(state.missions || [])]
       .filter((mission) => mission.lifecycleStatus === "active")
       .filter((mission) =>
-        !String(mission.missionId || "").startsWith("COL-") ||
+        !isBackgroundHudMission(mission) ||
         Number(mission.priorityRank) > 0
       )
       .sort((left, right) => {

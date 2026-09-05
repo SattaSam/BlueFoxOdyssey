@@ -68,6 +68,7 @@
       this.localExplorationSessionRestored = false;
       this.localExplorationSessionMapId = null;
       this.localExplorationAwaitingPostArrival = null;
+      this.environmentReconciling = false;
       this.pendingConstructionResourceMissions = new Set();
       this.constructionResourceSignatures = new Map();
       this.boundProgressionChanged = (event) =>
@@ -159,12 +160,40 @@
     missionsForState(state) {
       const missions = [...this.allMissions()];
       (state?.missions || []).forEach((entry) => {
-        const mission = this.localExplorationMission(
-          entry.missionId || entry.id
-        );
+        const missionId = entry.missionId || entry.id;
+        const mission = this.localExplorationMission(missionId) ||
+          this.environmentLocalMission(missionId);
         if (mission) missions.push(mission);
       });
       return missions;
+    }
+
+    environmentLocalTemplates() {
+      return this.catalog.filter((mission) =>
+        mission?.instanceScope === "map" && mission?.envLocal
+      );
+    }
+
+    environmentLocalMission(instanceId) {
+      const separator = String(instanceId || "").indexOf("@");
+      if (separator < 1) return null;
+      const baseId = instanceId.slice(0, separator);
+      const mapId = instanceId.slice(separator + 1);
+      const template = this.byId.get(baseId);
+      if (!template?.envLocal || !mapId) return null;
+      const family = String(template.envLocal.family || "").toUpperCase();
+      const percent = Number(template.envLocal.targetPercent) || 0;
+      return {
+        ...template,
+        id: instanceId,
+        baseMissionId: baseId,
+        scopeId: mapId,
+        targetMapId: mapId,
+        prerequisites: percent >= 100
+          ? [`ENV-MAP-${family}-50@${mapId}`]
+          : ["T13"],
+        title: template.title
+      };
     }
 
     suppressLocalNarrative(mission, surfacePercent) {
@@ -579,6 +608,7 @@
           description: mission.description || "",
           instanceScope: mission.instanceScope || null,
           localVisibility: mission.localVisibility || null,
+          backgroundHud: mission.backgroundHud === true,
           targetMapId: mission.targetMapId || null,
           priority: Number(mission.priority) || 0,
           passivePriorityAxis:
@@ -669,6 +699,7 @@
           target: Math.max(1, Number(specific.target) || 1),
           params: {
             ...(specific.params || {}),
+            catalogManaged: specific.params?.catalogManaged === true,
             bibleMissionId: mission.id,
             biblePattern: mission.pattern
           },
@@ -684,6 +715,7 @@
         description: mission.description || "",
         instanceScope: mission.instanceScope || null,
         localVisibility: mission.localVisibility || null,
+        backgroundHud: mission.backgroundHud === true,
         targetMapId: mission.targetMapId || null,
         priority: Number(mission.priority) || 0,
         passivePriorityAxis:
@@ -849,6 +881,89 @@
       );
     }
 
+    environmentDefinition(objectId) {
+      const id = String(objectId || "");
+      if (!id) return null;
+      return BF.ObjectLibrary?.getById?.(id) ||
+        BF.ObjectLibrary?.get?.(id) ||
+        BF.ObjectLibrary?.list?.({ status: "active" })?.find?.((definition) =>
+          String(definition?.id || "") === id ||
+          String(definition?.type || "") === id
+        ) || null;
+    }
+
+    environmentMetadata(definition = {}) {
+      const actions = new Set(asArray(definition?.interaction?.actions).map(lower));
+      const tags = new Set([
+        ...asArray(definition?.spawn?.tags),
+        ...asArray(definition?.situation?.tags)
+      ].map(lower));
+      const type = lower(definition?.type);
+      const category = lower(definition?.category);
+      const family = lower(definition?.knowledge?.family || definition?.family || category);
+      const subject = lower(definition?.semantic?.subject || family || category || type);
+      const collectable =
+        definition?.gameplay?.collectable === true ||
+        actions.has("collect") || actions.has("extract") ||
+        Boolean(definition?.resource?.inventoryKey) ||
+        lower(definition?.resource?.exploitability) === "extractable";
+      const observable = ["observe", "inspect", "analyze"].some((action) => actions.has(action));
+      return { actions, tags, type, category, family, subject, collectable, observable };
+    }
+
+    environmentFamilyMatches(familyName, definition) {
+      if (!definition) return false;
+      const familyKey = String(familyName || "").toUpperCase();
+      const metadata = this.environmentMetadata(definition);
+      if (!metadata.observable) return false;
+
+      if (familyKey === "RELIC") {
+        if (["ancient-ruin", "relic", "ruin"].includes(metadata.family) ||
+            ["ancient-ruin", "relic", "ruin"].includes(metadata.subject) ||
+            metadata.category === "ruins" || metadata.tags.has("ruin")) {
+          return true;
+        }
+        if (metadata.type === "stele" || metadata.tags.has("stele")) return true;
+        const explicitAncientTrace =
+          metadata.tags.has("ancient") ||
+          metadata.tags.has("ancient-ruin") ||
+          metadata.tags.has("relic") ||
+          metadata.family === "ancient" ||
+          metadata.subject === "ancient";
+        return metadata.type === "arch" && explicitAncientTrace;
+      }
+
+      if (familyKey === "ROCK") {
+        if (metadata.collectable) return false;
+        return ["geology", "geological", "rock", "stone"].includes(metadata.family) ||
+          ["geology", "geological", "rock", "stone"].includes(metadata.subject) ||
+          ["rock", "stone", "boulder", "cliff"].includes(metadata.type) ||
+          metadata.tags.has("rock") || metadata.tags.has("geology");
+      }
+
+      if (familyKey === "PLANT") {
+        if (metadata.collectable) return false;
+        return metadata.family === "flora" ||
+          metadata.subject === "flora" ||
+          metadata.category === "flora" ||
+          ["plant", "tree", "fern", "vine", "liana", "liane"].includes(metadata.type) ||
+          ["plant", "tree", "fern", "vine", "liana", "liane"].some((tag) => metadata.tags.has(tag));
+      }
+      return false;
+    }
+
+    environmentHistoricalCount(familyName) {
+      const snapshot = BF.progression?.snapshot?.() || BF.progression?.state || {};
+      const instances = snapshot?.discoveries?.instances || {};
+      let total = 0;
+      Object.entries(instances).forEach(([instanceId, record]) => {
+        if (!instanceId) return;
+        const definition = this.environmentDefinition(record?.objectId);
+        if (this.environmentFamilyMatches(familyName, definition)) total += 1;
+      });
+      return total;
+    }
+
     buildObservationResolver(engine = BF.currentEngine) {
       const map = engine?.currentMap;
       const mapId = engine?.currentMapId;
@@ -859,6 +974,7 @@
 
       const byInstance = new Map();
       const observable = new Set();
+      const envEligible = { RELIC: new Set(), ROCK: new Set(), PLANT: new Set() };
       const initialMscInstances = Array.isArray(map.group?.userData?.microScenes)
         ? map.group.userData.microScenes
         : [];
@@ -882,6 +998,18 @@
           data.instanceId || rootData.instanceId || ""
         );
         if (!instanceId) return;
+
+        const definition =
+          data.functional ||
+          rootData.functional ||
+          BF.ObjectLibrary?.getById?.(data.catalogId || rootData.catalogId) ||
+          BF.ObjectLibrary?.get?.(data.libraryType || rootData.libraryType) ||
+          null;
+        ["RELIC", "ROCK", "PLANT"].forEach((family) => {
+          if (this.environmentFamilyMatches(family, definition)) {
+            envEligible[family].add(instanceId);
+          }
+        });
 
         const initialMscKey = initialMscMembers.get(instanceId);
         if (initialMscKey) {
@@ -910,10 +1038,30 @@
       const resolver = {
         mapId,
         byInstance,
-        observable: [...observable]
+        observable: [...observable],
+        envEligible: Object.fromEntries(
+          Object.entries(envEligible).map(([family, ids]) => [family, [...ids]])
+        )
       };
       this.observationResolvers.set(map, resolver);
       return resolver;
+    }
+
+    environmentFamilyCoverageSeed(mapId, resolver) {
+      const discoveredInstances = BF.progression?.snapshot?.()?.discoveries?.instances ||
+        BF.progression?.state?.discoveries?.instances || {};
+      return Object.fromEntries(
+        ["RELIC", "ROCK", "PLANT"].map((family) => {
+          const eligibleInstanceIds = [...(resolver?.envEligible?.[family] || [])];
+          const eligible = new Set(eligibleInstanceIds);
+          const observedInstanceIds = Object.entries(discoveredInstances)
+            .filter(([instanceId, record]) =>
+              eligible.has(String(instanceId)) && String(record?.mapId || "") === String(mapId)
+            )
+            .map(([instanceId]) => String(instanceId));
+          return [family, { eligibleInstanceIds, observedInstanceIds }];
+        })
+      );
     }
 
     captureObservationMap(engine = BF.currentEngine) {
@@ -922,12 +1070,20 @@
       if (!manager?.memory || !mapId) return false;
 
       const coverage = this.observationMemory();
+      const resolver = this.buildObservationResolver(engine);
       if (coverage.maps?.[mapId]?.frozen === true) {
-        this.buildObservationResolver(engine);
-        return false;
+        if (!resolver) return false;
+        const current = coverage.maps[mapId];
+        const hasEnvCoverage = current?.envFamilies &&
+          ["RELIC", "ROCK", "PLANT"].every((family) => current.envFamilies[family]);
+        if (hasEnvCoverage) return false;
+        const next = clone(coverage);
+        next.maps[mapId].envFamilies = this.environmentFamilyCoverageSeed(mapId, resolver);
+        manager.memory.setFact(this.observationMemoryKey(), next);
+        return true;
       }
 
-      const resolver = this.buildObservationResolver(engine);
+
       if (!resolver) return false;
       const next = clone(coverage);
       next.maps = next.maps || {};
@@ -937,6 +1093,7 @@
         mapId,
         observableEntityIds: [...resolver.observable],
         observedEntityIds: [],
+        envFamilies: this.environmentFamilyCoverageSeed(mapId, resolver),
         frozen: true,
         frozenAt: Date.now(),
         seed: BF.maps?.[mapId]?.seed ?? null
@@ -970,6 +1127,29 @@
       };
     }
 
+    environmentMapCoverage(mapId, familyName, source = null) {
+      const coverage = source || this.observationMemory();
+      const family = String(familyName || "").toUpperCase();
+      const entry = coverage.maps?.[mapId] || null;
+      const familyEntry = entry?.envFamilies?.[family] || null;
+      if (!familyEntry) {
+        return { mapId: mapId || null, family, known: false, observed: 0, total: 0, percent: 0 };
+      }
+      const eligible = new Set(asArray(familyEntry.eligibleInstanceIds));
+      const observed = new Set(
+        asArray(familyEntry.observedInstanceIds).filter((instanceId) => eligible.has(instanceId))
+      );
+      const total = eligible.size;
+      return {
+        mapId: mapId || null,
+        family,
+        known: true,
+        observed: observed.size,
+        total,
+        percent: total === 0 ? 100 : Math.min(100, (observed.size / total) * 100)
+      };
+    }
+
     observationTotals(source = null) {
       const coverage = source || this.observationMemory();
       return {
@@ -1000,32 +1180,53 @@
       const entityId = instanceId
         ? resolver?.byInstance?.get(instanceId)
         : null;
-      if (!entityId) return false;
+      const environmentEligible = instanceId && ["RELIC", "ROCK", "PLANT"].some((family) =>
+        asArray(resolver?.envEligible?.[family]).includes(instanceId)
+      );
+      if (!entityId && !environmentEligible) return false;
 
       const coverage = this.observationMemory();
       const mapCoverage = coverage.maps?.[mapId];
       if (!mapCoverage?.frozen) return false;
-      if (!mapCoverage.observableEntityIds?.includes(entityId)) return false;
-      if (mapCoverage.observedEntityIds?.includes(entityId)) return false;
+      if (entityId && !mapCoverage.observableEntityIds?.includes(entityId)) return false;
 
       const next = clone(coverage);
       const entry = next.maps[mapId];
       entry.observedEntityIds = asArray(entry.observedEntityIds);
-      entry.observedEntityIds.push(entityId);
+      let changed = false;
+      if (entityId && !entry.observedEntityIds.includes(entityId)) {
+        entry.observedEntityIds.push(entityId);
+        changed = true;
 
-      const observed = entry.observedEntityIds.length;
-      const total = entry.observableEntityIds.length;
-      if (total > 0 && observed * 2 >= total) {
-        const reached50 = new Set(asArray(next.mapsReached50));
-        reached50.add(mapId);
-        next.mapsReached50 = [...reached50];
-      }
-      if (total > 0 && observed >= total) {
-        const reached100 = new Set(asArray(next.mapsReached100));
-        reached100.add(mapId);
-        next.mapsReached100 = [...reached100];
+        const observed = entry.observedEntityIds.length;
+        const total = entry.observableEntityIds.length;
+        if (total > 0 && observed * 2 >= total) {
+          const reached50 = new Set(asArray(next.mapsReached50));
+          reached50.add(mapId);
+          next.mapsReached50 = [...reached50];
+        }
+        if (total > 0 && observed >= total) {
+          const reached100 = new Set(asArray(next.mapsReached100));
+          reached100.add(mapId);
+          next.mapsReached100 = [...reached100];
+        }
       }
 
+      const physicalInstanceId = String(rawEvent?.instanceId || "");
+      if (physicalInstanceId) {
+        ["RELIC", "ROCK", "PLANT"].forEach((family) => {
+          const familyEntry = next.maps?.[mapId]?.envFamilies?.[family];
+          if (!familyEntry) return;
+          if (!asArray(familyEntry.eligibleInstanceIds).includes(physicalInstanceId)) return;
+          familyEntry.observedInstanceIds = asArray(familyEntry.observedInstanceIds);
+          if (!familyEntry.observedInstanceIds.includes(physicalInstanceId)) {
+            familyEntry.observedInstanceIds.push(physicalInstanceId);
+            changed = true;
+          }
+        });
+      }
+
+      if (!changed) return false;
       manager.memory.setFact(this.observationMemoryKey(), next);
 
       global.dispatchEvent?.(
@@ -1780,15 +1981,18 @@
       }
 
       this.bridgeMissionProgress(rawEvent);
+      this.reconcileEnvironmentLocalMap(rawEvent?.mapId || BF.currentEngine?.currentMapId);
+      this.reconcileEnvironmentWorld();
     }
 
     onExplorationChanged(detail) {
       const manager = this.manager();
-      if (!manager?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
-        return false;
-      }
       const mapId = String(detail.mapId || "");
       if (!mapId) return false;
+      let changed = this.reconcileEnvironmentAll(mapId);
+      if (!manager?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
+        return changed;
+      }
 
       // WorldEngine place BlueFox avant l'événement de transition. Le tracker
       // peut donc émettre une première surface au spawn : elle ne doit jamais
@@ -1803,12 +2007,13 @@
         this.localExplorationAwaitingPostArrival = null;
       }
       this.localExplorationSessionMapId = mapId;
-      return this.reconcileLocalExplorationMap(mapId, detail.surfacePercent);
+      return this.reconcileLocalExplorationMap(mapId, detail.surfacePercent) || changed;
     }
 
     onMapTransition(detail) {
       // La transition est émise après chargement de la map courante.
       this.captureObservationMap(BF.currentEngine);
+      this.reconcileEnvironmentAll(detail.toMapId || detail.mapId || BF.currentEngine?.currentMapId);
 
       const event = {
         fromMapId: detail.fromMapId || null,
@@ -2392,6 +2597,239 @@
       return true;
     }
 
+    environmentManagedMission(mission) {
+      return Boolean(
+        mission?.slots?.study?.params?.envHistoricalFamily ||
+        mission?.envLocal ||
+        mission?.envWorld
+      );
+    }
+
+    reconcileEnvironmentHistorical() {
+      const manager = this.manager();
+      if (!manager) return false;
+      let changed = false;
+      this.catalog.forEach((mission) => {
+        const family = mission?.slots?.study?.params?.envHistoricalFamily;
+        if (!family || !this.missionLifecycle(mission.id).active) return;
+        const tree = manager.trees?.get?.(mission.id);
+        const node = tree?.find?.(`${mission.id}:study`);
+        if (!node) return;
+        const absolute = Math.min(
+          Math.max(0, Number(node.target) || 0),
+          this.environmentHistoricalCount(family)
+        );
+        if (Number(node.progress || 0) === absolute) return;
+        node.progress = absolute;
+        tree.refresh?.();
+        manager.memory?.saveTree?.(tree);
+        changed = true;
+      });
+      if (changed) {
+        manager.syncLifecycleFromTrees?.();
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+      }
+      return changed;
+    }
+
+    activateEnvironmentGlobalFollowers() {
+      for (const mission of this.catalog) {
+        if (!mission?.slots?.study?.params?.envHistoricalFamily) continue;
+        const sourceId = String(mission?.trigger?.missionId || "");
+        if (!sourceId || !this.missionLifecycle(sourceId).completed) continue;
+        const lifecycle = this.missionLifecycle(mission.id);
+        if (lifecycle.active || lifecycle.completed) continue;
+        if (!this.prerequisitesSatisfied(mission)) continue;
+        if (this.activateMission(mission, {
+          type: "progression.mission_completed",
+          missionId: sourceId,
+          amount: 1
+        })) return 1;
+      }
+      return 0;
+    }
+
+    environmentInstanceId(baseId, mapId) {
+      return `${String(baseId || "")}@${String(mapId || "")}`;
+    }
+
+    setEnvironmentManagedProgress(missionId, slot, value) {
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(missionId);
+      if (!tree) return false;
+      const separator = String(missionId || "").indexOf("@");
+      const baseId = separator > 0 ? missionId.slice(0, separator) : missionId;
+      const scopeId = separator > 0 ? missionId.slice(separator + 1) : null;
+      const node = tree.find?.(`${missionId}:${slot}`) ||
+        (scopeId ? tree.find?.(`${baseId}:${slot}@${scopeId}`) : null);
+      if (!node) return false;
+      const absolute = Math.min(
+        Math.max(0, Number(node.target) || 0),
+        Math.max(0, Number(value) || 0)
+      );
+      if (Number(node.progress || 0) === absolute) return false;
+      node.progress = absolute;
+      tree.refresh?.();
+      manager.memory?.saveTree?.(tree);
+      return true;
+    }
+
+    reconcileEnvironmentLocalMap(mapId) {
+      const manager = this.manager();
+      const targetMapId = String(mapId || "");
+      if (!manager || !targetMapId || !this.missionLifecycle("T13").completed) return false;
+      if (String(BF.currentEngine?.currentMapId || "") === targetMapId) {
+        this.captureObservationMap(BF.currentEngine);
+      }
+      let changed = false;
+      let activationUsed = false;
+      for (const family of ["RELIC", "ROCK", "PLANT"]) {
+        const coverage = this.environmentMapCoverage(targetMapId, family);
+        if (!coverage.known || coverage.total === 0) continue;
+        const id50 = this.environmentInstanceId(`ENV-MAP-${family}-50`, targetMapId);
+        const mission50 = this.environmentLocalMission(id50);
+        let lifecycle50 = manager.memory?.state?.missionLifecycle?.[id50];
+        if (!lifecycle50 && !activationUsed && mission50) {
+          if (this.activateMission(mission50, { type: "environment.map", mapId: targetMapId, amount: 1 })) {
+            changed = true;
+            activationUsed = true;
+          }
+          lifecycle50 = manager.memory?.state?.missionLifecycle?.[id50];
+        } else if (lifecycle50?.status === "paused" && String(BF.currentEngine?.currentMapId || "") === targetMapId) {
+          changed = manager.resumeMission(id50, { primary: false, autoPrimaryEligible: false, source: "env-local" }) === true || changed;
+          lifecycle50 = manager.memory?.state?.missionLifecycle?.[id50];
+        }
+        if (lifecycle50?.status === "active") {
+          changed = this.setEnvironmentManagedProgress(id50, "study", coverage.percent) || changed;
+          manager.syncLifecycleFromTrees?.();
+          lifecycle50 = manager.memory?.state?.missionLifecycle?.[id50];
+        }
+        if (lifecycle50?.status !== "completed") continue;
+
+        const id100 = this.environmentInstanceId(`ENV-MAP-${family}-100`, targetMapId);
+        const mission100 = this.environmentLocalMission(id100);
+        let lifecycle100 = manager.memory?.state?.missionLifecycle?.[id100];
+        if (!lifecycle100 && !activationUsed && mission100) {
+          if (this.activateMission(mission100, {
+            type: "progression.mission_completed", missionId: id50, mapId: targetMapId, amount: 1
+          })) {
+            changed = true;
+            activationUsed = true;
+          }
+          lifecycle100 = manager.memory?.state?.missionLifecycle?.[id100];
+        } else if (lifecycle100?.status === "paused" && String(BF.currentEngine?.currentMapId || "") === targetMapId) {
+          changed = manager.resumeMission(id100, { primary: false, autoPrimaryEligible: false, source: "env-local" }) === true || changed;
+          lifecycle100 = manager.memory?.state?.missionLifecycle?.[id100];
+        }
+        if (lifecycle100?.status === "active") {
+          changed = this.setEnvironmentManagedProgress(id100, "study", coverage.percent) || changed;
+          manager.syncLifecycleFromTrees?.();
+        }
+      }
+      if (changed) {
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+      }
+      return changed;
+    }
+
+    environmentMapBiome(mapId, mapState = null) {
+      return lower(
+        mapState?.biomeId || mapState?.biome ||
+        BF.maps?.[mapId]?.biomeId || BF.maps?.[mapId]?.biome ||
+        (String(BF.currentEngine?.currentMapId || "") === String(mapId || "")
+          ? BF.currentEngine?.currentMap?.definition?.biomeId || BF.currentEngine?.currentMap?.definition?.biome
+          : null)
+      );
+    }
+
+    environmentQualifiedBiomeTypes() {
+      const rawMaps = BF.getExplorationSummary?.()?.maps || {};
+      const maps = Array.isArray(rawMaps)
+        ? rawMaps
+        : Object.entries(rawMaps).map(([mapId, mapState]) => ({
+            ...(mapState || {}),
+            mapId: mapState?.mapId || mapState?.id || mapId
+          }));
+      const qualified = new Set();
+      maps.forEach((mapState) => {
+        const mapId = String(mapState?.mapId || mapState?.id || "");
+        if (!mapId || Number(mapState?.surfacePercent) < 100) return;
+        const biome = this.environmentMapBiome(mapId, mapState);
+        if (!biome) return;
+        const complete = ["RELIC", "ROCK", "PLANT"].every((family) => {
+          const coverage = this.environmentMapCoverage(mapId, family);
+          return coverage.known && coverage.percent >= 100;
+        });
+        if (complete) qualified.add(biome);
+      });
+      return qualified;
+    }
+
+    reconcileEnvironmentWorld(options = {}) {
+      const manager = this.manager();
+      if (!manager || !this.missionLifecycle("T13").completed) return false;
+      let changed = false;
+      let activationUsed = options.allowActivation === false;
+      const count = this.environmentQualifiedBiomeTypes().size;
+      for (const threshold of [10, 20]) {
+        const missionId = `ENV-WORLD-${threshold}`;
+        const sourceId = threshold === 10 ? "T13" : "ENV-WORLD-10";
+        if (!this.missionLifecycle(sourceId).completed) continue;
+        let lifecycle = manager.memory?.state?.missionLifecycle?.[missionId];
+        if (!lifecycle && !activationUsed) {
+          const mission = this.byId.get(missionId);
+          if (mission && this.activateMission(mission, {
+            type: "progression.mission_completed", missionId: sourceId, amount: 1
+          })) {
+            changed = true;
+            activationUsed = true;
+          }
+          lifecycle = manager.memory?.state?.missionLifecycle?.[missionId];
+        }
+        if (lifecycle?.status === "active") {
+          changed = this.setEnvironmentManagedProgress(missionId, "explore", count) || changed;
+          manager.syncLifecycleFromTrees?.();
+        }
+      }
+      if (changed) {
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+      }
+      return changed;
+    }
+
+    reconcileEnvironmentAll(mapId = BF.currentEngine?.currentMapId) {
+      if (this.environmentReconciling) return false;
+      this.environmentReconciling = true;
+      try {
+        let changed = false;
+        const activated = this.activateEnvironmentGlobalFollowers();
+        changed = this.reconcileEnvironmentHistorical() || Boolean(activated) || changed;
+        const localChanged = mapId ? this.reconcileEnvironmentLocalMap(mapId) : false;
+        changed = localChanged || changed;
+        changed = this.reconcileEnvironmentWorld({
+          allowActivation: !activated && !localChanged
+        }) || changed;
+        if (changed) this.manager()?.publish?.();
+        return changed;
+      } finally {
+        this.environmentReconciling = false;
+      }
+    }
+
+    progressionChangeAffectsEnvironmentObservations(detail = {}) {
+      if (String(detail.reason || "") !== "event-consumed") return false;
+      return [
+        "OBJECT_SEEN",
+        "OBJECT_INSPECTED",
+        "OBJECT_ANALYZED",
+        "PHENOMENON_OBSERVED",
+        "KNOWLEDGE_ACQUIRED"
+      ].includes(String(detail.event?.type || ""));
+    }
+
     progressionChangeAffectsHistoricalCollections(detail = {}) {
       return (
         String(detail.reason || "") === "event-consumed" &&
@@ -2499,6 +2937,9 @@
 
     onProgressionChanged(detail = {}) {
       let changed = false;
+      if (this.progressionChangeAffectsEnvironmentObservations(detail)) {
+        changed = this.reconcileEnvironmentAll(detail.event?.mapId || BF.currentEngine?.currentMapId) || changed;
+      }
       if (this.progressionChangeAffectsHistoricalCollections(detail)) {
         changed = this.reconcileHistoricalCollectionChains() || changed;
       }
@@ -3351,6 +3792,7 @@
       this.migrateLegacyRationUnlock();
       this.reconcileRuntimeCounters();
       this.reconcileHistoricalCollectionChains();
+      this.reconcileEnvironmentAll(BF.currentEngine?.currentMapId);
       this.refreshProximityContextMonitor();
       this.reconcileLocalExploration(state);
       this.restoreLocalExplorationSession();
