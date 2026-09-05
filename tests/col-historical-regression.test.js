@@ -346,7 +346,7 @@ test("catalogue COL = 5 familles x 6 paliers avec transfert 50→100 et 100→50
     }
     assert.equal(col.find((m) => m.id === `COL-${family}-100`).trigger.missionId, `COL-${family}-50`);
     assert.equal(col.find((m) => m.id === `COL-${family}-250`).trigger.missionId, `COL-${family}-100`);
-    assert.equal(col.find((m) => m.id === `COL-${family}-500`).trigger.missionId, `COL-${family}-100`);
+    assert.equal(col.find((m) => m.id === `COL-${family}-500`).trigger.missionId, `COL-${family}-250`);
     assert.equal(col.find((m) => m.id === `COL-${family}-1000`).trigger.missionId, `COL-${family}-500`);
 
     const m250 = col.find((m) => m.id === `COL-${family}-250`);
