@@ -373,6 +373,777 @@
     })
   });
 
+  const nouvelleFondation = Object.freeze({
+    id: "GAME-Nouvelle fondation",
+    title: "Établir un camp-relais lointain",
+    description: "Après une excursion de dix nouvelles maps depuis Crystal, établir sur la zone atteinte un nouveau camp-relais.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 10,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["GAME-base"]),
+    bindActivationMap: true,
+    targetMapFact: "bibleActivation:GAME-Nouvelle fondation",
+    targetMapField: "mapId",
+    priority: 48,
+    passivePriorityAxis: "survival",
+    ponderation: 0.1,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "studyWood",
+        title: "Vérifier le bois disponible sur la zone du relais",
+        action: "observe",
+        target: 1,
+        params: Object.freeze({
+          kind: "wood",
+          requiredMapFact: "bibleActivation:GAME-Nouvelle fondation",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "collectWood",
+        title: "Réunir 10 bois pour le camp-relais",
+        action: "collect",
+        target: 10,
+        requires: Object.freeze(["studyWood"]),
+        params: Object.freeze({
+          kind: "wood",
+          requiredMapFact: "bibleActivation:GAME-Nouvelle fondation",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    activationInventoryCredits: Object.freeze([
+      Object.freeze({ slot: "collectWood", inventoryKey: "wood", maximum: 10 })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      shelterKinds: Object.freeze(["camp"]),
+      radius: 9999,
+      scope: "current-map"
+    }),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 10 }),
+      Object.freeze({
+        type: "site.establish",
+        kind: "camp",
+        microSceneId: "MSC-CUSTOM-CAMP",
+        stage: 1,
+        placement: Object.freeze({ mode: "near-bluefox" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Crystal est loin derrière moi. Si je veux continuer sans transformer chaque excursion en aller-retour, il me faut un nouveau point d’ancrage."
+      ]),
+      completed: Object.freeze([
+        "Le relais est en place. Je peux désormais déposer mes trouvailles et préparer la suite sans dépendre de chaque retour à Crystal."
+      ])
+    })
+  });
+
+  const foundation = Object.freeze({
+    id: "GAME-foundation",
+    title: "Transformer le camp-relais en Refuge",
+    description: "Renforcer le camp-relais lointain en Refuge sur la même map, avec les ressources canoniques du patron Camp → Refuge.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-Nouvelle fondation",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-Nouvelle fondation"]),
+    targetMapFact: "bibleActivation:GAME-Nouvelle fondation",
+    targetMapField: "mapId",
+    priority: 46,
+    passivePriorityAxis: "survival",
+    ponderation: 0.1,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "fibers",
+        title: "Réunir 100 plantes fibreuses",
+        action: "collect",
+        target: 100,
+        params: Object.freeze({
+          kind: "fiber",
+          requiredMapFact: "bibleActivation:GAME-Nouvelle fondation",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "wood",
+        title: "Réunir 100 bois",
+        action: "collect",
+        target: 100,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          kind: "wood",
+          requiredMapFact: "bibleActivation:GAME-Nouvelle fondation",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    activationInventoryCredits: Object.freeze([
+      Object.freeze({ slot: "fibers", inventoryKey: "fiber", maximum: 100 }),
+      Object.freeze({ slot: "wood", inventoryKey: "wood", maximum: 100 })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      shelterKinds: Object.freeze(["refuge"]),
+      radius: 9999,
+      scope: "current-map"
+    }),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 100 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 100 }),
+      Object.freeze({
+        type: "site.establish",
+        kind: "refuge",
+        microSceneId: "MSC-CUSTOM-CAMP-BASE",
+        stage: 2,
+        placement: Object.freeze({ mode: "near-camp" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ce camp-relais peut devenir plus qu’une halte. Je peux le transformer en Refuge sans perdre le lien avec la zone choisie."
+      ]),
+      completed: Object.freeze([
+        "Le camp-relais est devenu un Refuge. Cette région possède maintenant un second point d’ancrage durable."
+      ])
+    })
+  });
+
+  const survivalRest = Object.freeze({
+    id: "GAME-survival_rest",
+    title: "Repos sécurisé",
+    description: "Après le retour à Crystal depuis l’expédition du relais lointain, effectuer un vrai repos au Refuge ou à la Base.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "movement.portal_crossed",
+      toMapId: "crystal",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-foundation"]),
+    priority: 44,
+    passivePriorityAxis: "protection",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "returnCrystal",
+        title: "Achever le retour à Crystal",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          toMapId: "crystal",
+          distinctBy: "transition"
+        })
+      }),
+      Object.freeze({
+        slot: "secureRest",
+        title: "Effectuer un repos sécurisé au Refuge ou à la Base",
+        action: "rest",
+        target: 1,
+        requires: Object.freeze(["returnCrystal"]),
+        params: Object.freeze({})
+      })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["refuge", "base"]),
+      radius: 8,
+      scope: "any-established"
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Le trajet jusqu’au relais a changé l’échelle de mes sorties. De retour à Crystal, je veux vérifier ce que vaut réellement un repos protégé."
+      ]),
+      completed: Object.freeze([
+        "À l’abri, le repos n’est plus seulement une pause : il redevient une vraie récupération."
+      ])
+    })
+  });
+
+  const survivalStable = Object.freeze({
+    id: "GAME-survival_stable",
+    title: "Campement stable",
+    description: "Valider trois retours au camp/base réellement demandés et consommés par d’autres missions.",
+    pattern: "TRAVEL_CYCLE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-survival_rest",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-survival_rest"]),
+    priority: 18,
+    passivePriorityAxis: "protection",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    slots: Object.freeze({
+      travel: Object.freeze({
+        title: "Comptabiliser 3 retours missionnels réels à Crystal",
+        target: 3,
+        params: Object.freeze({
+          eventDriven: true,
+          returnConsumedOnly: true,
+          toMapId: "crystal"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Un refuge devient un vrai point d’ancrage quand mes trajets finissent naturellement par y revenir."
+      ]),
+      completed: Object.freeze([
+        "Trois expéditions m’ont ramené ici pour de bonnes raisons. Ce campement fait désormais partie de ma manière d’explorer."
+      ])
+    })
+  });
+
+  const collectionSamples = Object.freeze({
+    id: "GAME-collection_samples",
+    title: "Échantillons de base",
+    description: "Après quatre nouvelles maps d’expédition, constituer un petit ensemble de ressources de natures différentes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 4,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["GAME-survival_stable"]),
+    priority: 28,
+    passivePriorityAxis: "collection",
+    ponderation: 0.25,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "mineral",
+        title: "Collecter 3 minerais ou cristaux",
+        action: "collect",
+        target: 3,
+        params: Object.freeze({ subject: "mineral" })
+      }),
+      Object.freeze({
+        slot: "plant",
+        title: "Collecter une plante",
+        action: "collect",
+        target: 1,
+        params: Object.freeze({ subject: "flora", excludeKinds: Object.freeze(["wood"]) })
+      }),
+      Object.freeze({
+        slot: "other",
+        title: "Collecter une autre ressource",
+        action: "collect",
+        target: 1,
+        params: Object.freeze({ tagsAny: Object.freeze(["resource"]) })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je suis assez loin pour que quelques échantillons variés aient plus de valeur qu’un sac rempli au hasard."
+      ]),
+      completed: Object.freeze([
+        "Ce lot suffit pour comparer ce que ces territoires peuvent réellement fournir."
+      ])
+    })
+  });
+
+  const collectionVariety = Object.freeze({
+    id: "GAME-collection_variety",
+    title: "Panier varié",
+    description: "Sur une nouvelle map, collecter cinq familles de ressources distinctes puis revenir les déposer réellement au camp.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-collection_samples",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-collection_samples"]),
+    priority: 30,
+    passivePriorityAxis: "collection",
+    ponderation: 0.25,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true,
+      autonomousKnownReturn: true
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "newMap",
+        title: "Atteindre une nouvelle map",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "variety",
+        title: "Collecter 5 familles de ressources distinctes",
+        action: "collect",
+        target: 5,
+        requires: Object.freeze(["newMap"]),
+        params: Object.freeze({
+          tagsAny: Object.freeze(["resource"]),
+          distinctBy: "family",
+          requiredMapFact: "tutorialExcursion:GAME-collection_variety",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "returnHome",
+        title: "Revenir au camp pour déposer la collecte",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["variety"]),
+        params: Object.freeze({
+          eventDriven: true,
+          toMapId: "crystal",
+          distinctBy: "transition"
+        })
+      })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 8,
+      scope: "any-established",
+      requireDeposit: true
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Cette fois je veux un panier réellement varié, puis le ramener proprement au stockage."
+      ]),
+      completed: Object.freeze([
+        "Cinq familles différentes, revenues au camp et déposées : cette collecte est enfin exploitable."
+      ])
+    })
+  });
+
+  const collectionReserves = Object.freeze({
+    id: "GAME-collection_reserves",
+    title: "Réserves sûres",
+    description: "Sur une nouvelle map, collecter vingt ressources puis revenir les déposer réellement au camp.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-collection_variety",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-collection_variety"]),
+    priority: 30,
+    passivePriorityAxis: "collection",
+    ponderation: 0.25,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true,
+      autonomousKnownReturn: true
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "newMap",
+        title: "Atteindre une nouvelle map",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "reserves",
+        title: "Collecter 20 ressources",
+        action: "collect",
+        target: 20,
+        requires: Object.freeze(["newMap"]),
+        params: Object.freeze({
+          tagsAny: Object.freeze(["resource"]),
+          requiredMapFact: "tutorialExcursion:GAME-collection_reserves",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "returnHome",
+        title: "Revenir au camp pour déposer les réserves",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["reserves"]),
+        params: Object.freeze({
+          eventDriven: true,
+          toMapId: "crystal",
+          distinctBy: "transition"
+        })
+      })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 8,
+      scope: "any-established",
+      requireDeposit: true
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Un stock utile n’est pas seulement ce que je ramasse : c’est ce qui revient réellement au camp."
+      ]),
+      completed: Object.freeze([
+        "Vingt ressources ont rejoint le stockage. Cette réserve est maintenant réelle, pas seulement transportée."
+      ])
+    })
+  });
+
+  const explorationCartographer = Object.freeze({
+    id: "GAME-exploration_cartographer",
+    title: "Cartographe local",
+    description: "Vers le Sud, découvrir puis explorer successivement trois nouvelles maps à au moins 80 %.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-collection_reserves",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-collection_reserves"]),
+    priority: 42,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      repeatUnknownTravelUntilComplete: true
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "south1",
+        title: "Découvrir une première nouvelle map au Sud",
+        action: "travel",
+        target: 1,
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", direction: "south" })
+      }),
+      Object.freeze({
+        slot: "explore1",
+        title: "Explorer cette map à 80 %",
+        action: "explore-zone",
+        target: 80,
+        requires: Object.freeze(["south1"]),
+        params: Object.freeze({
+          scope: "map", metric: "surfacePercent", threshold: 80,
+          requiredMapFact: "gameCartographer:map1", requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "south2",
+        title: "Découvrir une deuxième nouvelle map au Sud",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["explore1"]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", direction: "south" })
+      }),
+      Object.freeze({
+        slot: "explore2",
+        title: "Explorer cette deuxième map à 80 %",
+        action: "explore-zone",
+        target: 80,
+        requires: Object.freeze(["south2"]),
+        params: Object.freeze({
+          scope: "map", metric: "surfacePercent", threshold: 80,
+          requiredMapFact: "gameCartographer:map2", requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "south3",
+        title: "Découvrir une troisième nouvelle map au Sud",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["explore2"]),
+        params: Object.freeze({
+          eventDriven: true, newOnly: true, distinctBy: "mapId", direction: "south",
+          completionArrivalFact: "gameCartographer:map3",
+          completionArrivalField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "explore3",
+        title: "Explorer cette troisième map à 80 %",
+        action: "explore-zone",
+        target: 80,
+        requires: Object.freeze(["south3"]),
+        params: Object.freeze({
+          scope: "map", metric: "surfacePercent", threshold: 80,
+          requiredMapFact: "gameCartographer:map3", requiredMapField: "mapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Au Sud, je veux cesser d’empiler des cartes à peine entamées : une zone, puis 80 %, avant d’aller plus loin."
+      ]),
+      completed: Object.freeze([
+        "Trois territoires méridionaux sont maintenant reliés par une exploration réellement approfondie."
+      ])
+    })
+  });
+
+  const explorationComplete = Object.freeze({
+    id: "GAME-exploration_complete",
+    title: "Exploration approfondie",
+    description: "Achever à 100 % la troisième map validée par Cartographe local.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-exploration_cartographer",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-exploration_cartographer"]),
+    priority: 40,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Explorer à 100 % la troisième map",
+        target: 100,
+        params: Object.freeze({
+          scope: "map",
+          metric: "surfacePercent",
+          threshold: 100,
+          requiredMapFact: "gameCartographer:map3",
+          requiredMapField: "mapId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Cette troisième carte est déjà bien comprise. Je veux aller jusqu’au bout et fermer ses derniers blancs."
+      ]),
+      completed: Object.freeze([
+        "Plus aucun secteur n’est laissé dans l’ombre sur cette carte. Je peux maintenant comparer le monde à une autre échelle."
+      ])
+    })
+  });
+
+  const travelBiomes = Object.freeze({
+    id: "GAME-travel_biomes",
+    title: "Explorateur de biomes",
+    description: "Découvrir trois types de biomes distincts.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-exploration_complete",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-exploration_complete"]),
+    priority: 20,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Découvrir 3 biomes distincts",
+        target: 3,
+        params: Object.freeze({ scope: "multi-map", distinctBy: "biomeId" })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Une carte complète ne suffit pas à comprendre le monde. Je veux comparer des milieux vraiment différents."
+      ]),
+      completed: Object.freeze([
+        "Trois biomes distincts : assez pour commencer à mesurer la diversité du monde plutôt que celle d’une seule route."
+      ])
+    })
+  });
+
+  const explorationTotal = Object.freeze({
+    id: "GAME-exploration_total",
+    title: "Exploration mondiale — 10 biomes",
+    description: "Valider dix biomes distincts dont au moins une map a été explorée à 100 %, y compris dans l’historique déjà acquis.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-travel_biomes",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-travel_biomes"]),
+    priority: 16,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Explorer intégralement 10 biomes distincts",
+        target: 10,
+        params: Object.freeze({
+          scope: "multi-map",
+          metric: "surfacePercent",
+          threshold: 100,
+          distinctBy: "biomeId",
+          historicalBackfill: true
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je veux maintenant distinguer les biomes que j’ai seulement traversés de ceux que je connais réellement jusqu’au dernier secteur."
+      ]),
+      completed: Object.freeze([
+        "Dix biomes ont été explorés intégralement. Le monde commence à avoir une structure comparable, pas seulement une suite de paysages."
+      ])
+    })
+  });
+
+  const explorationTotal20 = Object.freeze({
+    id: "GAME-exploration_total_20",
+    title: "Exploration mondiale — 20 biomes",
+    description: "Étendre la cartographie complète à vingt biomes distincts, avec reprise de l’historique déjà exploré à 100 %.",
+    pattern: "EXPLORE_SCOPE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-exploration_total",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-exploration_total"]),
+    priority: 14,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    slots: Object.freeze({
+      explore: Object.freeze({
+        title: "Explorer intégralement 20 biomes distincts",
+        target: 20,
+        params: Object.freeze({
+          scope: "multi-map",
+          metric: "surfacePercent",
+          threshold: 100,
+          distinctBy: "biomeId",
+          historicalBackfill: true
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Dix biomes m’ont donné une première lecture du monde. Je veux maintenant vérifier si cette diversité tient à l’échelle planétaire."
+      ]),
+      completed: Object.freeze([
+        "Vingt biomes distincts ont été intégralement explorés. La diversité planétaire repose maintenant sur une cartographie solide."
+      ])
+    })
+  });
+
+  const travelShort = Object.freeze({
+    id: "GAME-travel_short",
+    title: "Voyage court",
+    description: "Depuis le réseau territorial connu, découvrir trois nouvelles maps vers le Nord.",
+    pattern: "TRAVEL_CYCLE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-exploration_total_20",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-foundation", "GAME-exploration_total_20"]),
+    priority: 38,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      repeatUnknownTravelUntilComplete: true
+    }),
+    slots: Object.freeze({
+      travel: Object.freeze({
+        title: "Découvrir 3 nouvelles maps au Nord",
+        target: 3,
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          direction: "north"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Le relais me permet maintenant de pousser une route courte vers le Nord sans repartir de zéro à chaque sortie."
+      ]),
+      completed: Object.freeze([
+        "Trois nouvelles zones au Nord sont reliées au réseau connu. La route peut maintenant s’allonger."
+      ])
+    })
+  });
+
+  const travelLong = Object.freeze({
+    id: "GAME-travel_long",
+    title: "Voyage long",
+    description: "À partir de son activation, découvrir huit nouvelles maps vers le Nord ; les maps du Voyage court ne comptent pas.",
+    pattern: "TRAVEL_CYCLE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-travel_short",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-travel_short"]),
+    priority: 40,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      repeatUnknownTravelUntilComplete: true
+    }),
+    slots: Object.freeze({
+      travel: Object.freeze({
+        title: "Découvrir 8 nouvelles maps au Nord",
+        target: 8,
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          direction: "north"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Trois cartes ont tracé une direction. Cette fois je veux mesurer ce que vaut vraiment cette route : huit nouvelles zones, pas les anciennes étapes déjà franchies."
+      ]),
+      completed: Object.freeze([
+        "Huit nouvelles zones prolongent maintenant la route du Nord. Ce n’est plus une excursion courte : c’est un véritable axe d’exploration."
+      ])
+    })
+  });
+
   const T04 = Object.freeze({
     id: "T04",
     title: "Comprendre qu’un projet peut progresser en parallèle",
@@ -2245,7 +3016,7 @@
     }
     const previous =
       threshold === 500
-        ? 100
+        ? 250
         : threshold === 1000
           ? 500
           : threshold === 250
@@ -2264,7 +3035,7 @@
     if (threshold === 20) return Object.freeze([]);
     const previous =
       threshold === 500
-        ? 100
+        ? 250
         : threshold === 1000
           ? 500
           : threshold === 250
@@ -2403,6 +3174,20 @@
     T03,
     shelter,
     base,
+    nouvelleFondation,
+    foundation,
+    survivalRest,
+    survivalStable,
+    collectionSamples,
+    collectionVariety,
+    collectionReserves,
+    explorationCartographer,
+    explorationComplete,
+    travelBiomes,
+    explorationTotal,
+    explorationTotal20,
+    travelShort,
+    travelLong,
     T04,
     T05,
     T06,

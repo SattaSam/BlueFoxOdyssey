@@ -212,6 +212,30 @@
     return changed;
   };
 
+  const progressReturnConsumedObservers = (manager, sourceMissionId, detail) => {
+    if (!manager?.trees?.size) return 0;
+    let changed = 0;
+    manager.trees.forEach((tree, missionId) => {
+      if (missionId === sourceMissionId) return;
+      if (manager.ensureLifecycle?.(missionId)?.status !== "active") return;
+      let treeChanged = false;
+      tree.availableLeaves().forEach((node) => {
+        if (node.isComplete || node.params?.returnConsumedOnly !== true) return;
+        if (Missions.normalizeActionType(node.type) !== Missions.ActionType.TRAVEL) return;
+        if (!eventMatchesFilters(node, detail)) return;
+        if (node.increment(1)) {
+          changed += 1;
+          treeChanged = true;
+        }
+      });
+      if (treeChanged) {
+        tree.refresh();
+        manager.memory?.saveTree?.(tree);
+      }
+    });
+    return changed;
+  };
+
   const progressActiveTravel = (detail = {}) => {
     const manager = BF.currentEngine?.missionManager;
     if (!manager?.trees?.size || !detail.toMapId) return 0;
@@ -223,6 +247,7 @@
 
       tree.availableLeaves().forEach((node) => {
         if (node.isComplete) return;
+        if (node.params?.returnConsumedOnly === true) return;
         const eventDriven = node.params?.eventDriven === true;
         if (!eventDriven && node.params?.biblePattern !== "TRAVEL_CYCLE") return;
         if (Missions.normalizeActionType(node.type) !== Missions.ActionType.TRAVEL) return;
@@ -239,6 +264,7 @@
             if (intent?.active === true) {
               manager.memory?.setFact?.(key, null);
               manager.memory?.save?.();
+              changed += progressReturnConsumedObservers(manager, missionId, detail);
             }
           }
         }

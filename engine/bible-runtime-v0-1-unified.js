@@ -66,6 +66,8 @@
       this.proximityContextTimer = null;
       this.localExplorationReconciling = false;
       this.localExplorationSessionRestored = false;
+      this.localExplorationSessionMapId = null;
+      this.localExplorationAwaitingPostArrival = null;
       this.pendingConstructionResourceMissions = new Set();
       this.constructionResourceSignatures = new Map();
       this.boundProgressionChanged = (event) =>
@@ -328,6 +330,8 @@
       this.localExplorationSessionRestored = true;
       const mapId = String(BF.currentEngine?.currentMapId || "");
       if (!mapId) return false;
+      this.localExplorationSessionMapId = mapId;
+      this.localExplorationAwaitingPostArrival = null;
       const paused = this.pauseOffMapLocalExploration(mapId);
       const exploration = BF.getMapExplorationState?.(mapId);
       return this.reconcileLocalExplorationMap(
@@ -1625,6 +1629,14 @@
         // triggerOnly signifie : l’événement révèle la mission mais ne lie pas
         // la suite à l’objet qui a servi de déclencheur. Cette règle était
         // auparavant portée par bible-runtime-trigger-fix-v19.js.
+        if (mission.bindActivationMap === true && event.mapId) {
+          manager.memory?.setFact?.(`bibleActivation:${mission.id}`, {
+            mapId: String(event.mapId),
+            fromMapId: event.fromMapId || null,
+            toMapId: event.toMapId || event.mapId,
+            activatedAt: Date.now()
+          });
+        }
         if (mission.triggerOnly === true) {
           manager.memory?.setFact?.(`bibleTarget:${mission.id}`, null);
         } else if (mission.targetBinding) {
@@ -1775,10 +1787,23 @@
       if (!manager?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
         return false;
       }
-      return this.reconcileLocalExplorationMap(
-        detail.mapId,
-        detail.surfacePercent
-      );
+      const mapId = String(detail.mapId || "");
+      if (!mapId) return false;
+
+      // WorldEngine place BlueFox avant l'événement de transition. Le tracker
+      // peut donc émettre une première surface au spawn : elle ne doit jamais
+      // révéler une nouvelle LOC-05. La première variation d'exploration
+      // post-arrivée, elle, est une preuve de déplacement/exploration réelle.
+      if (this.localExplorationSessionMapId &&
+          mapId !== this.localExplorationSessionMapId) {
+        this.localExplorationAwaitingPostArrival = mapId;
+        return false;
+      }
+      if (this.localExplorationAwaitingPostArrival === mapId) {
+        this.localExplorationAwaitingPostArrival = null;
+      }
+      this.localExplorationSessionMapId = mapId;
+      return this.reconcileLocalExplorationMap(mapId, detail.surfacePercent);
     }
 
     onMapTransition(detail) {
@@ -1810,11 +1835,19 @@
 
       if (this.manager()?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
         this.pauseOffMapLocalExploration(event.mapId);
-        const exploration = BF.getMapExplorationState?.(event.mapId);
-        this.reconcileLocalExplorationMap(
-          event.mapId,
-          exploration?.surfacePercent
-        );
+        const manager = this.manager();
+        const hasExistingLocalInstance = this.localExplorationTemplates().some((template) => {
+          const instanceId = this.localExplorationInstanceId(template.id, event.mapId);
+          return Boolean(manager?.memory?.state?.missionLifecycle?.[instanceId]);
+        });
+        this.localExplorationSessionMapId = event.mapId;
+        if (hasExistingLocalInstance) {
+          this.localExplorationAwaitingPostArrival = null;
+          const exploration = BF.getMapExplorationState?.(event.mapId);
+          this.reconcileLocalExplorationMap(event.mapId, exploration?.surfacePercent);
+        } else {
+          this.localExplorationAwaitingPostArrival = event.mapId;
+        }
       }
     }
 
@@ -1950,23 +1983,26 @@
       return result;
     }
 
-    gateSatisfied(mission) {
-      const gate = mission?.completionGate;
-      if (!gate) return true;
-      if (this.state.gatesSatisfied[mission.id]) return true;
+    missionTargetMapId(mission) {
+      const direct = mission?.targetMapId || mission?.completionGate?.mapId;
+      if (direct) return String(direct);
+      const factKey = String(mission?.targetMapFact || "").trim();
+      if (!factKey) return "";
+      const fact = this.manager()?.memory?.getFact?.(factKey, null);
+      const field = String(mission?.targetMapField || "mapId").trim();
+      return String(fact?.[field] || fact?.mapId || "");
+    }
 
+    shelterProximitySatisfied(gate, mapOverride = null) {
       const engine = BF.currentEngine;
-      const requiredMapId = gate.mapId != null ? String(gate.mapId) : null;
-      if (gate.type !== "proximity.shelter") return false;
-
+      const requiredMapId = mapOverride || (gate?.mapId != null ? String(gate.mapId) : null);
       const p = engine?.character?.root?.position;
       if (!p) return false;
-      const allowed = new Set(gate.shelterKinds || ["camp", "refuge", "base"]);
-      const radius = Math.max(0.5, Number(gate.radius) || 8);
-      const requiredSiteId = gate.siteId != null ? String(gate.siteId) : null;
-      if (requiredMapId != null && String(engine.currentMapId || "") !== requiredMapId) return false;
-
-      const satisfied = this.shelterObjects().some((record) => {
+      const allowed = new Set(gate?.shelterKinds || ["camp", "refuge", "base"]);
+      const radius = Math.max(0.5, Number(gate?.radius) || 8);
+      const requiredSiteId = gate?.siteId != null ? String(gate.siteId) : null;
+      if (requiredMapId && String(engine.currentMapId || "") !== requiredMapId) return false;
+      return this.shelterObjects().some((record) => {
         if (!allowed.has(record.kind)) return false;
         const recordSiteId = String(
           record.object?.userData?.establishedSite ||
@@ -1979,11 +2015,46 @@
           : record.position;
         return q && Math.hypot(p.x - q.x, p.z - q.z) <= radius;
       });
-      if (satisfied) {
+    }
+
+    gateSatisfied(mission) {
+      const gate = mission?.completionGate;
+      if (!gate) return true;
+      if (this.state.gatesSatisfied[mission.id]) return true;
+      if (gate.type !== "proximity.shelter") return false;
+
+      const requiredMapId = this.missionTargetMapId(mission) || null;
+      const satisfied = this.shelterProximitySatisfied(gate, requiredMapId);
+      if (!satisfied || gate.requireDeposit === true) return false;
+      this.state.gatesSatisfied[mission.id] = Date.now();
+      this.saveState();
+      return true;
+    }
+
+    markDepositCompletionGates() {
+      const manager = this.manager();
+      if (!manager) return false;
+      let changed = false;
+      this.allMissions().forEach((mission) => {
+        const gate = mission?.completionGate;
+        if (gate?.type !== "proximity.shelter" || gate.requireDeposit !== true) return;
+        if (this.state.gatesSatisfied[mission.id]) return;
+        const lifecycle = manager.memory?.state?.missionLifecycle?.[mission.id];
+        const tree = manager.trees?.get?.(mission.id);
+        if (lifecycle?.status !== "active" || !tree?.root?.isComplete) return;
+        const targetMapId = this.missionTargetMapId(mission) || null;
+        if (!this.shelterProximitySatisfied(gate, targetMapId)) return;
         this.state.gatesSatisfied[mission.id] = Date.now();
+        changed = true;
+      });
+      if (changed) {
         this.saveState();
+        manager.syncLifecycleFromTrees?.();
+        manager.reevaluatePendingActivations?.();
+        manager.catalogController?.schedule?.();
+        manager.publish?.();
       }
-      return satisfied;
+      return changed;
     }
 
     canFinalizeMission(missionId) {
@@ -1993,11 +2064,7 @@
       const establish = this.constructionPlacementEffect(mission);
       if (establish) {
         const kind = lower(establish.kind);
-        const mapId = String(
-          mission.targetMapId ||
-          mission.completionGate?.mapId ||
-          ""
-        );
+        const mapId = this.missionTargetMapId(mission);
         const site = mapId ? this.siteBucket(mapId)?.[kind] : null;
         const established =
           Boolean(site) &&
@@ -2051,9 +2118,7 @@
       }
       const canFinalize = this.canFinalizeMission(missionId);
       const kind = this.constructionPlacementEffect(mission)?.kind;
-      const targetMapId = String(
-        mission.targetMapId || mission.completionGate?.mapId || ""
-      );
+      const targetMapId = this.missionTargetMapId(mission);
       const message = kind === "refuge"
         ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
         : kind === "camp"
@@ -2437,6 +2502,9 @@
       if (this.progressionChangeAffectsHistoricalCollections(detail)) {
         changed = this.reconcileHistoricalCollectionChains() || changed;
       }
+      if (String(detail.reason || "") === "inventory-deposited") {
+        changed = this.markDepositCompletionGates() || changed;
+      }
       if (!this.progressionChangeAffectsInventory(detail)) return changed;
       if (!this.pendingConstructionResourceMissions.size) return changed;
       for (const missionId of [...this.pendingConstructionResourceMissions]) {
@@ -2563,7 +2631,7 @@
       const consumes = effects.filter((effect) => effect.type === "inventory.consume");
       const establish = effects.find((effect) => effect.type === "site.establish");
       if (!establish || !BF.MicroScenes?.get?.(establish.microSceneId)) return false;
-      const targetMapId = String(mission.targetMapId || mission.completionGate?.mapId || BF.currentEngine?.currentMapId || "");
+      const targetMapId = this.missionTargetMapId(mission) || String(BF.currentEngine?.currentMapId || "");
       if (!targetMapId || targetMapId !== BF.currentEngine?.currentMapId) return false;
 
       const activationSource =
@@ -2685,12 +2753,7 @@
       const effect = this.constructionPlacementEffect(mission);
       if (!engine?.character?.root || !effect) return null;
       const kind = lower(effect.kind);
-      const targetMapId = String(
-        mission.targetMapId ||
-        mission.completionGate?.mapId ||
-        engine.currentMapId ||
-        ""
-      );
+      const targetMapId = this.missionTargetMapId(mission) || String(engine.currentMapId || "");
 
       const referenceKind = lower(effect.placement?.referenceKind);
       if (referenceKind) {
@@ -2787,7 +2850,7 @@
       const effect = this.constructionPlacementEffect(mission);
       const canvas = engine?.renderer?.domElement;
       if (!engine?.THREE || !engine?.raycaster || !engine?.groundPlane || !canvas || !effect) return false;
-      if (String(engine.currentMapId) !== String(mission.targetMapId || mission.completionGate?.mapId || engine.currentMapId)) return false;
+      if (String(engine.currentMapId) !== String(this.missionTargetMapId(mission) || engine.currentMapId)) return false;
 
       const previewRoot = new engine.THREE.Group();
       previewRoot.name = `BlueFoxSitePreview:${mission.id}`;
@@ -2948,7 +3011,7 @@
       const lifecycle = manager?.memory?.state?.missionLifecycle?.[mission?.id];
       if (!mission?.completionGate || !this.constructionPlacementEffect(mission)) return false;
       if (lifecycle?.status !== "active" || !tree?.root?.isComplete) return false;
-      const targetMapId = String(mission.targetMapId || mission.completionGate.mapId || "");
+      const targetMapId = this.missionTargetMapId(mission);
       if (!targetMapId) return false;
       if (String(BF.currentEngine?.currentMapId || "") !== targetMapId) {
         const messageKey = `${mission.id}:waiting-target-map`;
@@ -3009,9 +3072,7 @@
       const manager = this.manager();
       const tree = manager?.trees?.get?.(mission.id);
       const lifecycle = manager?.memory?.state?.missionLifecycle?.[mission.id];
-      const targetMapId = String(
-        mission.targetMapId || mission.completionGate?.mapId || ""
-      );
+      const targetMapId = this.missionTargetMapId(mission);
       if (
         lifecycle?.status !== "active" ||
         !tree?.root?.isComplete ||

@@ -7,6 +7,11 @@
 
   const normalize = (value) => String(value ?? "").trim().toLowerCase();
 
+  const mapBiome = (mapId) => {
+    const record = BF.maps?.[mapId] || null;
+    return record?.biomeId || record?.biome || record?.generator?.biome || null;
+  };
+
   const nodeDistinctValue = (node, detail) => {
     const distinctBy = String(node?.params?.distinctBy || "").trim();
     if (!distinctBy || distinctBy === "none") return null;
@@ -60,10 +65,15 @@
   const progressExploreNode = (node, detail) => {
     const metric = String(node?.params?.metric || "").trim();
     const threshold = Number(node?.params?.threshold);
+    const identity = nodeDistinctValue(node, detail);
     if (metric === "surfacePercent" || Number.isFinite(threshold)) {
       const value = Number(detail.surfacePercent);
       if (!Number.isFinite(value)) return false;
       const required = Math.max(1, Number.isFinite(threshold) ? threshold : Number(node.target));
+      if (identity != null) {
+        if (!identity || value < required) return false;
+        return node.incrementDistinct?.(identity, 1) || false;
+      }
       const absolute = Math.min(
         Number(node.target) || required,
         Math.max(0, value)
@@ -72,15 +82,15 @@
       return delta > 0 ? node.increment(delta) : false;
     }
 
-    const identity = nodeDistinctValue(node, detail);
     if (identity != null) {
+      if (!identity) return false;
       return node.incrementDistinct?.(identity, 1) || false;
     }
 
     return node.increment(Math.max(1, Number(detail.amount) || 1));
   };
 
-  const progressActiveExploration = (detail = {}) => {
+  const progressActiveExploration = (detail = {}, historicalOnly = false) => {
     const manager = BF.currentEngine?.missionManager;
     if (!manager?.trees?.size) return 0;
 
@@ -95,6 +105,7 @@
           node.params?.biblePattern
         )) return;
         if (Missions.normalizeActionType(node.type) !== Missions.ActionType.EXPLORE_ZONE) return;
+        if (historicalOnly && node.params?.historicalBackfill !== true) return;
         if (!scopeMatches(node, detail, BF.currentEngine, manager)) return;
         if (!biomeMatches(node, detail)) return;
 
@@ -123,6 +134,8 @@
     const detail = event?.detail || {};
     progressActiveExploration({
       ...detail,
+      biomeId: detail.biomeId || detail.biome || mapBiome(detail.mapId),
+      biome: detail.biome || mapBiome(detail.mapId),
       amount: Math.max(1, Number(detail.revealedSectorCount) || 1)
     });
   };
@@ -135,8 +148,8 @@
     progressActiveExploration({
       mapId,
       zoneId: null,
-      biomeId: detail.biomeId || detail.biome || null,
-      biome: detail.biome || null,
+      biomeId: detail.biomeId || detail.biome || mapBiome(mapId),
+      biome: detail.biome || mapBiome(mapId),
       amount: 1,
       surfacePercent: Number(
         BF.getMapExplorationState?.(mapId)?.surfacePercent
@@ -145,6 +158,18 @@
   };
 
   const onMissionState = () => {
+    const maps = BF.getExplorationSummary?.().maps || {};
+    Object.entries(maps).forEach(([mapId, exploration]) => {
+      progressActiveExploration({
+        mapId,
+        zoneId: null,
+        biomeId: mapBiome(mapId),
+        biome: mapBiome(mapId),
+        surfacePercent: Number(exploration?.surfacePercent) || 0,
+        amount: 0
+      }, true);
+    });
+
     const mapId = BF.currentEngine?.currentMapId;
     if (!mapId) return;
     const exploration = BF.getMapExplorationState?.(mapId);
@@ -152,6 +177,8 @@
     progressActiveExploration({
       mapId,
       zoneId: null,
+      biomeId: mapBiome(mapId),
+      biome: mapBiome(mapId),
       surfacePercent: Number(exploration.surfacePercent) || 0,
       amount: 0
     });
