@@ -418,7 +418,7 @@
       return this.activeMissionIds
         .filter((id) => id !== missionId)
         .filter((id) => this.ensureLifecycle(id).status === "active")
-        .filter((id) => this.isMissionExclusiveToCurrentMap(id))
+        .filter((id) => this.isMissionTransitionOpportunity(id, context))
         .filter((id) => {
           const tree = this.trees.get(id);
           return Boolean(
@@ -593,7 +593,7 @@
       );
       const deferMissionId = String(intent?.deferMissionId || "");
       if (!intent?.active || !deferMissionId) return false;
-      if (!this.isMissionExclusiveToCurrentMap(deferMissionId)) return false;
+      if (!this.isMissionTransitionOpportunity(deferMissionId, context)) return false;
       if (this.ensureLifecycle(deferMissionId).status !== "active") return false;
 
       const tree = this.trees.get(deferMissionId);
@@ -751,7 +751,7 @@
       if (!intent?.active) {
         const policy = this.travelMissionDefinition(travel)?.returnPolicy || {};
         if (policy.mode !== "bac-discretion") return true;
-        return this.isMissionExclusiveToCurrentMap(missionId);
+        return this.isMissionTransitionOpportunity(missionId, context);
       }
 
       const eligible = Array.isArray(intent.eligibleLocalMissionIds)
@@ -761,12 +761,87 @@
         intent.decisionResolved !== true &&
         eligible.includes(missionId)
       ) {
-        return this.isMissionExclusiveToCurrentMap(missionId);
+        return this.isMissionTransitionOpportunity(missionId, context);
       }
       return (
         intent.deferMissionId === missionId &&
         eligible.includes(missionId) &&
-        this.isMissionExclusiveToCurrentMap(missionId)
+        this.isMissionTransitionOpportunity(missionId, context)
+      );
+    }
+
+    delegatedRuntimeAction(missionId) {
+      const definition = this.definition(missionId) || {};
+      const tree = this.trees.get(missionId);
+      if (!tree || tree.root.isComplete) return null;
+
+      // A runtime counter is not sufficient by itself: the mission must
+      // explicitly authorize an autonomous owner for the delegated action.
+      if (definition.allowsAutonomousRationCraft !== true) return null;
+
+      const counters = Array.isArray(definition.runtimeCounters)
+        ? definition.runtimeCounters
+        : [];
+      for (const counter of counters) {
+        if (
+          !counter?.slot ||
+          String(counter.source || "") !== "rations.craftedTotal"
+        ) continue;
+        const node = tree.find?.(`${missionId}:${counter.slot}`);
+        if (!node || node.isComplete) continue;
+        const sequenceEntry = Array.isArray(definition.sequence)
+          ? definition.sequence.find((entry) => entry?.slot === counter.slot)
+          : null;
+        const type = Missions.normalizeActionType(
+          sequenceEntry?.action || node.type
+        );
+        if (
+          sequenceEntry?.params?.eventDriven !== true ||
+          type !== Missions.ActionType.CRAFT
+        ) continue;
+        return {
+          type,
+          slot: counter.slot,
+          source: counter.source || null
+        };
+      }
+      return null;
+    }
+
+    historicalCollectionTransitionOpportunity(missionId, context) {
+      const tree = this.trees.get(missionId);
+      if (!tree || tree.root.isComplete) return false;
+      const action = this.planner.nextAction(tree, context);
+      if (
+        !action ||
+        ![Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(action.type)
+      ) return false;
+      const node = tree.find?.(action.nodeId);
+      if (node?.params?.historicalCollection !== true) return false;
+
+      const progression = BF.progression;
+      if (
+        typeof progression?.historicalCollectionMetadata !== "function" ||
+        typeof progression?.historicalCollectionMatches !== "function"
+      ) return false;
+
+      return (this.engine?.currentMap?.interactables || []).some((object) => {
+        if (object?.userData?.active !== true) return false;
+        const definition =
+          object.userData.functional ||
+          progression.historicalCollectionDefinition?.(
+            object.userData.libraryType || object.userData.kind
+          );
+        if (!definition) return false;
+        const metadata = progression.historicalCollectionMetadata(definition);
+        return progression.historicalCollectionMatches(node.params || {}, metadata);
+      });
+    }
+
+    isMissionTransitionOpportunity(missionId, context = this.bridge.context()) {
+      return (
+        this.isMissionExclusiveToCurrentMap(missionId) ||
+        this.historicalCollectionTransitionOpportunity(missionId, context)
       );
     }
 
@@ -778,6 +853,9 @@
       if (action && missionId !== this.primaryMissionId && !this.travelAllowsSecondaryMission(missionId, context)) {
         action = null;
       }
+      const delegatedRuntimeAction = !action
+        ? this.delegatedRuntimeAction(missionId)
+        : null;
       const progress = tree ? this.treeProgress(tree) : 0;
       let score = Number(definition?.priority) || 0;
       const reasons = [];
@@ -820,12 +898,22 @@
           score -= energy < 25 ? 95 : 35;
           reasons.push("coût énergétique défavorable");
         }
+      } else if (delegatedRuntimeAction) {
+        score += 45;
+        reasons.push("action runtime déléguée");
       } else {
         score -= 120;
         reasons.push("aucune action réalisable");
       }
       if (missionId === this.primaryMissionId) score += 12;
-      return { missionId, score, action, progress, reasons };
+      return {
+        missionId,
+        score,
+        action,
+        delegatedRuntimeAction,
+        progress,
+        reasons
+      };
     }
 
     isPlayerSelectedPrimary() {
@@ -1007,6 +1095,13 @@
     }
 
     chooseRunnableMissionAction(context) {
+      if (
+        this.hasActivePrimaryMission() &&
+        this.delegatedRuntimeAction(this.primaryMissionId)
+      ) {
+        return null;
+      }
+
       const assessments = this.activeMissionIds
         .filter((id) => this.ensureLifecycle(id).status === "active" && this.trees.has(id))
         .map((id) => this.assessMission(id, context))
