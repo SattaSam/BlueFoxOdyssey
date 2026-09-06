@@ -139,4 +139,4 @@ mettre à jour MASTER.md, ARCHITECTURE_TECHNIQUE.md, ROADMAP_TODO.md, DEV_HISTOR
 Chantier en cours : 
 
 Chantier BlueFox : P0 — [sujet].
-Applique le protocole projet déjà établi. Audite le commit courant + nos validations d’aujourd’hui + le document de référence transmis. Fais-moi d’abord une stratégie d’intégration synthétique et justifiée. Après ma validation, génère le correctif propre prêt à commiter.
+Applique le protocole projet déjà établi. Audite le commit courant + nos validations  + les documents IMI et contrat Gameplay. Fais-moi d’abord une stratégie d’intégration synthétique et justifiée. Après ma validation, génère le correctif propre prêt à commiter.

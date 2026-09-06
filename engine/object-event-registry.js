@@ -52,6 +52,11 @@
         data.persistentMicroSceneId ||
         root?.userData?.persistentMicroSceneId ||
         null,
+      microSceneId:
+        detail.microSceneId ||
+        data.microSceneId ||
+        root?.userData?.microSceneId ||
+        null,
       family: definition.resource?.family || definition.knowledge?.family || definition.category || null,
       inventoryKey: detail.inventoryKey || definition.resource?.inventoryKey || null,
       knowledgeFamily: definition.knowledge?.family || null,

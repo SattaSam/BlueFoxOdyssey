@@ -761,6 +761,8 @@
           localVisibility: mission.localVisibility || null,
           backgroundHud: mission.backgroundHud === true,
           targetMapId: mission.targetMapId || null,
+          narrativeOnly:
+            mission.narrativeOnly === true || mission.pattern === "NARRATIVE_ONLY",
           priority: Number(mission.priority) || 0,
           passivePriorityAxis:
             mission.passivePriorityAxis ||
@@ -868,6 +870,8 @@
         localVisibility: mission.localVisibility || null,
         backgroundHud: mission.backgroundHud === true,
         targetMapId: mission.targetMapId || null,
+        narrativeOnly:
+          mission.narrativeOnly === true || mission.pattern === "NARRATIVE_ONLY",
         priority: Number(mission.priority) || 0,
         passivePriorityAxis:
           mission.passivePriorityAxis ||

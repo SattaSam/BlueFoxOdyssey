@@ -2640,6 +2640,123 @@
     })
   });
 
+
+  const FLO03 = Object.freeze({
+    id: "FLO-03",
+    title: "Symbioses locales",
+    description: "Étudier une plante et un partenaire minéral ou animal dans une même micro-scène afin d’identifier une relation écologique locale.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "FLO-01", count: 1 }),
+    prerequisites: Object.freeze(["FLO-01"]),
+    priority: 329,
+    passivePriorityAxis: "research",
+    ponderation: 1, obsessionEligible: true, obsessionIntensity: 3, souvenir: true, memoryValence: "positive", scoreTrauma: 30,
+    narrativeAxis: "NATURALISTE", reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "floraPartner", title: "Analyser une plante dans la clairière de comparaison", action: "analyze", target: 1, requires: Object.freeze([]), params: Object.freeze({ subject: "flora", microSceneId: "MSC-FERN-CLEARING-001", requiredMapFact: "tutorialExcursion:FLO-02", requiredMapField: "generatedTargetMapId" }) }),
+      Object.freeze({ slot: "associatedPartner", title: "Analyser un partenaire minéral ou animal dans la même micro-scène", action: "analyze", target: 1, requires: Object.freeze(["floraPartner"]), params: Object.freeze({ tagsAny: Object.freeze(["mineral", "fauna", "animal", "geology"]), microSceneId: "MSC-FERN-CLEARING-001", requiredMapFact: "tutorialExcursion:FLO-02", requiredMapField: "generatedTargetMapId", relation: Object.freeze({ fromSlot: "floraPartner", sameBy: Object.freeze(["persistentMicroSceneId", "mapId"]) }) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette plante ne vit pas seule. Je veux comparer ce qu’elle fait avec ce qui l’entoure avant de parler de symbiose."]),
+      completed: Object.freeze(["Les deux partenaires répondent au même contexte. Cette association devient une symbiose locale plausible."])
+    })
+  });
+
+  const FLO04 = Object.freeze({
+    id: "FLO-04",
+    title: "Lumière intérieure",
+    description: "Comparer deux plantes bioluminescentes sur deux maps distinctes afin de confirmer un phénomène biologique reproductible.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "FLO-03", count: 1 }),
+    prerequisites: Object.freeze(["FLO-03"]),
+    priority: 328,
+    passivePriorityAxis: "research",
+    ponderation: 1, obsessionEligible: true, obsessionIntensity: 4, souvenir: true, memoryValence: "positive", scoreTrauma: 64,
+    narrativeAxis: "NATURALISTE", reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredObjects: Object.freeze([Object.freeze({ type: "fluorescent_vegetation", count: 1, contextRole: "bioluminescentFlora" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reachFirstGlowMap", title: "Rejoindre un territoire avec une plante lumineuse", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "firstGlowPlant", title: "Analyser une première plante bioluminescente", action: "analyze", target: 1, requires: Object.freeze(["reachFirstGlowMap"]), params: Object.freeze({ subject: "flora", tagsAny: Object.freeze(["glowing", "bioluminescent"]) }) }),
+      Object.freeze({ slot: "reachSecondGlowMap", title: "Rejoindre un autre territoire", action: "travel", target: 1, requires: Object.freeze(["firstGlowPlant"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "secondGlowPlant", title: "Analyser une plante bioluminescente sur l’autre map", action: "analyze", target: 1, requires: Object.freeze(["reachSecondGlowMap"]), params: Object.freeze({ subject: "flora", tagsAny: Object.freeze(["glowing", "bioluminescent"]), relation: Object.freeze({ fromSlot: "firstGlowPlant", differentBy: Object.freeze(["mapId"]) }) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Leur lumière ne ressemble pas à une simple réaction isolée. Je veux la retrouver ailleurs et l’observer comme un phénomène du vivant, surtout lorsqu’elle devient visible dans l’obscurité."]),
+      completed: Object.freeze(["La même logique lumineuse réapparaît sur plusieurs territoires. La bioluminescence végétale appartient à un mécanisme partagé."])
+    })
+  });
+
+  const FLO05 = Object.freeze({
+    id: "FLO-05",
+    title: "Racines énergétiques",
+    description: "Relier l’activité d’une plante à une anomalie géologique observée dans la même micro-scène.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "FLO-04", count: 1 }),
+    prerequisites: Object.freeze(["FLO-04"]),
+    priority: 327,
+    passivePriorityAxis: "research",
+    ponderation: 1, obsessionEligible: true, obsessionIntensity: 5, souvenir: true, memoryValence: "positive", scoreTrauma: 86,
+    narrativeAxis: "NATURALISTE", reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-ECO-FOSSIL-001", persistent: true, spawnOnce: true, contextRole: "energyRootContext" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reachEnergyRoots", title: "Rejoindre un territoire où sol et végétation peuvent être comparés", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "rootFlora", title: "Analyser la végétation de la micro-scène", action: "analyze", target: 1, requires: Object.freeze(["reachEnergyRoots"]), params: Object.freeze({ subject: "flora", microSceneId: "MSC-ECO-FOSSIL-001" }) }),
+      Object.freeze({ slot: "groundReference", title: "Analyser une référence géologique dans la même micro-scène", action: "analyze", target: 1, requires: Object.freeze(["rootFlora"]), params: Object.freeze({ tagsAny: Object.freeze(["rock", "geology", "mineral"]), microSceneId: "MSC-ECO-FOSSIL-001", relation: Object.freeze({ fromSlot: "rootFlora", sameBy: Object.freeze(["persistentMicroSceneId", "mapId"]) }) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les racines suivent les mêmes lignes que certaines anomalies du sol. Je veux vérifier le lien sans rejouer les études géologiques déjà acquises."]),
+      completed: Object.freeze(["La croissance végétale et l’anomalie du sol sont corrélées. Le vivant semble puiser dans une énergie que la géologie concentre."])
+    })
+  });
+
+  const FLO06 = Object.freeze({
+    id: "FLO-06",
+    title: "Une biosphère alimentée",
+    description: "Comparer trois territoires distincts afin de confirmer que la même logique énergétique traverse plusieurs milieux biologiques.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "FLO-05", count: 1 }),
+    prerequisites: Object.freeze(["FLO-05"]),
+    priority: 326,
+    passivePriorityAxis: "research",
+    ponderation: 1, obsessionEligible: true, obsessionIntensity: 5, souvenir: true, memoryValence: "positive", scoreTrauma: 96,
+    narrativeAxis: "NATURALISTE", reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredObjects: Object.freeze([Object.freeze({ type: "fluorescent_vegetation", count: 1, contextRole: "energyFloraReference" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "firstBiome", title: "Analyser une première référence végétale énergétique", action: "analyze", target: 1, requires: Object.freeze([]), params: Object.freeze({ subject: "flora", tagsAny: Object.freeze(["glowing", "bioluminescent"]) }) }),
+      Object.freeze({ slot: "reachSecondBiome", title: "Rejoindre un second territoire", action: "travel", target: 1, requires: Object.freeze(["firstBiome"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "secondBiome", title: "Analyser une référence végétale énergétique sur le second territoire", action: "analyze", target: 1, requires: Object.freeze(["reachSecondBiome"]), params: Object.freeze({ subject: "flora", tagsAny: Object.freeze(["glowing", "bioluminescent"]), relation: Object.freeze({ fromSlot: "firstBiome", differentBy: Object.freeze(["mapId"]) }) }) }),
+      Object.freeze({ slot: "reachThirdBiome", title: "Rejoindre un troisième territoire", action: "travel", target: 1, requires: Object.freeze(["secondBiome"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "thirdBiome", title: "Analyser une référence végétale énergétique sur le troisième territoire", action: "analyze", target: 1, requires: Object.freeze(["reachThirdBiome"]), params: Object.freeze({ subject: "flora", tagsAny: Object.freeze(["glowing", "bioluminescent"]), relation: Object.freeze({ fromSlot: "secondBiome", differentBy: Object.freeze(["mapId"]) }) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une anomalie locale ne suffirait pas. Si la même signature traverse plusieurs territoires, alors c’est la biosphère entière qu’il faut relire."]),
+      completed: Object.freeze(["Trois territoires racontent la même histoire énergétique. Cette planète n’est plus seulement un lieu à traverser : elle pourrait devenir un endroit où vivre durablement."])
+    })
+  });
+
+  const FLO07 = Object.freeze({
+    id: "FLO-07",
+    title: "Envisager de s’installer",
+    description: "Conclusion narrative de la branche FLO : BlueFox commence à envisager une installation durable sur cette planète.",
+    pattern: "NARRATIVE_ONLY",
+    narrativeOnly: true,
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "FLO-06", count: 1 }),
+    prerequisites: Object.freeze(["FLO-06"]),
+    priority: 325,
+    autoPrimaryEligible: false, primaryOnActivation: false,
+    passivePriorityAxis: "research",
+    ponderation: 1, obsessionEligible: true, obsessionIntensity: 5, souvenir: true, memoryValence: "positive", scoreTrauma: 96,
+    narrativeAxis: "NATURALISTE", reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    slots: Object.freeze({}),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je pensais surtout en termes d’expédition, de retour et de prochaine étape. Maintenant une autre idée devient possible : rester ici assez longtemps pour appeler cet endroit chez moi."]),
+      completed: Object.freeze(["Je n’ai rien décidé de définitif. Mais cette planète est devenue plus qu’un terrain d’étude : je peux réellement envisager de m’y installer durablement."])
+    })
+  });
+
   const GEO01 = Object.freeze({
     id: "GEO-01",
     title: "Lire les couches",
@@ -3879,6 +3996,11 @@
     T13,
     FLO01,
     FLO02,
+    FLO03,
+    FLO04,
+    FLO05,
+    FLO06,
+    FLO07,
     GEO01,
     GEO02,
     GEO03,

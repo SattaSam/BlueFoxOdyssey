@@ -287,7 +287,8 @@
       family: metadata.family,
       subject: metadata.subject,
       category: metadata.category,
-      persistentMicroSceneId: metadata.persistentMicroSceneId
+      persistentMicroSceneId: metadata.persistentMicroSceneId,
+      microSceneId: metadata.microSceneId
     };
 
     for (const [key, actual] of Object.entries(exact)) {
@@ -350,6 +351,10 @@
         event?.persistentMicroSceneId ||
         detail.persistentMicroSceneId ||
         null,
+      microSceneId:
+        event?.microSceneId ||
+        detail.microSceneId ||
+        null,
       tags: [
         ...(event?.tags || []),
         ...(detail.tags || []),
@@ -401,7 +406,7 @@
   const relationEvidenceFromResolved = (resolved, mapId) =>
     relationEvidence(
       {
-        ...definitionMissionMetadata(resolved?.definition),
+        ...definitionMissionMetadata(resolved?.definition, resolved),
         ...identityOf(resolved)
       },
       mapId,
@@ -692,13 +697,21 @@
     ...(definition?.situation?.tags || [])
   ].map((value) => String(value || "").toLowerCase()));
 
-  const definitionMissionMetadata = (definition) => ({
+  const definitionMissionMetadata = (definition, resolved = null) => ({
     objectId: definition?.id,
     cuoType: definition?.type,
     kind: definition?.resource?.inventoryKey || definition?.type,
     family: definition?.resource?.family || definition?.knowledge?.family || definition?.category,
     subject: definition?.semantic?.subject || definition?.knowledge?.family || definition?.category || definition?.type,
     category: definition?.category,
+    persistentMicroSceneId:
+      resolved?.object?.userData?.persistentMicroSceneId ||
+      resolved?.anchor?.userData?.persistentMicroSceneId ||
+      null,
+    microSceneId:
+      resolved?.object?.userData?.microSceneId ||
+      resolved?.anchor?.userData?.microSceneId ||
+      null,
     tags: [...objectTags(definition)]
   });
 
@@ -938,7 +951,7 @@
         const distinctValue = node ? distinctValueFromResolved(node, resolved) : null;
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return null;
         if (!(definition && canStudy(definition))) return null;
-        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), action.params || {}, { skipSubject: true })) return null;
+        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, resolved), action.params || {}, { skipSubject: true })) return null;
         if (!matchesStudySubject(definition, action.params?.subject)) return null;
         if (!matchesBoundTarget(engine, action.missionId, resolved)) return null;
         const priority = unstudiedPriority(
@@ -976,7 +989,7 @@
         ) return false;
         return (
           metadataMatchesMissionCriteria(
-            definitionMissionMetadata(definition),
+            definitionMissionMetadata(definition, resolved),
             action.params || {}
           ) &&
           matchesBoundTarget(engine, action.missionId, resolved)
@@ -1009,7 +1022,7 @@
       for (const node of tree.availableLeaves()) {
         if (!isStudyAction(node.type) || node.params?.siteProgressionKind) continue;
         if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
-        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), node.params || {}, { skipSubject: true })) continue;
+        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, missionResolved), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(missionResolved, engine.currentMapId))) continue;
         if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;

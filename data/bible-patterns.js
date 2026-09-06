@@ -140,6 +140,17 @@
       ])
     }),
 
+    NARRATIVE_ONLY: Object.freeze({
+      id: "NARRATIVE_ONLY",
+      version: 1,
+      autonomyAxis: "research",
+      steps: Object.freeze([]),
+      narrativeMoments: Object.freeze([
+        "revealed",
+        "completed"
+      ])
+    }),
+
     TRAVEL_CYCLE: Object.freeze({
       id: "TRAVEL_CYCLE",
       version: 1,

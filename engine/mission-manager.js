@@ -134,15 +134,23 @@
     }
 
     activateMission(missionId, options = {}) {
-      if (!this.definition(missionId)) return false;
+      const definition = this.definition(missionId);
+      if (!definition) return false;
       if (!this.trees.has(missionId)) {
         this.trees.set(missionId, this.planner.restoreOrCreate(missionId));
       }
-      if (!this.activeMissionIds.includes(missionId)) {
+      const tree = this.trees.get(missionId);
+      const narrativeOnly = definition.narrativeOnly === true;
+      if (narrativeOnly && tree?.root && !tree.root.isComplete) {
+        tree.root.progress = tree.root.target;
+        tree.root.status = Missions.MissionStatus.COMPLETED;
+        tree.root.completedAt ||= Date.now();
+      }
+      if (!narrativeOnly && !this.activeMissionIds.includes(missionId)) {
         this.activeMissionIds.push(missionId);
       }
       const lifecycle = this.ensureLifecycle(missionId);
-      lifecycle.status = this.trees.get(missionId).root.isComplete
+      lifecycle.status = tree.root.isComplete
         ? "completed"
         : "active";
       lifecycle.urgency = Math.max(0, Number(options.urgency) || lifecycle.urgency || 0);
@@ -159,7 +167,7 @@
       if (!lifecycle.activatedAt) lifecycle.activatedAt = Date.now();
       lifecycle.updatedAt = Date.now();
       delete this.memory.state.pendingActivations?.[missionId];
-      const makePrimary = options.primary !== false;
+      const makePrimary = !narrativeOnly && options.primary !== false;
       if (makePrimary) {
         this.setPrimaryMission(
           missionId,
@@ -310,7 +318,7 @@
         total += node.target;
         completed += Math.min(node.progress, node.target);
       });
-      return total ? completed / total : 0;
+      return total ? completed / total : (tree.root.isComplete ? 1 : 0);
     }
 
     playerPriority(axis) {
