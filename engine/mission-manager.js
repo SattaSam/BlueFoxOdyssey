@@ -194,13 +194,29 @@
       );
       if (missing.length) {
         this.memory.state.pendingActivations = this.memory.state.pendingActivations || {};
+        const pendingOptions = { ...options, prerequisites: undefined };
+        const existing = this.memory.state.pendingActivations[missionId] || null;
+        const lifecycle = this.ensureLifecycle(missionId, "hidden");
+        const sameList = (left, right) => {
+          const a = [...new Set(Array.isArray(left) ? left : [])].sort();
+          const b = [...new Set(Array.isArray(right) ? right : [])].sort();
+          return a.length === b.length && a.every((value, index) => value === b[index]);
+        };
+        const unchangedPending = Boolean(
+          existing &&
+          sameList(existing.prerequisites, prerequisites) &&
+          sameList(lifecycle.waitingFor, missing) &&
+          JSON.stringify(existing.options || {}) === JSON.stringify(pendingOptions) &&
+          lifecycle.status === "hidden"
+        );
+        if (unchangedPending) return true;
+
         this.memory.state.pendingActivations[missionId] = {
           missionId,
           prerequisites,
-          options: { ...options, prerequisites: undefined },
-          requestedAt: Date.now()
+          options: pendingOptions,
+          requestedAt: existing?.requestedAt || Date.now()
         };
-        const lifecycle = this.ensureLifecycle(missionId, "hidden");
         lifecycle.status = "hidden";
         lifecycle.waitingFor = missing;
         this.memory.save();
