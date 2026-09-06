@@ -2489,8 +2489,17 @@
       if (standaloneConsumes) {
         const receiptId = `${mission.id}:completion:v${mission.version || 1}`;
         const memory = this.manager()?.memory;
-        if (memory?.hasEffectReceipt?.(receiptId)) return true;
-        if (!this.inventoryEffectsReady(mission)) return false;
+        if (memory?.hasEffectReceipt?.(receiptId)) {
+          this.pendingConstructionResourceMissions.delete(mission.id);
+          return true;
+        }
+        if (!this.inventoryEffectsReady(mission)) {
+          const resourceStatus = this.constructionResourceStatus(mission);
+          this.pendingConstructionResourceMissions.add(mission.id);
+          this.publishConstructionResourceStatus(mission, resourceStatus);
+          return false;
+        }
+        this.pendingConstructionResourceMissions.delete(mission.id);
         return this.applyEffects(mission, { source: "mission-completion" });
       }
       return true;

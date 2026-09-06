@@ -1379,6 +1379,201 @@
   });
 
 
+  const gameEnergy = Object.freeze({
+    id: "GAME-energy",
+    title: "Comparer les cristaux",
+    description: "Comparer huit cristaux, inspecter deux éléments technologiques, effectuer quatre analyses puis formaliser une première hypothèse énergétique.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-special_archivist",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-special_archivist"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.1,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "crystals",
+        title: "Réunir 8 cristaux pour comparaison",
+        action: "collect",
+        target: 8,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          tagsAny: Object.freeze(["crystal"])
+        })
+      }),
+      Object.freeze({
+        slot: "technology",
+        title: "Inspecter 2 éléments technologiques",
+        action: "inspect",
+        target: 2,
+        requires: Object.freeze(["crystals"]),
+        params: Object.freeze({
+          family: "technology"
+        })
+      }),
+      Object.freeze({
+        slot: "analyses",
+        title: "Effectuer 4 analyses comparatives",
+        action: "analyze",
+        target: 4,
+        requires: Object.freeze(["technology"]),
+        params: Object.freeze({
+          tagsAny: Object.freeze(["crystal", "technology"])
+        })
+      }),
+      Object.freeze({
+        slot: "research",
+        title: "Formaliser le principe d’une énergie douce",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["analyses"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ces cristaux ne réagissent pas tous de la même manière. Je vais comparer leurs propriétés à quelques éléments technologiques avant d’en tirer une conclusion."
+      ]),
+      completed: Object.freeze([
+        "Les comparaisons convergent. Je tiens une première piste énergétique exploitable, sans encore prétendre construire quoi que ce soit."
+      ])
+    })
+  });
+
+  const gameEngineering1 = Object.freeze({
+    id: "GAME-engineering_1",
+    title: "Ingénierie I",
+    description: "Étudier vingt-cinq minerais et dix composants technologiques, puis utiliser vingt-cinq unités minérales dans une première recherche comparative.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "east",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["GAME-energy"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "minerals",
+        title: "Étudier 25 minerais",
+        action: "analyze",
+        target: 25,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "mineral"
+        })
+      }),
+      Object.freeze({
+        slot: "components",
+        title: "Étudier 10 composants technologiques",
+        action: "analyze",
+        target: 10,
+        requires: Object.freeze(["minerals"]),
+        params: Object.freeze({
+          subject: "components"
+        })
+      }),
+      Object.freeze({
+        slot: "research",
+        title: "Synthétiser les résultats d’Ingénierie I",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["components"]),
+        params: Object.freeze({})
+      })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKeys: Object.freeze([
+          "magnetic_ore",
+          "azure_ferrite",
+          "resonant_basalt",
+          "stellar_iridium"
+        ]),
+        quantity: 25
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je peux maintenant comparer des matériaux plutôt que les examiner isolément. Vingt-cinq minerais et dix composants devraient suffire pour une première méthode d’ingénierie."
+      ]),
+      completed: Object.freeze([
+        "Les premiers essais comparatifs sont terminés. Les échantillons utilisés ont servi à établir une méthode plus fiable."
+      ])
+    })
+  });
+
+  const gameEngineering2 = Object.freeze({
+    id: "GAME-engineering_2",
+    title: "Étudier cinquante minerais",
+    description: "Étudier cinquante minerais et vingt-cinq composants technologiques, puis utiliser cinquante unités minérales dans une recherche avancée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-engineering_1",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-engineering_1"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.1,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "minerals",
+        title: "Étudier 50 minerais",
+        action: "analyze",
+        target: 50,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "mineral"
+        })
+      }),
+      Object.freeze({
+        slot: "components",
+        title: "Étudier 25 composants technologiques",
+        action: "analyze",
+        target: 25,
+        requires: Object.freeze(["minerals"]),
+        params: Object.freeze({
+          subject: "components"
+        })
+      }),
+      Object.freeze({
+        slot: "research",
+        title: "Synthétiser les résultats d’Ingénierie II",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["components"]),
+        params: Object.freeze({})
+      })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKeys: Object.freeze([
+          "magnetic_ore",
+          "azure_ferrite",
+          "resonant_basalt",
+          "stellar_iridium"
+        ]),
+        quantity: 50
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La méthode tient. Je peux élargir l’échantillon et vérifier si les mêmes principes restent valables à plus grande échelle."
+      ]),
+      completed: Object.freeze([
+        "Cinquante minerais et vingt-cinq composants comparés : cette méthode d’ingénierie est désormais suffisamment robuste pour ouvrir la suite."
+      ])
+    })
+  });
+
+
   const T04 = Object.freeze({
     id: "T04",
     title: "Comprendre qu’un projet peut progresser en parallèle",
@@ -4509,6 +4704,9 @@
     researchHypothesis,
     specialInvestigator,
     specialArchivist,
+    gameEnergy,
+    gameEngineering1,
+    gameEngineering2,
     T04,
     T05,
     T06,
