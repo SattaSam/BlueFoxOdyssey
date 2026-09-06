@@ -11,7 +11,7 @@
   const TARGET_SWITCH_RATIO = 0.62;
   const TARGET_CANDIDATES = 6;
   const MISSION_GUIDANCE_DEFAULT_MS = 4 * 60 * 1000;
-  const MISSION_PRIORITY_WEIGHTS = Object.freeze([100, 45, 20]);
+  const MISSION_PRIORITY_WEIGHTS = Object.freeze([100, 45, 20, 10]);
   const SHELTER_MIN_MAP_DISTANCE = 10;
   // Valeurs alignées sur survival-ai-bridge : interactionCost.travel = 1.2
   // et seuil d'énergie du profil de fatigue normal = 50.
@@ -503,13 +503,34 @@
     let roll = Math.random() * total;
     return valid.find((option) => ((roll -= Number(option.weight || option.baseWeight)) <= 0)) || valid[valid.length - 1];
   };
+  const activeLocalMissionId = (engine, baseId) =>
+    (engine?.missionManager?.activeMissionIds || []).find((missionId) =>
+      String(missionId).split("@")[0] === String(baseId)
+    ) || null;
+
+  const localCampMissionReady = (engine) => {
+    const missionId = activeLocalMissionId(engine, "LOC-14");
+    if (!missionId) return null;
+    const tree = engine?.missionManager?.trees?.get?.(missionId);
+    const separator = String(missionId).indexOf("@");
+    const scopedEvaluationId = separator > 0
+      ? `${missionId.slice(0, separator)}:evaluate@${missionId.slice(separator + 1)}`
+      : `${missionId}:evaluate`;
+    const evaluation = tree?.find?.(scopedEvaluationId) || tree?.find?.(`${missionId}:evaluate`);
+    if (!evaluation?.isComplete) return null;
+    return missionId;
+  };
+
   const autonomousShelterOpportunity = (engine, survival = {}) => {
     const runtime = BF.bibleRuntime;
     if (!runtime || !engine?.findKnownRoute || !engine?.currentMapId) return null;
     const currentMapId = String(engine.currentMapId);
+    const loc14MissionId = localCampMissionReady(engine);
     const campState = runtime.constructionAvailability?.("camp", currentMapId);
     const refugeState = runtime.constructionAvailability?.("refuge", currentMapId);
-    const kind = refugeState?.allowed ? "refuge" : campState?.allowed ? "camp" : null;
+    const kind = loc14MissionId
+      ? (campState?.allowed ? "camp" : null)
+      : (refugeState?.allowed ? "refuge" : campState?.allowed ? "camp" : null);
     if (!kind) return null;
 
     const siteProgression = engine.missionManager?.memory?.state?.siteProgression || {};
@@ -525,10 +546,12 @@
     if (!Number.isFinite(nearest) || nearest < SHELTER_MIN_MAP_DISTANCE) return null;
 
     const energy = Number(survival.energy);
-    if (!Number.isFinite(energy)) return null;
+    if (!loc14MissionId && !Number.isFinite(energy)) return null;
     const estimatedReturnFatigue = nearest * SHELTER_TRAVEL_ENERGY_COST;
-    const projectedReturnEnergy = energy - estimatedReturnFatigue;
-    if (projectedReturnEnergy >= SHELTER_NORMAL_ENERGY_FLOOR) return null;
+    const projectedReturnEnergy = Number.isFinite(energy)
+      ? energy - estimatedReturnFatigue
+      : SHELTER_NORMAL_ENERGY_FLOOR;
+    if (!loc14MissionId && projectedReturnEnergy >= SHELTER_NORMAL_ENERGY_FLOOR) return null;
 
     const localResources = Object.values(engine.currentMap?.interactables || []).filter((object) =>
       object?.userData?.active && isCollectableDefinition(objectDefinition(object))
@@ -549,7 +572,9 @@
       estimatedReturnFatigue,
       projectedReturnEnergy,
       resourceCount: localResources,
-      weight: 7 + distanceBoost + fatigueBoost + resourceBoost
+      missionId: loc14MissionId,
+      missionDriven: Boolean(loc14MissionId),
+      weight: (loc14MissionId ? 24 : 7) + distanceBoost + fatigueBoost + resourceBoost
     };
   };
 

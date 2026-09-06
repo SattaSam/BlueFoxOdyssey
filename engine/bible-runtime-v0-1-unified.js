@@ -43,6 +43,7 @@
 
       this.unsubscribeObjectEvents = null;
       this.activationEventIds = new Set();
+      this.activationEventMissionIds = new Map();
       // Cache strictement runtime : reconstruit une seule fois pour chaque
       // instance de map chargée. La mémoire persistante reste dans MissionMemory.
       this.observationResolvers = new WeakMap();
@@ -68,6 +69,7 @@
       this.localExplorationSessionRestored = false;
       this.localExplorationSessionMapId = null;
       this.localExplorationAwaitingPostArrival = null;
+      this.localSiteProgressionReconciling = false;
       this.environmentReconciling = false;
       this.pendingConstructionResourceMissions = new Set();
       this.constructionResourceSignatures = new Map();
@@ -85,6 +87,7 @@
         gatesSatisfied: {},
         activationInventoryCredits: {},
         constructionInstances: {},
+        localMissionInstances: {},
       };
     }
 
@@ -104,6 +107,7 @@
           gatesSatisfied: { ...(saved?.gatesSatisfied || {}) },
           activationInventoryCredits: { ...(saved?.activationInventoryCredits || {}) },
           constructionInstances: { ...(saved?.constructionInstances || {}) },
+          localMissionInstances: { ...(saved?.localMissionInstances || {}) },
         };
       } catch {
         return this.defaultState();
@@ -157,11 +161,135 @@
       };
     }
 
+    localMissionTemplates() {
+      return this.catalog.filter((mission) =>
+        mission?.instanceScope === "map" && mission?.localMission
+      );
+    }
+
+    localMissionContext(instanceId, event = null) {
+      const key = String(instanceId || "");
+      const stored = this.state.localMissionInstances?.[key] || {};
+      if (!event) return stored;
+      this.state.localMissionInstances = this.state.localMissionInstances || {};
+      const next = {
+        ...stored,
+        mapId: event.mapId || stored.mapId || null,
+        family: event.family || event.subject || stored.family || null,
+        persistentMicroSceneId:
+          event.persistentMicroSceneId || stored.persistentMicroSceneId || null,
+        activatedAt: stored.activatedAt || Date.now()
+      };
+      this.state.localMissionInstances[key] = next;
+      this.saveState();
+      return next;
+    }
+
+    localMissionInstance(instanceId, event = null) {
+      const separator = String(instanceId || "").indexOf("@");
+      if (separator < 1) return null;
+      const baseId = instanceId.slice(0, separator);
+      const mapId = instanceId.slice(separator + 1);
+      const template = this.byId.get(baseId) ||
+        this.catalog.find((mission) => mission?.id === baseId);
+      if (!template?.localMission || !mapId) return null;
+      if (event) this.localMissionContext(instanceId, event);
+      return {
+        ...template,
+        id: instanceId,
+        baseMissionId: baseId,
+        scopeId: mapId,
+        targetMapId: mapId,
+        title: template.title
+      };
+    }
+
+    localMissionActivationMatches(activation, event) {
+      if (!activation || !event || activation.type !== event.type) return false;
+      const exactKeys = [
+        "objectId", "kind", "family", "subject", "persistentMicroSceneId"
+      ];
+      for (const key of exactKeys) {
+        if (activation[key] != null && lower(activation[key]) !== lower(event[key])) {
+          return false;
+        }
+      }
+      const tags = new Set(asArray(event.tags).map(lower));
+      if (activation.tagsAny?.length &&
+          !activation.tagsAny.some((tag) => tags.has(lower(tag)))) return false;
+      if (activation.tagsAll?.length &&
+          !activation.tagsAll.every((tag) => tags.has(lower(tag)))) return false;
+      if (activation.requireMicroScene === true && !event.persistentMicroSceneId) {
+        return false;
+      }
+      return true;
+    }
+
+    localMissionsUnlocked() {
+      const manager = this.manager();
+      return Boolean(
+        manager?.memory?.getFact?.("localExplorationUnlocked:v1", false) ||
+        manager?.memory?.state?.missionLifecycle?.T10?.status === "completed"
+      );
+    }
+
+    localMissionEligibleOnMap(template, mapId) {
+      if (!template?.localMission || !mapId || !this.localMissionsUnlocked()) return false;
+      if (template.localMission.newMapOnly === true) {
+        const definition = BF.maps?.[mapId] || {};
+        const generated = definition.generated === true ||
+          String(mapId).startsWith("generated-") ||
+          String(mapId).startsWith("map-");
+        if (!generated || String(mapId) === "crystal") return false;
+      }
+      const constructionKind = lower(template.localMission.constructionKind);
+      if (constructionKind && this.siteBucket(mapId)?.[constructionKind]) return false;
+      return true;
+    }
+
+    restoreLocalMissionDefinitions() {
+      return false;
+    }
+
+
+    reconcileLocalSiteProgression() {
+      if (this.localSiteProgressionReconciling) return false;
+      const manager = this.manager();
+      if (!manager?.trees?.size) return false;
+      this.localSiteProgressionReconciling = true;
+      try {
+        let changed = false;
+        [...(manager.activeMissionIds || [])].forEach((missionId) => {
+          const mission = this.localMissionInstance(missionId);
+          const kind = lower(mission?.localMission?.constructionKind);
+          if (!mission || !kind) return;
+          const tree = manager.trees.get(missionId);
+          const node = tree?.find?.(`${mission.baseMissionId}:construct@${mission.scopeId}`) ||
+            tree?.find?.(`${missionId}:construct`);
+          if (!node || node.isComplete || !this.siteBucket(mission.scopeId)?.[kind]) return;
+          if (node.increment?.(1)) {
+            tree.refresh?.();
+            manager.memory?.saveTree?.(tree);
+            changed = true;
+          }
+        });
+        if (changed) {
+          manager.syncLifecycleFromTrees?.();
+          manager.memory?.save?.();
+          manager.publish?.();
+        }
+        return changed;
+      } finally {
+        this.localSiteProgressionReconciling = false;
+      }
+    }
+
     missionsForState(state) {
       const missions = [...this.allMissions()];
       (state?.missions || []).forEach((entry) => {
         const missionId = entry.missionId || entry.id;
         const mission = this.localExplorationMission(missionId) ||
+          this.localMissionInstance(missionId) ||
           this.environmentLocalMission(missionId);
         if (mission) missions.push(mission);
       });
@@ -350,6 +478,28 @@
       return changed;
     }
 
+    resumeCurrentMapLocalMissions(currentMapId) {
+      const manager = this.manager();
+      const lifecycles = manager?.memory?.state?.missionLifecycle || {};
+      if (!manager || !currentMapId) return false;
+      let changed = false;
+      Object.entries(lifecycles).forEach(([missionId, lifecycle]) => {
+        if (lifecycle?.status !== "paused") return;
+        const separator = String(missionId).indexOf("@");
+        if (separator < 1) return;
+        const baseId = String(missionId).slice(0, separator);
+        const scopeId = String(missionId).slice(separator + 1);
+        const template = this.byId.get(baseId);
+        if (!template?.localMission || scopeId !== String(currentMapId)) return;
+        changed = manager.resumeMission?.(missionId, {
+          primary: false,
+          autoPrimaryEligible: false,
+          source: "local-mission-return"
+        }) === true || changed;
+      });
+      return changed;
+    }
+
     restoreLocalExplorationSession() {
       if (this.localExplorationSessionRestored) return false;
       const manager = this.manager();
@@ -362,11 +512,12 @@
       this.localExplorationSessionMapId = mapId;
       this.localExplorationAwaitingPostArrival = null;
       const paused = this.pauseOffMapLocalExploration(mapId);
+      const resumed = this.resumeCurrentMapLocalMissions(mapId);
       const exploration = BF.getMapExplorationState?.(mapId);
       return this.reconcileLocalExplorationMap(
         mapId,
         exploration?.surfacePercent
-      ) || paused;
+      ) || resumed || paused;
     }
 
     constructionTemplate(kind) {
@@ -1334,6 +1485,10 @@
           definition?.label ||
           null,
         instanceId: event.instanceId || null,
+        persistentMicroSceneId:
+          event.persistentMicroSceneId ||
+          event.detail?.persistentMicroSceneId ||
+          null,
         kind,
         family,
         category,
@@ -1894,25 +2049,29 @@
     consumeTriggerEvent(event, options = {}) {
       const candidates = [];
 
+      for (const template of this.localMissionTemplates()) {
+        const mapId = String(event?.mapId || BF.currentEngine?.currentMapId || "");
+        if (!this.localMissionEligibleOnMap(template, mapId)) continue;
+        if (!this.localMissionActivationMatches(template.localMission.activation, event)) continue;
+        const instanceId = this.localExplorationInstanceId(template.id, mapId);
+        const lifecycleState = this.missionLifecycle(instanceId);
+        if (lifecycleState.completed || lifecycleState.active) continue;
+        const mission = this.localMissionInstance(instanceId, event);
+        if (!mission || !this.prerequisitesSatisfied(mission)) continue;
+        candidates.push(mission);
+      }
+
       for (const mission of this.catalog) {
+        if (mission?.localMission) continue;
         if (!this.eventMatchesTrigger(mission.trigger, event)) continue;
 
         const lifecycleState = this.missionLifecycle(mission.id);
-
-        if (lifecycleState.completed) continue;
-
-        if (lifecycleState.active) continue;
-
-        // Un événement géographique ne prépare pas silencieusement une mission
-        // dont l'arc précédent n'est pas terminé.
+        if (lifecycleState.completed || lifecycleState.active) continue;
         if (!this.prerequisitesSatisfied(mission)) continue;
 
         const count = this.incrementTrigger(mission, event);
         const required = Math.max(1, Number(mission.trigger?.count) || 1);
-
-        if (count >= required) {
-          candidates.push(mission);
-        }
+        if (count >= required) candidates.push(mission);
       }
 
       candidates.sort((left, right) =>
@@ -1927,10 +2086,7 @@
         ? selected.id
         : null;
 
-      return {
-        matched: candidates.length,
-        activatedMissionId
-      };
+      return { matched: candidates.length, activatedMissionId };
     }
 
     onObjectEvent(rawEvent) {
@@ -1945,7 +2101,8 @@
 
       // 1) Evénement concret : collect/analyze/observe/etc.
       let result = this.consumeTriggerEvent(normalized);
-      let allowActivation = !result.activatedMissionId;
+      let activatedMissionId = result.activatedMissionId || null;
+      let allowActivation = !activatedMissionId;
 
       // 2) Evénement narratif générique : toute interaction réelle avec
       // l'objet. Il est volontairement indépendant de l'état "connu" CUO.
@@ -1956,6 +2113,7 @@
         type: "interaction.any",
         amount: 1
       }, { allowActivation });
+      activatedMissionId = activatedMissionId || result.activatedMissionId || null;
       allowActivation = allowActivation && !result.activatedMissionId;
 
       // 3) Première interaction d'étude : conservée comme vocabulaire
@@ -1965,19 +2123,26 @@
         "interaction.inspect",
         "interaction.analyze"
       ].includes(normalized.type)) {
-        this.consumeTriggerEvent({
+        result = this.consumeTriggerEvent({
           ...normalized,
           type: "interaction.discovery",
           amount: 1
         }, { allowActivation });
+        activatedMissionId = activatedMissionId || result.activatedMissionId || null;
       }
 
-      const activatedNow = this.catalog.some((mission) =>
+      const activatedNow = Boolean(activatedMissionId) || this.allMissions().some((mission) =>
         !activeBefore.has(mission.id) && this.missionLifecycle(mission.id).active
       );
       if (activatedNow && rawEvent.id) {
         this.activationEventIds.add(rawEvent.id);
-        global.setTimeout?.(() => this.activationEventIds.delete(rawEvent.id), 0);
+        if (activatedMissionId) {
+          this.activationEventMissionIds.set(rawEvent.id, activatedMissionId);
+        }
+        global.setTimeout?.(() => {
+          this.activationEventIds.delete(rawEvent.id);
+          this.activationEventMissionIds.delete(rawEvent.id);
+        }, 0);
       }
 
       this.bridgeMissionProgress(rawEvent);
@@ -2040,6 +2205,7 @@
 
       if (this.manager()?.memory?.getFact?.("localExplorationUnlocked:v1", false)) {
         this.pauseOffMapLocalExploration(event.mapId);
+        this.resumeCurrentMapLocalMissions(event.mapId);
         const manager = this.manager();
         const hasExistingLocalInstance = this.localExplorationTemplates().some((template) => {
           const instanceId = this.localExplorationInstanceId(template.id, event.mapId);
@@ -2058,6 +2224,10 @@
 
     isActivationEvent(eventId) {
       return Boolean(eventId && this.activationEventIds.has(eventId));
+    }
+
+    activationMissionForEvent(eventId) {
+      return eventId ? this.activationEventMissionIds.get(eventId) || null : null;
     }
 
     bridgeMissionProgress(event) {
@@ -3796,6 +3966,8 @@
       this.refreshProximityContextMonitor();
       this.reconcileLocalExploration(state);
       this.restoreLocalExplorationSession();
+      this.restoreLocalMissionDefinitions(state);
+      this.reconcileLocalSiteProgression();
       for (const mission of this.missionsForState(state)) {
         const entry = this.findMissionEntry(state, mission.id);
         if (entry) this.emitProgressNarrative(mission, entry);

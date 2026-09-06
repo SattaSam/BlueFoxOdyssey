@@ -480,7 +480,7 @@
   };
 
   const eventMatchesNode = (event, node, missionId = null, tree = null) => {
-    if (node.params?.catalogManaged) return false;
+    if (node.params?.catalogManaged || node.params?.siteProgressionKind) return false;
     const type = Missions.normalizeActionType(node.type);
     const detail = event.detail || {};
     const tags = new Set([...(event.tags || []), ...(detail.tags || [])]);
@@ -654,7 +654,17 @@
         BF.ObjectEvents.types.RESOURCE_COLLECTED,
         BF.ObjectEvents.types.RESOURCE_EXTRACTED
       ].includes(event.type);
-      if (BF.bibleRuntime?.isActivationEvent?.(event.id) && !isAcquisition) {
+      const activationMissionId =
+        BF.bibleRuntime?.activationMissionForEvent?.(event.id) || null;
+      const activationBaseId = String(activationMissionId || "").split("@")[0];
+      const localActivation = Boolean(
+        activationMissionId &&
+        BF.bibleRuntime?.byId?.get?.(activationBaseId)?.localMission
+      );
+      if (
+        BF.bibleRuntime?.isActivationEvent?.(event.id) &&
+        (!isAcquisition || localActivation)
+      ) {
         this.memory.remember(event.type, {
           ...(event.detail || {}),
           activationOnly: true,
@@ -878,30 +888,76 @@
     return Boolean(sameType || sameDefinition || sameMissionScene);
   };
 
-  const selectObservable = (engine, action) =>
-    (engine.currentMap?.interactables || [])
-      .filter((object) => {
-        if (!object.userData.active) return false;
+  const missionCandidateMicroSceneId = (resolved) => String(
+    resolved?.object?.userData?.persistentMicroSceneId ||
+    resolved?.anchor?.userData?.persistentMicroSceneId ||
+    ""
+  );
+
+  const missionCandidateFamily = (resolved) => lower(
+    resolved?.definition?.resource?.family ||
+    resolved?.definition?.knowledge?.family ||
+    resolved?.definition?.category ||
+    resolved?.definition?.type
+  );
+
+  const candidateWasStudied = (resolved) => {
+    const state = interactionState(resolved);
+    return Boolean(
+      state.observed || state.inspected || state.analyzed || state.identified ||
+      Number(state.observationCount || 0) > 0 ||
+      Number(state.inspectionCount || 0) > 0 ||
+      Number(state.analysisCount || 0) > 0
+    );
+  };
+
+  const unstudiedPriority = (resolved, params = {}, missionId = null) => {
+    if (params.preferUnstudied !== true) return 0;
+    if (candidateWasStudied(resolved)) return -Infinity;
+    const localContext = BF.bibleRuntime?.localMissionContext?.(missionId) || {};
+    const preferredFamily = lower(params.preferredFamily || localContext.family);
+    const preferredMicroSceneId = String(
+      params.preferredMicroSceneId || localContext.persistentMicroSceneId || ""
+    );
+    if (preferredFamily && missionCandidateFamily(resolved) === preferredFamily) return 300;
+    if (preferredMicroSceneId && missionCandidateMicroSceneId(resolved) === preferredMicroSceneId) return 200;
+    return 100;
+  };
+
+  const selectObservable = (engine, action) => {
+    const candidates = (engine.currentMap?.interactables || [])
+      .map((object) => {
+        if (!object.userData.active) return null;
         const resolved = resolveMissionCandidate(object);
         const definition = resolved.definition;
         const tree = engine?.missionManager?.trees?.get?.(action.missionId);
         const node = tree?.find?.(action.nodeId);
-        if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return false;
-        if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return false;
+        if (node?.params?.siteProgressionKind) return null;
+        if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return null;
+        if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return null;
         const distinctValue = node ? distinctValueFromResolved(node, resolved) : null;
-        if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return false;
-        return definition &&
-          canStudy(definition) &&
-          metadataMatchesMissionCriteria(definitionMissionMetadata(definition), action.params || {}, { skipSubject: true }) &&
-          matchesStudySubject(definition, action.params?.subject) &&
-          matchesBoundTarget(engine, action.missionId, resolved);
-      })
-      .sort((left, right) => {
-        const distance = (object) => engine.character.root.position.distanceTo(
-          engine.interactionWorldPosition(object)
+        if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return null;
+        if (!(definition && canStudy(definition))) return null;
+        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), action.params || {}, { skipSubject: true })) return null;
+        if (!matchesStudySubject(definition, action.params?.subject)) return null;
+        if (!matchesBoundTarget(engine, action.missionId, resolved)) return null;
+        const priority = unstudiedPriority(
+          resolved, action.params || {}, action.missionId
         );
-        return distance(left) - distance(right);
-      })[0] || null;
+        if (priority === -Infinity) return null;
+        return { object, resolved, priority };
+      })
+      .filter(Boolean);
+
+    const distance = (object) => engine.character.root.position.distanceTo(
+      engine.interactionWorldPosition(object)
+    );
+    candidates.sort((left, right) =>
+      right.priority - left.priority || distance(left.object) - distance(right.object)
+    );
+    return candidates[0]?.object || null;
+  };
+
 
   const selectAcquisitionTarget = (engine, action) =>
     (engine.currentMap?.interactables || [])
@@ -951,12 +1007,13 @@
       if (manager.ensureLifecycle?.(missionId)?.status !== "active") continue;
       const tree = manager.trees.get(missionId);
       for (const node of tree.availableLeaves()) {
-        if (!isStudyAction(node.type)) continue;
+        if (!isStudyAction(node.type) || node.params?.siteProgressionKind) continue;
         if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(missionResolved, engine.currentMapId))) continue;
         if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;
+        if (unstudiedPriority(missionResolved, node.params || {}, missionId) === -Infinity) continue;
         const distinctValue = distinctValueFromResolved(node, missionResolved);
         if (distinctValue != null && node.hasDistinctValue?.(distinctValue)) continue;
         return {

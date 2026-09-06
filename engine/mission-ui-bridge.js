@@ -42,6 +42,9 @@
     if (!meters.length) return;
     const tracked = [...(state.missions || [])]
       .filter((mission) => mission.lifecycleStatus === "active")
+      .filter((mission) =>
+        !isBackgroundHudMission(mission) || Number(mission.priorityRank) > 0
+      )
       .sort((left, right) => {
         const leftRank = Number(left.priorityRank) || (left.isPrimary ? 1 : 99);
         const rightRank = Number(right.priorityRank) || (right.isPrimary ? 1 : 99);

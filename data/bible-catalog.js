@@ -1648,6 +1648,125 @@
     })
   });
 
+  const LOC01 = Object.freeze({
+    id: "LOC-01",
+    title: "Explorer une ruine locale",
+    description: "Étudier une structure ancienne rencontrée dans une micro-scène de ruines.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 28,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    localMission: Object.freeze({
+      activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-HABITAT-RUINE" })
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Étudier la ruine",
+        target: 1,
+        params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-RUINE", distinctBy: "microSceneInstance" })
+      })
+    })
+  });
+
+  const LOC02 = Object.freeze({
+    id: "LOC-02",
+    title: "Comprendre une source d’eau locale",
+    description: "Étudier une micro-scène aquatique afin de mieux comprendre les ressources du territoire.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 27,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    narrativeAxis: "EXPLORATEUR",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "EXPLORATEUR", weight: 1 }),
+    localMission: Object.freeze({
+      activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-RUISSEAU-MARE" })
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Étudier la source d’eau",
+        target: 1,
+        params: Object.freeze({ microSceneId: "MSC-CUSTOM-RUISSEAU-MARE", distinctBy: "microSceneInstance" })
+      })
+    })
+  });
+
+  const LOC03 = Object.freeze({
+    id: "LOC-03",
+    title: "Évaluer un secteur riche en minerais",
+    description: "Étudier une ressource minérale réelle de la map sans imposer de pseudo-type documentaire.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 26,
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    localMission: Object.freeze({
+      activation: Object.freeze({ type: "interaction.any", subject: "mineral" })
+    }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Étudier une ressource minérale locale",
+        target: 1,
+        params: Object.freeze({ subject: "mineral", tagsAny: Object.freeze(["resource"]) })
+      })
+    })
+  });
+
+  const LOC04 = Object.freeze({
+    id: "LOC-04",
+    title: "Observer un nid de faune occupé",
+    description: "Confirmer la présence réelle d’une créature autour d’un nid de faune.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 31,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 35,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    localMission: Object.freeze({
+      activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-NID-DE-FAUNE5" })
+    }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Détecter et observer une créature près du nid",
+        target: 1,
+        params: Object.freeze({ cuoType: "brouteur", persistentMicroSceneId: "MSC-CUSTOM-NID-DE-FAUNE5" })
+      })
+    })
+  });
+
   const LOC05 = Object.freeze({
     id: "LOC-05",
     title: "Cartographier 60 % du territoire actuel",
@@ -1656,6 +1775,7 @@
     trigger: Object.freeze({ type: "manual" }),
     instanceScope: "map",
     localVisibility: "current-map",
+    backgroundHud: true,
     priority: 35,
     passivePriorityAxis: "exploration",
     ponderation: 0.25,
@@ -1708,6 +1828,7 @@
     trigger: Object.freeze({ type: "manual" }),
     instanceScope: "map",
     localVisibility: "current-map",
+    backgroundHud: true,
     priority: 30,
     passivePriorityAxis: "exploration",
     ponderation: 0.25,
@@ -1743,6 +1864,271 @@
         "Cette map ne contient plus de territoire inconnu. Elle fait maintenant partie de notre environnement maîtrisé."
       ])
     })
+  });
+
+  const LOC07 = Object.freeze({
+    id: "LOC-07",
+    title: "Explorer une épave locale",
+    description: "Étudier une épave réelle rencontrée sur la map.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 27,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    narrativeAxis: "EXPLORATEUR",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "EXPLORATEUR", weight: 1 }),
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-EPAVE-MAJEUR" }) }),
+    slots: Object.freeze({ context: Object.freeze({ title: "Étudier l’épave", target: 1, params: Object.freeze({ microSceneId: "MSC-CUSTOM-EPAVE-MAJEUR", distinctBy: "microSceneInstance" }) }) })
+  });
+
+  const LOC08 = Object.freeze({
+    id: "LOC-08",
+    title: "Étudier une végétation rare",
+    description: "Observer une forme végétale rare réellement présente sur la map.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 26,
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", subject: "flora", tagsAny: Object.freeze(["rare"]) }) }),
+    slots: Object.freeze({ study: Object.freeze({ title: "Étudier une végétation rare", target: 1, params: Object.freeze({ subject: "flora", tagsAny: Object.freeze(["rare"]) }) }) })
+  });
+
+  const LOC09 = Object.freeze({
+    id: "LOC-09",
+    title: "Étudier une faille basaltique",
+    description: "Étudier une faille géologique réelle sans créer de type moteur artificiel.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 30,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    narrativeAxis: "SCIENTIFIQUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "SCIENTIFIQUE", weight: 1 }),
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-BASALT-RIFT" }) }),
+    slots: Object.freeze({ context: Object.freeze({ title: "Étudier la faille", target: 1, params: Object.freeze({ microSceneId: "MSC-CUSTOM-BASALT-RIFT", distinctBy: "microSceneInstance" }) }) })
+  });
+
+  const LOC10 = Object.freeze({
+    id: "LOC-10",
+    title: "Explorer un sanctuaire local",
+    description: "Étudier un sanctuaire réel rencontré sur la map.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 32,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 62,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-SANCTUAIRE-RING" }) }),
+    slots: Object.freeze({ context: Object.freeze({ title: "Étudier le sanctuaire", target: 1, params: Object.freeze({ microSceneId: "MSC-CUSTOM-SANCTUAIRE-RING", distinctBy: "microSceneInstance" }) }) })
+  });
+
+  const LOC11 = Object.freeze({
+    id: "LOC-11",
+    title: "Analyser une ressource encore inconnue ici",
+    description: "Choisir une cible réellement non étudiée en privilégiant la famille du contexte, puis la MSC, puis la map actuelle.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 29,
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 1,
+    localMission: Object.freeze({
+      captureFamily: true,
+      captureMicroScene: true,
+      activation: Object.freeze({ type: "interaction.any", tagsAny: Object.freeze(["resource"]) })
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "observe", title: "Repérer une ressource non étudiée", action: "observe", target: 1, params: Object.freeze({ tagsAny: Object.freeze(["resource"]), preferUnstudied: true }) }),
+      Object.freeze({ slot: "analyze", title: "Analyser cette même ressource", action: "analyze", target: 1, requires: Object.freeze(["observe"]), params: Object.freeze({ tagsAny: Object.freeze(["resource"]), relation: Object.freeze({ fromSlot: "observe", sameBy: Object.freeze(["instanceId"]) }) }) })
+    ])
+  });
+
+  const LOC12 = Object.freeze({
+    id: "LOC-12",
+    title: "Observer une espèce encore inconnue ici",
+    description: "Observer une créature réelle qui n’a pas encore été étudiée dans ce contexte.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 30,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 35,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", subject: "fauna" }) }),
+    slots: Object.freeze({ study: Object.freeze({ title: "Observer une espèce non étudiée", target: 1, params: Object.freeze({ subject: "fauna", preferUnstudied: true }) }) })
+  });
+
+  const LOC13 = Object.freeze({
+    id: "LOC-13",
+    title: "Évaluer le potentiel minéral local",
+    description: "Observer puis analyser une ressource minérale réelle de la map.",
+    pattern: "DISCOVER_THEN_ANALYZE",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 30,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    narrativeAxis: "SCIENTIFIQUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "SCIENTIFIQUE", weight: 1 }),
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", subject: "mineral" }) }),
+    slots: Object.freeze({
+      observe: Object.freeze({ title: "Repérer un indice minéral", target: 1, params: Object.freeze({ subject: "mineral", tagsAny: Object.freeze(["resource"]) }) }),
+      analyze: Object.freeze({ title: "Analyser cet indice minéral", target: 1, params: Object.freeze({ subject: "mineral", tagsAny: Object.freeze(["resource"]) }) })
+    })
+  });
+
+  const LOC14 = Object.freeze({
+    id: "LOC-14",
+    title: "Évaluer puis établir un camp secondaire",
+    description: "Laisser le BAC évaluer un site puis construire réellement un camp secondaire persistant.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 34,
+    passivePriorityAxis: "survival",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 35,
+    localMission: Object.freeze({
+      activation: Object.freeze({ type: "interaction.any", tagsAny: Object.freeze(["resource"]) }),
+      constructionKind: "camp"
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "evaluate", title: "Évaluer le potentiel du site", action: "analyze", target: 1, params: Object.freeze({ tagsAny: Object.freeze(["resource"]), siteEvaluation: true }) }),
+      Object.freeze({ slot: "construct", title: "Construire réellement le camp secondaire", action: "observe", target: 1, requires: Object.freeze(["evaluate"]), params: Object.freeze({ siteProgressionKind: "camp" }) })
+    ])
+  });
+
+  const LOC15 = Object.freeze({
+    id: "LOC-15",
+    title: "Comprendre la collecte par drone",
+    description: "Collecter un composant technologique réel afin de comprendre les prérequis d’une future collecte automatisée, sans déclarer cette capacité disponible.",
+    pattern: "COLLECT_THEN_REWARD",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 33,
+    passivePriorityAxis: "collection",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 62,
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", persistentMicroSceneId: "MSC-CUSTOM-BASE-DRONE-FONCTIONEL" }) }),
+    slots: Object.freeze({
+      collect: Object.freeze({
+        title: "Collecter un composant technologique",
+        requirements: Object.freeze([
+          Object.freeze({ target: 1, params: Object.freeze({ persistentMicroSceneId: "MSC-CUSTOM-BASE-DRONE-FONCTIONEL", tagsAny: Object.freeze(["technology", "component"]) }) })
+        ])
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Ces composants peuvent m’aider à comprendre comment une collecte par drone pourrait fonctionner plus tard. Pour l’instant, je dois simplement en récupérer un et l’étudier dans nos systèmes existants."])
+    })
+  });
+
+  const LOC16 = Object.freeze({
+    id: "LOC-16",
+    title: "Prendre une vue d’ensemble d’un nouveau territoire",
+    description: "Explorer une micro-scène pertinente sur une nouvelle map afin de construire une compréhension générale du territoire.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 28,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    narrativeAxis: "EXPLORATEUR",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "EXPLORATEUR", weight: 1 }),
+    localMission: Object.freeze({ newMapOnly: true, activation: Object.freeze({ type: "interaction.any", requireMicroScene: true }) }),
+    slots: Object.freeze({ context: Object.freeze({ title: "Explorer une micro-scène de cette nouvelle map", target: 1, params: Object.freeze({ anyMicroScene: true, distinctBy: "microSceneInstance" }) }) })
+  });
+
+  const LOC17 = Object.freeze({
+    id: "LOC-17",
+    title: "Étudier un phénomène naturel inhabituel",
+    description: "Découvrir ou analyser un phénomène naturel suffisamment inhabituel en utilisant uniquement les taxonomies existantes.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual" }),
+    instanceScope: "map",
+    localVisibility: "current-map",
+    backgroundHud: true,
+    priority: 31,
+    passivePriorityAxis: "research",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    narrativeAxis: "SCIENTIFIQUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "SCIENTIFIQUE", weight: 1 }),
+    localMission: Object.freeze({ activation: Object.freeze({ type: "interaction.any", tagsAny: Object.freeze(["phenomenon", "resonant"]) }) }),
+    slots: Object.freeze({ study: Object.freeze({ title: "Étudier le phénomène", target: 1, params: Object.freeze({ tagsAny: Object.freeze(["phenomenon", "resonant"]) }) }) })
   });
 
   const T11 = Object.freeze({
@@ -3471,8 +3857,23 @@
     T08,
     T09,
     T10,
+    LOC01,
+    LOC02,
+    LOC03,
+    LOC04,
     LOC05,
     LOC06,
+    LOC07,
+    LOC08,
+    LOC09,
+    LOC10,
+    LOC11,
+    LOC12,
+    LOC13,
+    LOC14,
+    LOC15,
+    LOC16,
+    LOC17,
     T11,
     T12,
     T13,

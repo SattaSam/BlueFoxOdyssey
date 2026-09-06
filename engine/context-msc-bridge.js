@@ -32,7 +32,7 @@
 
   const contextMatches = (node, detail) => {
     const expectedId = node?.params?.microSceneId;
-    if (expectedId != null &&
+    if (node?.params?.anyMicroScene !== true && expectedId != null &&
         normalize(expectedId) !== normalize(detail.microSceneId)) {
       return false;
     }
@@ -144,6 +144,7 @@
   };
 
   const onObjectEvent = (event) => {
+    if (BF.bibleRuntime?.isActivationEvent?.(event?.id)) return;
     const object =
       event?.object ||
       event?.detail?.object ||
@@ -154,58 +155,15 @@
     progressContextMissions(detail);
   };
 
-  const activeContextMissionExists = () => {
-    const manager = BF.currentEngine?.missionManager;
-    if (!manager?.trees?.size) return false;
-    for (const [missionId, tree] of manager.trees) {
-      if (manager.ensureLifecycle?.(missionId)?.status !== "active") continue;
-      if (tree.availableLeaves().some((node) =>
-        node.params?.biblePattern === "CONTEXT_MSC" && !node.isComplete
-      )) return true;
-    }
-    return false;
-  };
+  const scanCurrentMap = () => 0;
 
-  const currentMicroSceneIndex = () =>
-    BF.currentEngine?.currentMap?.microScenes ||
-    BF.currentEngine?.currentMap?.group?.userData?.microScenes ||
-    [];
-
-  const scanCurrentMap = () => {
-    if (!activeContextMissionExists()) return 0;
-    const engine = BF.currentEngine;
-    if (!engine) return 0;
-    let changed = 0;
-    currentMicroSceneIndex().forEach((entry) => {
-      if (!entry?.id) return;
-      changed += progressContextMissions({
-        microSceneId: entry.id,
-        microSceneInstanceId: entry.instanceId || null,
-        mapId: engine.currentMapId || null,
-        zoneId: engine.currentZoneIndex ?? null,
-        rarity: entry.rarity || null,
-        mscMissionId: entry.missionId || null,
-        missionOnly: entry.missionOnly === true,
-        contextRole:
-          entry.contextRole ||
-          (entry.missionOnly === true ? "objectiveSubject" : "scenarioSupport")
-      });
-    });
-    return changed;
-  };
-
-  const onMapTransition = () => {
-    global.setTimeout?.(() => scanCurrentMap(), 0);
-  };
 
   const install = () => {
     if (BF.__contextMSCBridgeVersion === VERSION) return true;
     if (BF.ObjectEvents?.subscribe) {
       BF.__contextMSCUnsubscribe = BF.ObjectEvents.subscribe(onObjectEvent);
     }
-    global.addEventListener?.("bluefox:map-transition-completed", onMapTransition);
     BF.__contextMSCBridgeVersion = VERSION;
-    global.setTimeout?.(() => scanCurrentMap(), 0);
     return true;
   };
 
