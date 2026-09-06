@@ -2405,6 +2405,8 @@
       const requiredMapId = this.missionTargetMapId(mission) || null;
       const satisfied = this.shelterProximitySatisfied(gate, requiredMapId);
       if (!satisfied || gate.requireDeposit === true) return false;
+      if (!this.bagCounterSatisfied(gate)) return false;
+      if (!this.inventoryEffectsReady(mission)) return false;
       this.state.gatesSatisfied[mission.id] = Date.now();
       this.saveState();
       return true;
@@ -2423,6 +2425,8 @@
         if (lifecycle?.status !== "active" || !tree?.root?.isComplete) return;
         const targetMapId = this.missionTargetMapId(mission) || null;
         if (!this.shelterProximitySatisfied(gate, targetMapId)) return;
+        if (!this.bagCounterSatisfied(gate)) return;
+        if (!this.inventoryEffectsReady(mission)) return;
         this.state.gatesSatisfied[mission.id] = Date.now();
         changed = true;
       });
@@ -2438,7 +2442,9 @@
 
     canFinalizeMission(missionId) {
       const mission = this.byId.get(missionId);
-      if (!mission?.completionGate) return true;
+      if (!mission) return true;
+      const standaloneConsumes = this.standaloneInventoryConsumeMission(mission);
+      if (!mission.completionGate && !standaloneConsumes) return true;
 
       const establish = this.constructionPlacementEffect(mission);
       if (establish) {
@@ -2464,7 +2470,15 @@
         return true;
       }
 
-      return this.gateSatisfied(mission);
+      if (mission.completionGate && !this.gateSatisfied(mission)) return false;
+      if (standaloneConsumes) {
+        const receiptId = `${mission.id}:completion:v${mission.version || 1}`;
+        const memory = this.manager()?.memory;
+        if (memory?.hasEffectReceipt?.(receiptId)) return true;
+        if (!this.inventoryEffectsReady(mission)) return false;
+        return this.applyEffects(mission, { source: "mission-completion" });
+      }
+      return true;
     }
 
     updateCompletionGates(now = performance.now()) {
@@ -2473,7 +2487,9 @@
       const manager = this.manager();
       if (!manager) return false;
       const waiting = this.allMissions().some((mission) => {
-        if (!mission.completionGate) return false;
+        if (!mission.completionGate && !this.standaloneInventoryConsumeMission(mission)) {
+          return false;
+        }
         const lifecycle = manager.memory?.state?.missionLifecycle?.[mission.id];
         const tree = manager.trees?.get?.(mission.id);
         return lifecycle?.status === "active" && tree?.root?.isComplete;
@@ -2492,7 +2508,8 @@
 
     completionGateState(missionId) {
       const mission = this.byId.get(missionId);
-      if (!mission?.completionGate) {
+      const standaloneConsumes = this.standaloneInventoryConsumeMission(mission);
+      if (!mission?.completionGate && !standaloneConsumes) {
         return { managed: false, canFinalize: true, message: "" };
       }
       const canFinalize = this.canFinalizeMission(missionId);
@@ -2502,7 +2519,9 @@
         ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
         : kind === "camp"
           ? `Rendez-vous sur ${targetMapId} pour établir le camp.`
-          : "Une validation dans le monde est encore requise.";
+          : standaloneConsumes && !this.inventoryEffectsReady(mission)
+            ? "Les ressources missionnelles requises doivent encore être réunies."
+            : "Une validation dans le monde est encore requise.";
       return { managed: true, canFinalize, message };
     }
 
@@ -2689,6 +2708,10 @@
     }
 
     inventoryKeysForRequirement(requirement = {}) {
+      const explicitKeys = asArray(requirement.inventoryKeys)
+        .map((key) => String(key || "").trim())
+        .filter(Boolean);
+      if (explicitKeys.length) return [...new Set(explicitKeys)];
       if (requirement.inventoryKey) return [String(requirement.inventoryKey)];
       const subject = lower(requirement.subject);
       if (!subject) return [];
@@ -2709,6 +2732,71 @@
         if (descriptors.has(subject)) keys.add(String(inventoryKey));
       });
       return [...keys];
+    }
+
+    inventoryConsumptionPlan(consumes = []) {
+      const requirements = asArray(consumes)
+        .filter((effect) => effect?.type === "inventory.consume")
+        .map((effect) => ({
+          quantity: Math.max(0, Number(effect.quantity) || 0),
+          inventoryKeys: this.inventoryKeysForRequirement(effect)
+        }));
+      const keySet = new Set(requirements.flatMap((entry) => entry.inventoryKeys));
+      const balances = Object.fromEntries([...keySet].map((key) => [
+        key,
+        Math.max(0, Number(BF.progression?.availableInventory?.([key])) || 0)
+      ]));
+
+      for (const requirement of requirements) {
+        if (!requirement.quantity || !requirement.inventoryKeys.length) {
+          return { ready: false, balances };
+        }
+        let remaining = requirement.quantity;
+        for (const key of requirement.inventoryKeys) {
+          if (remaining <= 0) break;
+          const available = Math.max(0, Number(balances[key]) || 0);
+          const removed = Math.min(available, remaining);
+          balances[key] = available - removed;
+          remaining -= removed;
+        }
+        if (remaining > 0) return { ready: false, balances };
+      }
+      return { ready: true, balances };
+    }
+
+    inventoryEffectsReady(mission) {
+      const consumes = asArray(mission?.effects)
+        .filter((effect) => effect?.type === "inventory.consume");
+      return !consumes.length || this.inventoryConsumptionPlan(consumes).ready;
+    }
+
+    standaloneInventoryConsumeMission(mission) {
+      const effects = asArray(mission?.effects);
+      return (
+        effects.some((effect) => effect?.type === "inventory.consume") &&
+        !effects.some((effect) => effect?.type === "site.establish")
+      );
+    }
+
+    bagCounterValue(counter = {}) {
+      if (counter.inventoryKey) {
+        const state = BF.getProgressionState?.() || BF.progression?.snapshot?.() || {};
+        return Math.max(
+          0,
+          Number(state?.inventory?.[String(counter.inventoryKey)]) || 0
+        );
+      }
+      if (counter.source === "rations") {
+        return Math.max(0, Number(BF.getRationState?.().rations) || 0);
+      }
+      return null;
+    }
+
+    bagCounterSatisfied(gate = {}) {
+      if (!gate.bagCounter) return true;
+      const value = this.bagCounterValue(gate.bagCounter);
+      if (value == null) return false;
+      return value >= Math.max(1, Number(gate.bagCounter.minimum) || 1);
     }
 
     constructionResourceStatus(missionOrId) {
@@ -3245,7 +3333,26 @@
       }
       const consumes = effects.filter((effect) => effect.type === "inventory.consume");
       const establish = effects.find((effect) => effect.type === "site.establish");
-      if (!establish || !BF.MicroScenes?.get?.(establish.microSceneId)) return false;
+      if (!this.inventoryConsumptionPlan(consumes).ready) return false;
+
+      if (!establish) {
+        if (effects.some((effect) => effect.type !== "inventory.consume")) return false;
+        for (const [index, consume] of consumes.entries()) {
+          const quantity = Math.max(0, Number(consume.quantity) || 0);
+          const inventoryKeys = this.inventoryKeysForRequirement(consume);
+          const removed = BF.consumeInventoryPoolOnce?.(
+            `${receiptId}:consume:${index}`,
+            inventoryKeys,
+            quantity
+          );
+          if (removed !== quantity) return false;
+        }
+        memory.recordEffectReceipt?.(receiptId, { missionId: mission.id });
+        memory.save?.();
+        return true;
+      }
+
+      if (!BF.MicroScenes?.get?.(establish.microSceneId)) return false;
       const targetMapId = this.missionTargetMapId(mission) || String(BF.currentEngine?.currentMapId || "");
       if (!targetMapId || targetMapId !== BF.currentEngine?.currentMapId) return false;
 
@@ -3274,13 +3381,6 @@
 
       const placement = options.placement || this.resolveSitePlacement(establish);
       if (!placement?.anchor) return false;
-
-      for (const consume of consumes) {
-        const quantity = Math.max(0, Number(consume.quantity) || 0);
-        const inventoryKeys = this.inventoryKeysForRequirement(consume);
-        if (!inventoryKeys.length) return false;
-        if ((BF.progression?.availableInventory?.(inventoryKeys) || 0) < quantity) return false;
-      }
 
       const replacedRefuge = establish.kind === "base"
         ? this.siteBucket(targetMapId).refuge

@@ -3378,6 +3378,126 @@
     })
   });
 
+  const SUR01 = Object.freeze({
+    id: "SUR-01",
+    title: "Identifier une plante comestible",
+    description:
+      "Observer puis analyser la même plante afin de confirmer qu’elle peut être consommée sans danger.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "interaction.observe",
+      count: 1,
+      subject: "flora"
+    }),
+    triggerOnly: true,
+    priority: 192,
+    passivePriorityAxis: "survival",
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "observeCandidate",
+        title: "Observer une plante comestible candidate",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "flora",
+          tagsAny: Object.freeze(["fiber", "adaptive", "biological", "fungus"])
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeCandidate",
+        title: "Analyser cette même plante avant toute consommation",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["observeCandidate"]),
+        params: Object.freeze({
+          subject: "flora",
+          tagsAny: Object.freeze(["fiber", "adaptive", "biological", "fungus"]),
+          relation: Object.freeze({
+            fromSlot: "observeCandidate",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.knowledge",
+        id: "edible_flora",
+        category: "survival",
+        label: "Plantes comestibles"
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Identifier une plante comestible : je vais isoler les faits utiles avant d’agir."
+      ]),
+      completed: Object.freeze([
+        "Identifier une plante comestible devient un acquis fiable pour la suite de l’expédition."
+      ])
+    })
+  });
+
+  const SUR02 = Object.freeze({
+    id: "SUR-02",
+    title: "Identifier une plante toxique",
+    description:
+      "Reconnaître une plante dangereuse et mémoriser ses signes distinctifs sans la consommer.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "SUR-01",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["SUR-01"]),
+    priority: 191,
+    passivePriorityAxis: "survival",
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "observeToxic",
+        title: "Observer la plante dangereuse",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "carnivorous_plant",
+          microSceneId: "MSC-PREDATOR-FLORA-001"
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeToxic",
+        title: "Analyser ses signes distinctifs",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["observeToxic"]),
+        params: Object.freeze({
+          cuoType: "carnivorous_plant",
+          microSceneId: "MSC-PREDATOR-FLORA-001",
+          relation: Object.freeze({
+            fromSlot: "observeToxic",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.knowledge",
+        id: "toxic_flora",
+        category: "survival",
+        label: "Plantes toxiques"
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Identifier une plante toxique : je vais isoler les faits utiles avant d’agir."
+      ]),
+      completed: Object.freeze([
+        "Identifier une plante toxique devient un acquis fiable pour la suite de l’expédition."
+      ])
+    })
+  });
+
   const SUR03 = Object.freeze({
     id: "SUR-03",
     title: "Composer une ration stable",
@@ -3424,6 +3544,174 @@
         })
       })
     ])
+  });
+
+  const SUR05 = Object.freeze({
+    id: "SUR-05",
+    title: "Conserver les aliments",
+    description:
+      "Tester une méthode de conservation, préparer trois rations puis utiliser des échantillons alimentaires au camp.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "SUR-03",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["SUR-03"]),
+    priority: 189,
+    passivePriorityAxis: "survival",
+    allowsAutonomousRationCraft: true,
+    runtimeCounters: Object.freeze([
+      Object.freeze({
+        slot: "craftPreservedRations",
+        source: "rations.craftedTotal",
+        baselineOnActivation: true
+      })
+    ]),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "researchPreservation",
+        title: "Achever la recherche sur la conservation des aliments",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          researchId: "food_preservation"
+        })
+      }),
+      Object.freeze({
+        slot: "craftPreservedRations",
+        title: "Fabriquer trois rations pour valider la méthode",
+        action: "craft",
+        target: 3,
+        requires: Object.freeze(["researchPreservation"]),
+        params: Object.freeze({
+          eventDriven: true,
+          recipeId: "ration-basic-v2"
+        })
+      }),
+      Object.freeze({
+        slot: "collectEdibleSamples",
+        title: "Réunir six plantes comestibles pour les essais de conservation",
+        action: "collect",
+        target: 6,
+        requires: Object.freeze(["craftPreservedRations"]),
+        params: Object.freeze({
+          subject: "flora",
+          tagsAny: Object.freeze(["fiber", "adaptive", "biological", "fungus"])
+        })
+      }),
+      Object.freeze({
+        slot: "collectFiberSamples",
+        title: "Réunir trois fibres supplémentaires pour les essais",
+        action: "collect",
+        target: 3,
+        requires: Object.freeze(["collectEdibleSamples"]),
+        params: Object.freeze({
+          kind: "fiber"
+        })
+      })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 8,
+      scope: "any-established",
+      requireDeposit: true
+    }),
+    effects: Object.freeze([
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKey: "fiber",
+        quantity: 3
+      }),
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKeys: Object.freeze(["fiber", "adaptive_biomass"]),
+        quantity: 6
+      })
+    ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.knowledge",
+        id: "food_preservation",
+        category: "survival",
+        label: "Conservation des aliments"
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Conserver les aliments : je vais isoler les faits utiles avant d’agir."
+      ]),
+      completed: Object.freeze([
+        "Conserver les aliments devient un acquis fiable pour la suite de l’expédition."
+      ])
+    })
+  });
+
+  const SUR06 = Object.freeze({
+    id: "SUR-06",
+    title: "Atteindre une autonomie alimentaire durable",
+    description:
+      "Fabriquer dix rations au total puis revenir à un camp avec au moins une ration encore dans le sac.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "SUR-05",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["SUR-05", "T13"]),
+    priority: 188,
+    passivePriorityAxis: "survival",
+    runtimeCounters: Object.freeze([
+      Object.freeze({
+        slot: "craftTenRations",
+        source: "rations.craftedTotal",
+        baselineOnActivation: false
+      })
+    ]),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "craftTenRations",
+        title: "Fabriquer dix rations au total",
+        action: "craft",
+        target: 10,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          recipeId: "ration-basic-v2"
+        })
+      }),
+      Object.freeze({
+        slot: "returnToCamp",
+        title: "Revenir au camp avec une réserve alimentaire",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["craftTenRations"]),
+        optional: true,
+        params: Object.freeze({
+          eventDriven: true
+        })
+      })
+    ]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 8,
+      scope: "any-established",
+      bagCounter: Object.freeze({
+        source: "rations",
+        minimum: 1
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je veux vérifier que mes réserves permettent maintenant une vraie autonomie, pas seulement une sortie de plus."
+      ]),
+      completed: Object.freeze([
+        "Dix rations préparées au total, et une ration encore disponible au retour : mon autonomie alimentaire devient durable."
+      ])
+    })
   });
 
   const COLLECTION_FAMILIES = Object.freeze({
@@ -4022,7 +4310,11 @@
     GEO05,
     GEO06,
     GEO07,
+    SUR01,
+    SUR02,
     SUR03,
+    SUR05,
+    SUR06,
     ...COLLECTION_MISSIONS,
     ...ENV_GLOBAL_MISSIONS,
     ...ENV_MAP_MISSIONS,

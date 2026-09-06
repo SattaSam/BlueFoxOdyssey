@@ -673,6 +673,43 @@
           "doit valoir current-map ou any-established."
         );
       }
+
+      if (gate.bagCounter != null) {
+        const counter = gate.bagCounter;
+        if (!isObject(counter)) {
+          add(errors, missionId, "completionGate.bagCounter", "doit être un objet.");
+        } else {
+          const hasInventoryKey = isNonEmptyString(counter.inventoryKey);
+          const hasSource = isNonEmptyString(counter.source);
+          if (hasInventoryKey === hasSource) {
+            add(
+              errors,
+              missionId,
+              "completionGate.bagCounter.inventoryKey/source",
+              "déclarer exactement inventoryKey ou source."
+            );
+          }
+          if (hasSource && counter.source !== "rations") {
+            add(
+              errors,
+              missionId,
+              "completionGate.bagCounter.source",
+              "source supportée : rations."
+            );
+          }
+          if (
+            !Number.isInteger(Number(counter.minimum)) ||
+            Number(counter.minimum) < 1
+          ) {
+            add(
+              errors,
+              missionId,
+              "completionGate.bagCounter.minimum",
+              "doit être un entier >= 1."
+            );
+          }
+        }
+      }
     }
   };
 
@@ -723,13 +760,25 @@
 
       if (effect.type === "inventory.consume") {
         const hasInventoryKey = isNonEmptyString(effect.inventoryKey);
+        const hasInventoryKeys =
+          Array.isArray(effect.inventoryKeys) &&
+          effect.inventoryKeys.length > 0 &&
+          effect.inventoryKeys.every((key) => isNonEmptyString(key));
         const hasSubject = isNonEmptyString(effect.subject);
-        if (hasInventoryKey === hasSubject) {
+        if ([hasInventoryKey, hasInventoryKeys, hasSubject].filter(Boolean).length !== 1) {
           add(
             errors,
             missionId,
-            `${path}.inventoryKey/subject`,
-            "déclarer exactement inventoryKey ou subject."
+            `${path}.inventoryKey/inventoryKeys/subject`,
+            "déclarer exactement inventoryKey, inventoryKeys ou subject."
+          );
+        }
+        if (effect.inventoryKeys != null && !hasInventoryKeys) {
+          add(
+            errors,
+            missionId,
+            `${path}.inventoryKeys`,
+            "doit être un tableau non vide de clés d’inventaire."
           );
         }
         if (!Number.isFinite(Number(effect.quantity)) || Number(effect.quantity) < 1) {
