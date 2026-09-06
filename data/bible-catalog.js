@@ -3431,6 +3431,7 @@
       key: "WOOD",
       label: "Bois",
       axis: "collection",
+      triggerParams: Object.freeze({ kind: "wood" }),
       params: Object.freeze({ kind: "wood" }),
       description: "menuiserie et construction"
     }),
@@ -3438,6 +3439,7 @@
       key: "FIBER",
       label: "Fibres",
       axis: "collection",
+      triggerParams: Object.freeze({ kind: "fiber" }),
       params: Object.freeze({ kind: "fiber" }),
       description: "tissage et conservation"
     }),
@@ -3445,6 +3447,7 @@
       key: "MINERAL",
       label: "Minerais",
       axis: "research",
+      triggerParams: Object.freeze({ subject: "mineral" }),
       params: Object.freeze({
         subject: "mineral",
         excludeKinds: Object.freeze(["crystal"])
@@ -3455,6 +3458,7 @@
       key: "CRYSTAL",
       label: "Cristaux",
       axis: "collection",
+      triggerParams: Object.freeze({ kind: "crystal" }),
       params: Object.freeze({ kind: "crystal" }),
       description: "énergie et recherche"
     }),
@@ -3462,6 +3466,7 @@
       key: "PLANT",
       label: "Plantes",
       axis: "survival",
+      triggerParams: Object.freeze({ subject: "flora" }),
       params: Object.freeze({
         subject: "flora",
         excludeKinds: Object.freeze(["wood"])
@@ -3514,7 +3519,7 @@
         type: "interaction.collect",
         count: 1,
         uniqueOnly: true,
-        ...family.params
+        ...family.triggerParams
       });
     }
     const previous =
@@ -3769,7 +3774,10 @@
       }),
       narrative: Object.freeze({
         revealed: Object.freeze([family.revealed[threshold]]),
-        progress: Object.freeze([`Mon relevé de ${family.label} s’épaissit. Ce qui semblait isolé commence à prendre place dans une lecture plus large du monde.`]),
+        progress: Object.freeze([Object.freeze({
+          text: `Mon relevé de ${family.label} s’épaissit. Ce qui semblait isolé commence à prendre place dans une lecture plus large du monde.`,
+          at: 0.5
+        })]),
         completed: Object.freeze([`Palier ENV ${family.key} atteint : ${threshold} instances distinctes observées et intégrées à l’historique naturaliste.`])
       })
     });
@@ -3814,7 +3822,10 @@
       revealed: Object.freeze([percent === 50
         ? `Je ne veux pas traverser ce territoire en ne regardant que ce qui se ramasse. Je vais lire au moins la moitié de ses ${family.label}.`
         : `La moitié donne une tendance ; pour prétendre connaître ce territoire, il faut aller jusqu’au bout des ${family.label} observables.`]),
-      progress: Object.freeze(["La carte se remplit autrement : chaque observation ajoute une pièce au portrait environnemental de cette zone."]),
+      progress: Object.freeze([Object.freeze({
+        text: "La carte se remplit autrement : chaque observation ajoute une pièce au portrait environnemental de cette zone.",
+        at: 0.5
+      })]),
       completed: Object.freeze([`Couverture ENV ${family.key} de cette map : ${percent} % des instances éligibles ont été observées.`])
     })
   });
@@ -3864,7 +3875,10 @@
       revealed: Object.freeze([threshold === 10
         ? "Explorer une map ne suffit plus. Je veux pouvoir dire que j’ai réellement lu dix milieux différents, jusque dans ce qu’ils montrent et pas seulement dans leurs chemins."
         : "Dix biomes forment une première synthèse. Je veux maintenant étendre cette lecture à vingt milieux réellement qualifiés." ]),
-      progress: Object.freeze(["Les biomes cessent d’être des cases sur une carte. Chacun devient un ensemble de formes, de vestiges, de roches et de végétation que je peux réellement comparer."]),
+      progress: Object.freeze([Object.freeze({
+        text: "Les biomes cessent d’être des cases sur une carte. Chacun devient un ensemble de formes, de vestiges, de roches et de végétation que je peux réellement comparer.",
+        at: 0.5
+      })]),
       completed: Object.freeze([`${threshold} types de biomes distincts sont maintenant totalement étudiés selon le protocole ENV.`])
     })
   });
