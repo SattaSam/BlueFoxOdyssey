@@ -1615,6 +1615,21 @@
           Number(BF.getRationState?.().craftedTotal) || 0
         );
       }
+      if (source === "observations.distinctFamiliesHistorical") {
+        const globalCounters = BF.getProgressionState?.().counters?.global || {};
+        const eventType = String(
+          BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED"
+        );
+        const prefix = `${eventType}:`;
+        const families = new Set();
+        Object.entries(globalCounters).forEach(([key, amount]) => {
+          if (!String(key).startsWith(prefix)) return;
+          if (Math.max(0, Number(amount) || 0) <= 0) return;
+          const family = String(key).slice(prefix.length).trim().toLowerCase();
+          if (family && family !== "unknown") families.add(family);
+        });
+        return families.size;
+      }
       return null;
     }
 
@@ -3101,6 +3116,15 @@
       );
     }
 
+    progressionChangeAffectsObservationRuntimeCounters(detail = {}) {
+      return (
+        String(detail.reason || "") === "event-consumed" &&
+        String(detail.event?.type || "") === String(
+          BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED"
+        )
+      );
+    }
+
     reconcileHistoricalCollections(missionFilter = null) {
       const manager = this.manager();
       if (!manager) return false;
@@ -3204,6 +3228,9 @@
       }
       if (this.progressionChangeAffectsHistoricalCollections(detail)) {
         changed = this.reconcileHistoricalCollectionChains() || changed;
+      }
+      if (this.progressionChangeAffectsObservationRuntimeCounters(detail)) {
+        changed = Boolean(this.reconcileRuntimeCounters()) || changed;
       }
       if (String(detail.reason || "") === "inventory-deposited") {
         changed = this.markDepositCompletionGates() || changed;

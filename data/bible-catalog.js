@@ -1144,6 +1144,241 @@
     })
   });
 
+  const gameFlora = Object.freeze({
+    id: "GAME-flora",
+    title: "Étudier une plante phosphorescente",
+    description: "Observer une plante phosphorescente puis analyser une plante du même type sans perturber son cycle.",
+    pattern: "DISCOVER_THEN_ANALYZE",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-travel_long",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-travel_long"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 30,
+    slots: Object.freeze({
+      observe: Object.freeze({
+        title: "Observer une plante phosphorescente",
+        target: 1,
+        params: Object.freeze({
+          subject: "flora",
+          tagsAny: Object.freeze(["glowing"]),
+          excludeKinds: Object.freeze(["wood"])
+        })
+      }),
+      analyze: Object.freeze({
+        title: "Analyser une plante phosphorescente du même type",
+        target: 1,
+        params: Object.freeze({
+          subject: "flora",
+          tagsAny: Object.freeze(["glowing"]),
+          excludeKinds: Object.freeze(["wood"]),
+          relation: Object.freeze({
+            fromSlot: "observe",
+            sameBy: Object.freeze(["cuoType"])
+          })
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Cette plante phosphorescente réagit à son environnement. Je veux d’abord l’observer sans intervenir, puis analyser une plante du même type."
+      ]),
+      completed: Object.freeze([
+        "L’observation et l’analyse de deux spécimens du même type concordent. Cette plante fournit un premier repère fiable pour structurer mes recherches."
+      ])
+    })
+  });
+
+  const researchInitial = Object.freeze({
+    id: "GAME-research_initial",
+    title: "Analyse initiale",
+    description: "Effectuer trois analyses réelles afin d’établir une première base de comparaison.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "west",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["GAME-flora"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "analysisStart",
+        title: "Effectuer une première analyse",
+        action: "analyze",
+        target: 1,
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "analysisFollowup",
+        title: "Effectuer deux analyses supplémentaires",
+        action: "analyze",
+        target: 2,
+        requires: Object.freeze(["analysisStart"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Une observation isolée ne suffit pas. Trois analyses comparables devraient me donner une première base solide."
+      ]),
+      completed: Object.freeze([
+        "Trois analyses concordantes : je peux commencer à formuler des hypothèses au lieu d’accumuler des impressions."
+      ])
+    })
+  });
+
+  const researchHypothesis = Object.freeze({
+    id: "GAME-research_hypothesis",
+    title: "Hypothèse validée",
+    description: "Effectuer dix analyses réelles puis formaliser la comparaison par une recherche.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "east",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["GAME-research_initial"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "analyses",
+        title: "Effectuer dix analyses",
+        action: "analyze",
+        target: 10,
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "research",
+        title: "Formaliser l’hypothèse",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["analyses"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "J’ai assez d’indices pour chercher une règle commune. Il me faut maintenant suffisamment d’analyses pour vérifier si elle tient."
+      ]),
+      completed: Object.freeze([
+        "Les résultats convergent. Ce n’est plus une intuition : l’hypothèse tient assez bien pour guider la suite."
+      ])
+    })
+  });
+
+  const specialInvestigator = Object.freeze({
+    id: "GAME-special_investigator",
+    title: "Investigateur",
+    description: "Effectuer dix inspections réelles pour consolider une méthode d’investigation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "south",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["GAME-research_hypothesis"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "inspectionStart",
+        title: "Effectuer une première inspection",
+        action: "inspect",
+        target: 1,
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "inspectionFollowup",
+        title: "Effectuer neuf inspections supplémentaires",
+        action: "inspect",
+        target: 9,
+        requires: Object.freeze(["inspectionStart"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Observer donne une impression ; inspecter permet de vérifier. Dix inspections devraient suffire pour rendre cette méthode naturelle."
+      ]),
+      completed: Object.freeze([
+        "Dix inspections plus tard, je distingue mieux les détails utiles du simple décor."
+      ])
+    })
+  });
+
+  const specialArchivist = Object.freeze({
+    id: "GAME-special_archivist",
+    title: "Archiviste",
+    description: "Constater que cinq familles différentes ont déjà fait l’objet d’au moins une observation réelle.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "GAME-special_investigator",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["GAME-special_investigator"]),
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 38,
+    runtimeCounters: Object.freeze([
+      Object.freeze({
+        slot: "study",
+        source: "observations.distinctFamiliesHistorical",
+        baselineOnActivation: false
+      })
+    ]),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Avoir observé cinq familles différentes",
+        target: 5,
+        params: Object.freeze({
+          catalogManaged: true
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Mon journal contient déjà assez de matière pour prendre du recul. Je veux simplement vérifier si mes observations couvrent cinq familles réellement différentes."
+      ]),
+      completed: Object.freeze([
+        "Cinq familles distinctes ont maintenant été observées. Mon journal commence à ressembler à une mémoire structurée du monde."
+      ])
+    })
+  });
+
+
   const T04 = Object.freeze({
     id: "T04",
     title: "Comprendre qu’un projet peut progresser en parallèle",
@@ -4269,6 +4504,11 @@
     explorationTotal20,
     travelShort,
     travelLong,
+    gameFlora,
+    researchInitial,
+    researchHypothesis,
+    specialInvestigator,
+    specialArchivist,
     T04,
     T05,
     T06,
