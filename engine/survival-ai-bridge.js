@@ -35,7 +35,9 @@
 
   const RATION_NUTRITION = Object.freeze({
     foodGain: 45,
-    restGain: 0
+    // Une ration aide aussi légèrement à récupérer physiquement, mais moins
+    // qu'une micro-pause ou qu'un repos long.
+    restGain: 6
   });
 
   const LONG_REST_RECOVERY = Object.freeze({

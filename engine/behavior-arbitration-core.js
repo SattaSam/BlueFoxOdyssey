@@ -354,7 +354,8 @@
     lastObservedAt: 0,
     lastEvent: null,
     missionOverlayInstalled: false,
-    relationOverlayInstalled: false
+    relationOverlayInstalled: false,
+    pendingRationMicroRest: false
   };
 
   const observe = (type, detail = {}) => {
@@ -681,6 +682,7 @@
     };
 
     if (survival.needs?.criticalRest) {
+      state.pendingRationMicroRest = false;
       return {
         id: "critical-rest",
         axis: "survival",
@@ -694,8 +696,39 @@
       };
     }
 
-    const rationAvailable =
-      Number(BF.Rations?.snapshot?.().rations) > 0;
+    const rationConsumeUnlocked =
+      BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") === true;
+    const microRestUnlocked =
+      BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true;
+    const rationAvailable = Boolean(
+      rationConsumeUnlocked &&
+      Number(BF.Rations?.snapshot?.().rations) > 0
+    );
+
+    if (state.pendingRationMicroRest) {
+      state.pendingRationMicroRest = false;
+      if (microRestUnlocked) {
+        return {
+          id: "ration-micro-rest",
+          axis: "survival",
+          routine: "micro-rest",
+          // Le complément post-ration reste plus court que la micro-pause
+          // autonome standard afin que ration + pause soit toujours plus
+          // rapide qu'un repos long complet.
+          duration: 1400 + Math.random() * 1200,
+          detail: {
+            restGain: fatigue.level === "heavy" ? 10 : 9,
+            pressureReduction: 0.75,
+            afterRation: true
+          },
+          speech: "micro-rest"
+        };
+      }
+    }
+
+    const recoveryNeeded = Boolean(
+      survival.needs?.rest || survival.needs?.food
+    );
 
     const options = [
       {
@@ -713,12 +746,13 @@
       {
         id: "survival-food",
         axis: "survival",
-        baseWeight: survival.needs?.food ? 30 : 0,
+        baseWeight: survival.needs?.food ? 60 : recoveryNeeded ? 46 : 0,
         available: Boolean(
-          survival.needs?.food && rationAvailable
+          recoveryNeeded && rationAvailable
         ),
         routine: "food",
-        duration: 5200
+        // Manger reste une routine courte, du même ordre qu’une micro-pause.
+        duration: 2400 + Math.random() * 2200
       }
     ];
 
@@ -857,6 +891,14 @@
       });
       speakReaction(evaluation);
     }
+  });
+  global.addEventListener("bluefox:ration-consumed", (event) => {
+    if (event.detail?.automatic !== true) return;
+    if (
+      BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") !== true ||
+      BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") !== true
+    ) return;
+    state.pendingRationMicroRest = true;
   });
   global.addEventListener("bluefox:survival-changed", (event) => {
     const reason = event.detail?.reason || "";
