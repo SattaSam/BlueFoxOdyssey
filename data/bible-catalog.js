@@ -1574,6 +1574,148 @@
   });
 
 
+  const FAU02 = Object.freeze({
+    id: "FAU-02",
+    title: "Territoire animal",
+    description:
+      "Découvrir la même définition de nid de faune sur trois maps distinctes ; les deux changements de territoire matérialisent les deux limites territoriales.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["FAU-01"]),
+    priority: 322,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-NID-DE-FAUNE5",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "faunaTerritoryContext"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Identifier trois territoires occupés par le même type de nid",
+        target: 3,
+        params: Object.freeze({
+          microSceneId: "MSC-CUSTOM-NID-DE-FAUNE5",
+          distinctBy: "mapId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ses déplacements dessinent une frontière plus nette que je ne le pensais. Je vais retrouver le même type de nid sur plusieurs territoires."
+      ]),
+      completed: Object.freeze([
+        "La même définition de nid apparaît sur trois maps distinctes. Les deux passages entre ces territoires matérialisent deux limites sans supposer qu’une même instance physique ait migré."
+      ])
+    })
+  });
+
+  const FAU06 = Object.freeze({
+    id: "FAU-06",
+    title: "Routes de migration",
+    description:
+      "Observer une espèce de faune de référence puis retrouver cette même définition animale sur une nouvelle map située à l’est.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-05",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-05"]),
+    priority: 318,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredObjects: Object.freeze([
+        Object.freeze({
+          sourceSlot: "referenceFauna",
+          identityField: "objectId",
+          count: 1,
+          contextRole: "faunaMigrationTarget"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "referenceFauna",
+        title: "Observer une espèce animale de référence",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "fauna"
+        })
+      }),
+      Object.freeze({
+        slot: "reachEastMap",
+        title: "Continuer vers l’est jusqu’à une nouvelle map",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["referenceFauna"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          direction: "east",
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "compareFauna",
+        title: "Observer la même espèce sur cette nouvelle map",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachEastMap"]),
+        params: Object.freeze({
+          subject: "fauna",
+          relation: Object.freeze({
+            fromSlot: "referenceFauna",
+            sameBy: Object.freeze(["objectId"]),
+            differentBy: Object.freeze(["mapId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ces traces ne décrivent pas une ronde, mais un voyage. Je vais prendre une espèce comme référence et chercher la même plus à l’est."
+      ]),
+      completed: Object.freeze([
+        "La même espèce est confirmée sur une autre map à l’est. Le déplacement saisonnier reste une interprétation narrative de ces deux observations."
+      ])
+    })
+  });
+
   const T04 = Object.freeze({
     id: "T04",
     title: "Comprendre qu’un projet peut progresser en parallèle",
@@ -4707,6 +4849,8 @@
     gameEnergy,
     gameEngineering1,
     gameEngineering2,
+    FAU02,
+    FAU06,
     T04,
     T05,
     T06,
