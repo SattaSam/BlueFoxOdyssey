@@ -1806,9 +1806,24 @@
           Number(player.z) - Number(point.z)
         );
         if (distance > radius) return;
+        const requiredMapFact = String(context.requiredMapFact || "").trim();
+        if (requiredMapFact) {
+          const fact = manager.memory.getFact?.(requiredMapFact, null);
+          const field = String(context.requiredMapField || "mapId").trim();
+          const requiredMapId = String(fact?.[field] || fact?.mapId || "");
+          if (!requiredMapId || String(engine.currentMapId || "") !== requiredMapId) {
+            return;
+          }
+        }
+        if (context.slot) {
+          if (!this.progressRuntimeValidationSlot(mission.id, context.slot, 1)) {
+            return;
+          }
+        }
         manager.memory.setFact?.(context.fact, {
           active: true,
           missionId: mission.id,
+          slot: context.slot || null,
           microSceneId: context.microSceneId,
           mapId: engine.currentMapId,
           reachedAt: Date.now()
@@ -1821,6 +1836,7 @@
               id: context.id || context.fact,
               fact: context.fact,
               missionId: mission.id,
+              slot: context.slot || null,
               microSceneId: context.microSceneId,
               mapId: engine.currentMapId,
               distance,

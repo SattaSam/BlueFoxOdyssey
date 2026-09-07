@@ -372,12 +372,27 @@
       return missionId ? this.definition(missionId) : null;
     }
 
+    travelTargetMapFromFact(travel) {
+      const mission = this.travelMissionDefinition(travel);
+      if (mission?.navigation?.autonomousKnownReturn !== true) return "";
+      const factKey = String(travel?.node?.params?.targetMapFact || "").trim();
+      if (!factKey) return "";
+      const fact = this.memory.getFact?.(factKey, null);
+      if (!fact || typeof fact !== "object") return "";
+      const field = String(travel.node.params?.targetMapField || "mapId").trim();
+      return String(fact[field] || fact.mapId || "");
+    }
+
     isAutonomousUnknownTravel(travel) {
       const mission = this.travelMissionDefinition(travel);
+      const factTargetDeclared = Boolean(
+        String(travel?.node?.params?.targetMapFact || "").trim()
+      );
       return Boolean(
         travel &&
         mission?.navigation?.autonomousUnknownTravel === true &&
-        !travel.node?.params?.toMapId
+        !travel.node?.params?.toMapId &&
+        !factTargetDeclared
       );
     }
 
@@ -493,19 +508,43 @@
       const travel = this.primaryEventDrivenTravel();
       if (!travel) return null;
 
+      const mission = this.travelMissionDefinition(travel);
+      const targetMapFactDeclared = Boolean(
+        String(travel.node?.params?.targetMapFact || "").trim()
+      );
+      const injectedFactTarget = travel.node?.params?.targetMapResolvedFromFact === true;
+      const staticTargetMapId = injectedFactTarget
+        ? ""
+        : String(travel.node?.params?.toMapId || "");
+      const factTargetMapId = targetMapFactDeclared && !staticTargetMapId
+        ? this.travelTargetMapFromFact(travel)
+        : "";
+      const targetMapId = staticTargetMapId || factTargetMapId;
+
+      // Une destination résolue depuis la mémoire devient le filtre concret du
+      // nœud de voyage courant. Le marqueur de provenance évite de la confondre
+      // ensuite avec un ancien `toMapId` statique (notamment les retours base).
+      if (factTargetMapId && !staticTargetMapId && travel.node?.params) {
+        travel.node.params.toMapId = factTargetMapId;
+        travel.node.params.targetMapResolvedFromFact = true;
+      } else if (!factTargetMapId && injectedFactTarget && travel.node?.params) {
+        delete travel.node.params.toMapId;
+        delete travel.node.params.targetMapResolvedFromFact;
+      }
+
       const unknownTravel = this.isAutonomousUnknownTravel(travel);
-      const targetMapId = String(travel.node?.params?.toMapId || "");
       if (!unknownTravel && !targetMapId) return null;
 
       const key = this.missionReturnIntentKey(travel.missionId);
       const previous = this.memory.getFact?.(key, null);
       const currentMapId = String(this.engine?.currentMapId || "");
-      const mission = this.travelMissionDefinition(travel);
       const kind = unknownTravel
         ? "unknown-travel"
-        : mission?.navigation?.autonomousKnownReturn === true
-          ? "return-base"
-          : "map-travel";
+        : factTargetMapId
+          ? "map-travel"
+          : mission?.navigation?.autonomousKnownReturn === true
+            ? "return-base"
+            : "map-travel";
       const previousSameContext = Boolean(
         previous?.active === true &&
         String(previous.nodeId || "") === String(travel.node?.id || "") &&

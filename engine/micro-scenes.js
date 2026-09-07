@@ -152,6 +152,7 @@
       objects: Object.freeze([
         Object.freeze({ type: "electrostatic_storm", offset: [0, 0, 0], variant: 0 }),
         Object.freeze({ type: "magnetic_ore", offset: [-4.2, 0, 2.6], variant: 1 }),
+        Object.freeze({ type: "fluorescent_vegetation", offset: [2.1, 0, 3.1], variant: 0 }),
         Object.freeze({ type: "rock", offset: [4.4, 0, -2.2], variant: 2 })
       ])
     }),
