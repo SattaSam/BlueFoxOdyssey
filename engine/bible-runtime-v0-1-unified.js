@@ -582,14 +582,16 @@
     siteBucket(mapId) {
       const memory = this.manager()?.memory;
       const raw = memory?.state?.siteProgression?.[mapId] || null;
-      if (!raw) return { camp: null, refuge: null, base: null };
+      if (!raw) return { camp: null, refuge: null, base: null, workbench: null };
       const sites = raw.sites && typeof raw.sites === "object"
         ? raw.sites
         : { [raw.kind]: raw };
       return {
+        ...sites,
         camp: sites.camp || null,
         refuge: sites.refuge || null,
-        base: sites.base || null
+        base: sites.base || null,
+        workbench: sites.workbench || null
       };
     }
 
@@ -600,7 +602,9 @@
         ? "camp-establish-v1"
         : normalizedKind === "refuge"
           ? "refuge-build-v1"
-          : null;
+          : normalizedKind === "workbench"
+            ? "workbench-build-v1"
+            : null;
       const missionId = this.constructionMissionId(normalizedKind, targetMapId);
       const lifecycle = this.missionLifecycle(missionId);
       const sites = this.siteBucket(targetMapId);
@@ -623,6 +627,15 @@
       } else if (normalizedKind === "refuge" && (sites.refuge || sites.base)) {
         allowed = false;
         reason = "Un refuge ou une base existe déjà sur cette map.";
+      } else if (normalizedKind === "workbench" && targetMapId !== "crystal") {
+        allowed = false;
+        reason = "Le premier établi ne peut être installé que sur Crystal.";
+      } else if (normalizedKind === "workbench" && !sites.base) {
+        allowed = false;
+        reason = "La Base renforcée doit être installée avant l'établi.";
+      } else if (normalizedKind === "workbench" && sites.workbench) {
+        allowed = false;
+        reason = "Un établi est déjà implanté sur Crystal.";
       }
 
       return {
@@ -1608,12 +1621,37 @@
       );
     }
 
-    runtimeCounterValue(source) {
+    runtimeCounterValue(source, counter = {}) {
       if (source === "rations.craftedTotal") {
         return Math.max(
           0,
           Number(BF.getRationState?.().craftedTotal) || 0
         );
+      }
+      if (source === "observations.historical") {
+        const requestedType = lower(counter.cuoType || counter.kind || counter.subject);
+        if (!requestedType) return null;
+        const definitions = BF.ObjectLibrary?.list?.({ status: "active" }) || BF.ObjectLibrary?.list?.() || [];
+        const ids = new Set(definitions
+          .filter((definition) => {
+            const descriptors = [
+              definition?.type,
+              definition?.resource?.inventoryKey,
+              definition?.knowledge?.family,
+              definition?.semantic?.subject,
+              definition?.category
+            ].map(lower).filter(Boolean);
+            return descriptors.includes(requestedType);
+          })
+          .map((definition) => String(definition?.id || ""))
+          .filter(Boolean));
+        const globalCounters = BF.getProgressionState?.().counters?.global || {};
+        const eventType = String(BF.ObjectEvents?.types?.OBJECT_SEEN || "OBJECT_SEEN");
+        let total = 0;
+        ids.forEach((objectId) => {
+          total += Math.max(0, Number(globalCounters[`${eventType}:object:${objectId}`]) || 0);
+        });
+        return total;
       }
       if (source === "observations.distinctFamiliesHistorical") {
         const globalCounters = BF.getProgressionState?.().counters?.global || {};
@@ -1645,7 +1683,7 @@
         if (!counter?.slot || !counter?.source) return;
         const key = this.runtimeCounterBaselineKey(mission.id, counter.slot);
         if (manager.memory.getFact?.(key, null) != null) return;
-        const current = this.runtimeCounterValue(counter.source);
+        const current = this.runtimeCounterValue(counter.source, counter);
         if (current == null) return;
         manager.memory.setFact?.(key, {
           source: counter.source,
@@ -1674,7 +1712,7 @@
         counters.forEach((counter) => {
           const node = tree.find?.(`${mission.id}:${counter.slot}`);
           if (!node || node.isComplete) return;
-          const current = this.runtimeCounterValue(counter.source);
+          const current = this.runtimeCounterValue(counter.source, counter);
           if (current == null) return;
           const baselineRecord = manager.memory.getFact?.(
             this.runtimeCounterBaselineKey(mission.id, counter.slot),
@@ -1760,6 +1798,95 @@
       );
     }
 
+    reserveFactState(context = {}) {
+      const manager = this.manager();
+      if (!manager?.memory || !context?.fact || !context?.reserve) return null;
+      const existing = manager.memory.getFact?.(context.fact, null);
+      if (existing?.reserveVersion === 1) return existing;
+      const remaining = {};
+      asArray(context.reserve.items).forEach((item) => {
+        if (!item?.inventoryKey) return;
+        remaining[String(item.inventoryKey)] = Math.max(0, Number(item.quantity) || 0);
+      });
+      const state = {
+        reserveVersion: 1,
+        missionId: context.missionId || null,
+        microSceneId: context.microSceneId || null,
+        mapId: BF.currentEngine?.currentMapId || null,
+        remaining,
+        exhausted: Object.values(remaining).every((value) => value <= 0),
+        discoveredAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      manager.memory.setFact?.(context.fact, state);
+      manager.memory.save?.();
+      return state;
+    }
+
+    reserveRemainingTotal(state) {
+      return Object.values(state?.remaining || {}).reduce((sum, amount) => sum + Math.max(0, Number(amount) || 0), 0);
+    }
+
+    withdrawPersistentReserve(mission, context) {
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(mission?.id);
+      const node = tree?.find?.(`${mission.id}:${context.slot}`);
+      if (!manager?.memory || !node || node.isComplete) return false;
+      if (!tree.availableLeaves?.().includes?.(node)) return false;
+
+      const state = this.reserveFactState({ ...context, missionId: mission.id });
+      if (!state || state.exhausted) return false;
+      const capacity = BF.getInventoryCapacityState?.() || {};
+      let free = Math.max(0, (Number(capacity.capacity) || 0) - (Number(capacity.count) || 0));
+      if (!free) {
+        const now = Date.now();
+        if (now - Math.max(0, Number(state.lastFullMessageAt) || 0) >= 15000) {
+          state.lastFullMessageAt = now;
+          state.updatedAt = now;
+          manager.memory.setFact?.(context.fact, state);
+          manager.memory.save?.();
+          BF.currentEngine?.callbacks?.onAction?.(context.reserve.fullMessage || "Il reste des ressources utilisables, mais je ne peux pas en emporter plus. Je reviendrai plus tard.");
+        }
+        return false;
+      }
+
+      const activeKeys = Object.keys(state.remaining).filter((key) => Number(state.remaining[key]) > 0);
+      let moved = 0;
+      while (free > 0 && activeKeys.some((key) => Number(state.remaining[key]) > 0)) {
+        const availableKeys = activeKeys.filter((key) => Number(state.remaining[key]) > 0);
+        for (const key of availableKeys) {
+          if (free <= 0) break;
+          const remaining = Math.max(0, Number(state.remaining[key]) || 0);
+          if (!remaining) continue;
+          const share = Math.max(1, Math.ceil(free / availableKeys.length));
+          const take = Math.min(remaining, share, free);
+          const granted = BF.grantInventory?.(key, take, {
+            source: "persistent-reserve",
+            reason: context.fact,
+            missionId: mission.id,
+            mapId: BF.currentEngine?.currentMapId
+          }) || 0;
+          if (!granted) continue;
+          state.remaining[key] = remaining - granted;
+          free -= granted;
+          moved += granted;
+        }
+      }
+      if (!moved) return false;
+
+      state.updatedAt = Date.now();
+      state.exhausted = this.reserveRemainingTotal(state) <= 0;
+      manager.memory.setFact?.(context.fact, state);
+      manager.memory.save?.();
+      this.progressRuntimeValidationSlot(mission.id, context.slot, moved);
+      if (state.exhausted) {
+        BF.currentEngine?.callbacks?.onAction?.(context.reserve.exhaustedMessage || "J’ai récupéré tout ce qui pouvait encore servir. Le reste est trop dégradé pour être exploitable.");
+      } else {
+        BF.currentEngine?.callbacks?.onAction?.(context.reserve.partialMessage || "Il reste des ressources utilisables ici. Je reviendrai quand mon sac aura de nouveau de la place.");
+      }
+      return true;
+    }
+
     proximityContextEntries() {
       const manager = this.manager();
       if (!manager?.memory) return [];
@@ -1770,7 +1897,9 @@
         if (!this.missionLifecycle(mission.id).active) return;
         contexts.forEach((context) => {
           if (!context?.microSceneId || !context?.fact) return;
-          if (manager.memory.getFact?.(context.fact, false)) return;
+          const existingFact = manager.memory.getFact?.(context.fact, false);
+          if (!context.reserve && existingFact) return;
+          if (context.reserve && existingFact?.exhausted === true) return;
           entries.push({ mission, context });
         });
       });
@@ -1814,6 +1943,11 @@
           if (!requiredMapId || String(engine.currentMapId || "") !== requiredMapId) {
             return;
           }
+        }
+        if (context.reserve) {
+          if (!this.withdrawPersistentReserve(mission, context)) return;
+          changed = true;
+          return;
         }
         if (context.slot) {
           if (!this.progressRuntimeValidationSlot(mission.id, context.slot, 1)) {
@@ -2303,7 +2437,9 @@
     }
 
     emitRevealedOnce(mission, context = {}) {
-      const key = `${mission.id}:revealed`;
+      const key = mission.repeatable
+        ? `${mission.id}:revealed:${Math.max(0, Number(this.manager()?.memory?.state?.missionLifecycle?.[mission.id]?.repeatCount) || 0)}`
+        : `${mission.id}:revealed`;
       if (this.state.progressNarrative[key]) return false;
 
       this.state.progressNarrative[key] = Date.now();
@@ -2503,7 +2639,8 @@
 
       if (mission.completionGate && !this.gateSatisfied(mission)) return false;
       if (standaloneConsumes) {
-        const receiptId = `${mission.id}:completion:v${mission.version || 1}`;
+        const effectKey = this.repeatableEffectKey(mission);
+        const receiptId = `${effectKey}:completion:v${mission.version || 1}`;
         const memory = this.manager()?.memory;
         if (memory?.hasEffectReceipt?.(receiptId)) {
           this.pendingConstructionResourceMissions.delete(mission.id);
@@ -3142,12 +3279,12 @@
     }
 
     progressionChangeAffectsObservationRuntimeCounters(detail = {}) {
-      return (
-        String(detail.reason || "") === "event-consumed" &&
-        String(detail.event?.type || "") === String(
-          BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED"
-        )
-      );
+      if (String(detail.reason || "") !== "event-consumed") return false;
+      const type = String(detail.event?.type || "");
+      return [
+        String(BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED"),
+        String(BF.ObjectEvents?.types?.OBJECT_SEEN || "OBJECT_SEEN")
+      ].includes(type);
     }
 
     reconcileHistoricalCollections(missionFilter = null) {
@@ -3233,9 +3370,122 @@
       return changed;
     }
 
+    setStockBackedNodeProgress(tree, mission, stock = {}) {
+      const node = tree?.find?.(`${mission.id}:${stock.slot}`);
+      if (!node) return false;
+      const inventoryKeys = this.inventoryKeysForRequirement(stock);
+      if (!inventoryKeys.length) return false;
+      const available = Math.max(0, Number(BF.progression?.availableInventory?.(inventoryKeys)) || 0);
+      const maximum = Math.max(0, Number(stock.maximum) || node.target || 0);
+      const next = Math.min(node.target, maximum || node.target, available);
+      const previous = Math.max(0, Number(node.progress) || 0);
+      if (next === previous && ((next >= node.target) === node.isComplete)) return false;
+
+      node.progress = next;
+      if (next >= node.target) {
+        node.status = Missions.MissionStatus.COMPLETED;
+        node.completedAt ||= Date.now();
+        node.startedAt ||= Date.now();
+      } else {
+        node.completedAt = 0;
+        node.status = next > 0
+          ? Missions.MissionStatus.ACTIVE
+          : (node.prerequisitesMet?.(tree.root) ? Missions.MissionStatus.AVAILABLE : Missions.MissionStatus.LOCKED);
+        if (tree.root?.isComplete) {
+          tree.root.completedAt = 0;
+          tree.root.status = Missions.MissionStatus.ACTIVE;
+        }
+      }
+      return true;
+    }
+
+    reconcileStockBackedMission(mission) {
+      const stocks = asArray(mission?.stockBackedSlots);
+      if (!stocks.length) return false;
+      const manager = this.manager();
+      const lifecycle = manager?.memory?.state?.missionLifecycle?.[mission.id];
+      const tree = manager?.trees?.get?.(mission.id);
+      if (!manager || lifecycle?.status !== "active" || !tree) return false;
+      let changed = false;
+      stocks.forEach((stock) => {
+        changed = this.setStockBackedNodeProgress(tree, mission, stock) || changed;
+      });
+      if (!changed) return false;
+      tree.refresh?.();
+      manager.memory?.saveTree?.(tree);
+      manager.syncLifecycleFromTrees?.();
+      manager.publish?.();
+      return true;
+    }
+
+    reconcileStockBackedMissions() {
+      let changed = false;
+      this.catalog.forEach((mission) => {
+        changed = this.reconcileStockBackedMission(mission) || changed;
+      });
+      return changed;
+    }
+
+    repeatableEffectKey(mission) {
+      const lifecycle = this.manager()?.memory?.state?.missionLifecycle?.[mission?.id] || {};
+      const repeatCount = mission?.repeatable ? Math.max(0, Number(lifecycle.repeatCount) || 0) : 0;
+      return mission?.repeatable ? `${mission.id}:repeat:${repeatCount}` : mission.id;
+    }
+
+    repeatableWoodBaselineKey(missionId) {
+      return `repeatableWoodBaseline:${missionId}`;
+    }
+
+    nearShelterForRepeatable(rule = {}) {
+      const engine = BF.currentEngine;
+      const mapId = String(engine?.currentMapId || "");
+      if (!engine?.character?.root?.position || !mapId) return false;
+      if (rule.mapId && mapId !== String(rule.mapId)) return false;
+      const sites = this.siteBucket(mapId);
+      const kinds = asArray(rule.shelterKinds).length ? asArray(rule.shelterKinds) : ["camp", "refuge", "base"];
+      const player = engine.character.root.position;
+      const radius = Math.max(1, Number(rule.radius) || 12);
+      return kinds.some((kind) => {
+        const site = sites[lower(kind)];
+        const anchor = site?.anchor;
+        if (!anchor) return false;
+        return Math.hypot(Number(player.x) - Number(anchor.x), Number(player.z) - Number(anchor.z)) <= radius;
+      });
+    }
+
+    reviewRepeatableOpportunities() {
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      this.catalog.filter((mission) => mission?.repeatable === true).forEach((mission) => {
+        const rule = mission.repeatableCondition || {};
+        if (!asArray(mission.prerequisites).every((id) => this.missionLifecycle(id).completed)) return;
+        if (!this.nearShelterForRepeatable(rule)) return;
+        const keys = this.inventoryKeysForRequirement(rule);
+        const wood = keys.length ? Math.max(0, Number(BF.progression?.availableInventory?.(keys)) || 0) : 0;
+        const minimum = Math.max(0, Number(rule.minimum) || 0);
+        if (wood < minimum) return;
+
+        let lifecycle = manager.memory.state.missionLifecycle?.[mission.id] || null;
+        const baselineKey = this.repeatableWoodBaselineKey(mission.id);
+        const baseline = Math.max(0, Number(manager.memory.getFact?.(baselineKey, 0)?.amount ?? manager.memory.getFact?.(baselineKey, 0)) || 0);
+        const increase = Math.max(0, Number(rule.rearmIncrease) || 0);
+        if (lifecycle?.status === "completed") {
+          if (wood < baseline + increase) return;
+          if (!manager.rearmRepeatableMission?.(mission.id, { source: "bible-repeatable", reason: "Le stock local permet de reprendre cette routine." })) return;
+          lifecycle = manager.memory.state.missionLifecycle?.[mission.id] || null;
+          changed = true;
+        }
+        if (!lifecycle || lifecycle.status === "available" || lifecycle.status === "hidden") {
+          changed = this.activateMission(mission, { type: "repeatable.local-opportunity", mapId: BF.currentEngine?.currentMapId }) || changed;
+        }
+      });
+      return changed;
+    }
+
     progressionChangeAffectsInventory(detail = {}) {
       const reason = String(detail.reason || "");
-      if (["inventory-consumed", "inventory-pool-consumed", "inventory-reset"].includes(reason)) {
+      if (["inventory-consumed", "inventory-pool-consumed", "inventory-granted", "inventory-deposited", "inventory-withdrawn", "inventory-reset"].includes(reason)) {
         return true;
       }
       if (reason !== "event-consumed") return false;
@@ -3248,6 +3498,10 @@
 
     onProgressionChanged(detail = {}) {
       let changed = false;
+      if (this.progressionChangeAffectsInventory(detail)) {
+        changed = this.reconcileStockBackedMissions() || changed;
+        changed = this.reviewRepeatableOpportunities() || changed;
+      }
       if (this.progressionChangeAffectsEnvironmentObservations(detail)) {
         changed = this.reconcileEnvironmentAll(detail.event?.mapId || BF.currentEngine?.currentMapId) || changed;
       }
@@ -3377,7 +3631,8 @@
       const effects = mission.effects || [];
       if (!effects.length) return true;
       const memory = this.manager()?.memory;
-      const receiptId = `${mission.id}:completion:v${mission.version || 1}`;
+      const effectKey = this.repeatableEffectKey(mission);
+      const receiptId = `${effectKey}:completion:v${mission.version || 1}`;
       if (!memory) return false;
       if (memory.hasEffectReceipt?.(receiptId)) {
         this.renderCurrentSite();
@@ -3502,9 +3757,7 @@
           if (!currentMapId) return;
           if (expectedMapId && currentMapId !== expectedMapId) return;
           if (!engine?.currentMap?.group || !BF.ObjectSpawner) return;
-          if (!this.siteBucket(currentMapId).camp &&
-              !this.siteBucket(currentMapId).refuge &&
-              !this.siteBucket(currentMapId).base) return;
+          if (!Object.values(this.siteBucket(currentMapId)).some(Boolean)) return;
           this.renderCurrentSite(engine);
         }, delay);
       });
@@ -3682,7 +3935,11 @@
           return;
         }
         finalizing = true;
-        const label = effect.kind === "refuge" ? "refuge" : "camp";
+        const label = effect.kind === "refuge"
+          ? "refuge"
+          : effect.kind === "workbench"
+            ? "établi"
+            : "camp";
         const cancel = () => {
           finalizing = false;
           engine.callbacks?.onStatus?.(
@@ -3787,7 +4044,9 @@
           BF.currentEngine?.callbacks?.onStatus?.(
             kind === "refuge"
               ? `Rendez-vous sur ${targetMapId} pour installer le refuge.`
-              : `Rendez-vous sur ${targetMapId} pour établir le camp.`
+              : kind === "workbench"
+                ? `Rendez-vous sur ${targetMapId} pour installer l'établi.`
+                : `Rendez-vous sur ${targetMapId} pour établir le camp.`
           );
           this.state.progressNarrative[messageKey] = Date.now();
           this.saveState();
@@ -3963,12 +4222,14 @@
 
     researchEntries(options = {}) {
       const unlockedOnly = options.unlockedOnly !== false;
+      const currentMapId = String(BF.currentEngine?.currentMapId || "");
       return this.researchRewardDefinitions()
         .map((entry) => ({
           ...entry,
           unlocked: this.isResearchRewardUnlocked(entry.id)
         }))
-        .filter((entry) => !unlockedOnly || entry.unlocked);
+        .filter((entry) => !unlockedOnly || entry.unlocked)
+        .filter((entry) => options.includeUnavailableMap === true || !entry.mapId || String(entry.mapId) === currentMapId);
     }
 
     canCraftResearchReward(id, count = 1, options = {}) {
@@ -4118,6 +4379,7 @@
       this.migrateLegacyRationUnlock();
       this.reconcileRuntimeCounters();
       this.reconcileHistoricalCollectionChains();
+      this.reconcileStockBackedMissions();
       this.reconcileEnvironmentAll(BF.currentEngine?.currentMapId);
       this.refreshProximityContextMonitor();
       this.reconcileLocalExploration(state);
@@ -4145,16 +4407,23 @@
 
         if (lifecycle?.status !== "completed") continue;
 
-        let effectsReady = Boolean(this.state.effectsApplied[mission.id]);
+        const effectKey = this.repeatableEffectKey(mission);
+        let effectsReady = Boolean(this.state.effectsApplied[effectKey]);
         if (!effectsReady) {
           effectsReady = this.applyEffects(mission);
           if (effectsReady) {
-            this.state.effectsApplied[mission.id] = Date.now();
+            this.state.effectsApplied[effectKey] = Date.now();
             this.saveState();
           }
         }
         if (!effectsReady) continue;
 
+        if (mission.repeatable === true && mission.repeatableCondition) {
+          const keys = this.inventoryKeysForRequirement(mission.repeatableCondition);
+          const amount = keys.length ? Math.max(0, Number(BF.progression?.availableInventory?.(keys)) || 0) : 0;
+          manager?.memory?.setFact?.(this.repeatableWoodBaselineKey(mission.id), { amount, at: Date.now() });
+          manager?.memory?.save?.();
+        }
         BF.completeMissionPsychology?.(mission);
         this.unlockResearchRewards(mission);
         this.emitCompletedOnce(mission);
@@ -4163,7 +4432,9 @@
 
 
     emitCompletedOnce(mission) {
-      const key = `${mission.id}:completed`;
+      const key = mission.repeatable
+        ? `${mission.id}:completed:${Math.max(0, Number(this.manager()?.memory?.state?.missionLifecycle?.[mission.id]?.repeatCount) || 0)}`
+        : `${mission.id}:completed`;
       if (this.state.progressNarrative[key]) return false;
 
       this.state.progressNarrative[key] = Date.now();

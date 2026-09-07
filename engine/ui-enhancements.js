@@ -2492,7 +2492,7 @@
     const activeMissions = BF?.getMissionState?.()?.missions || [];
     const mission = activeMissions.find((entry) => {
       const id = entry.missionId || entry.id || "";
-      if (!/^(CAMP|REFUGE)@/.test(id)) return false;
+      if (!/^(CAMP|REFUGE|WORKBENCH)@/.test(id)) return false;
       return entry.title === titleText || card.textContent?.includes(entry.title || "");
     });
 
@@ -2534,10 +2534,16 @@
       card.appendChild(button);
     }
 
-    const kind = missionId.startsWith("REFUGE@") ? "refuge" : "camp";
+    const kind = missionId.startsWith("REFUGE@")
+      ? "refuge"
+      : missionId.startsWith("WORKBENCH@")
+        ? "workbench"
+        : "camp";
     button.textContent = kind === "refuge"
       ? "Positionner le refuge"
-      : "Positionner le camp";
+      : kind === "workbench"
+        ? "Positionner l’établi"
+        : "Positionner le camp";
     button.onclick = () => {
       const ok = BF?.Research?.resumePlacement?.(missionId);
       if (!ok) {
@@ -2655,7 +2661,9 @@
     const title = document.createElement("strong");
     title.textContent = detail.kind === "refuge"
       ? "Positionnement du refuge"
-      : "Positionnement du camp";
+      : detail.kind === "workbench"
+        ? "Positionnement de l’établi"
+        : "Positionnement du camp";
     title.style.cssText = "display:block;font-size:15px;margin-bottom:10px";
 
     const text = document.createElement("div");
@@ -2694,7 +2702,11 @@
 
     const install = document.createElement("button");
     install.type = "button";
-    install.textContent = detail.kind === "refuge" ? "Installer le refuge" : "Installer le camp";
+    install.textContent = detail.kind === "refuge"
+      ? "Installer le refuge"
+      : detail.kind === "workbench"
+        ? "Installer l’établi"
+        : "Installer le camp";
     install.style.cssText =
       "padding:8px 13px;border-radius:999px;border:1px solid rgba(96,224,255,.55);background:rgba(12,82,104,.95);color:#fff;cursor:pointer";
 

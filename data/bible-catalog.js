@@ -333,7 +333,7 @@
         params: Object.freeze({ subject: "mineral" })
       })
     ]),
-    activationInventoryCredits: Object.freeze([
+    stockBackedSlots: Object.freeze([
       Object.freeze({ slot: "fibers", inventoryKey: "fiber", maximum: 500 }),
       Object.freeze({ slot: "minerals", subject: "mineral", maximum: 500 })
     ]),
@@ -1379,6 +1379,140 @@
   });
 
 
+  const gameCivilization1 = Object.freeze({
+    id: "GAME-civilization_1",
+    title: "Les mêmes marques",
+    description: "Après le Refuge, relire l'historique des stèles puis comparer plusieurs exemplaires pour vérifier qu'elles appartiennent au même ensemble.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-shelter", count: 1 }),
+    initialState: "active",
+    prerequisites: Object.freeze(["GAME-shelter"]),
+    priority: 67,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "steles", title: "Avoir observé 10 stèles", action: "observe", target: 10, requires: Object.freeze([]), params: Object.freeze({ cuoType: "stele", catalogManaged: true }) }),
+      Object.freeze({ slot: "compare", title: "Analyser 2 stèles pour comparer leurs motifs", action: "analyze", target: 2, requires: Object.freeze(["steles"]), params: Object.freeze({ cuoType: "stele" }) })
+    ]),
+    runtimeCounters: Object.freeze([Object.freeze({ slot: "steles", source: "observations.historical", cuoType: "stele", baselineOnActivation: false })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Dix stèles, et toujours ces mêmes formes. Ce n'est plus une coïncidence. Je devrais regarder ce qu'elles ont réellement en commun."]),
+      progress: Object.freeze([Object.freeze({ slot: "compare", atCount: 1, text: "Les motifs changent un peu, mais leur organisation reste la même. Quelqu'un répétait volontairement ce langage." })]),
+      completed: Object.freeze(["Ces stèles appartiennent au même ensemble. Ce monde porte les traces d'une présence organisée."])
+    })
+  });
+
+  const gameCivilization2 = Object.freeze({
+    id: "GAME-civilization_2",
+    title: "Une intention derrière les traces",
+    description: "Comparer les stèles à d'autres vestiges afin de vérifier qu'ils obéissent à une même logique.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-civilization_1", count: 1 }),
+    prerequisites: Object.freeze(["GAME-civilization_1"]),
+    priority: 66,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "relic", title: "Inspecter un vestige technologique", action: "inspect", target: 1, requires: Object.freeze([]), params: Object.freeze({ family: "technology" }) }),
+      Object.freeze({ slot: "synthesis", title: "Comparer les traces anciennes", action: "research", target: 1, requires: Object.freeze(["relic"]), params: Object.freeze({}) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les stèles ne sont peut-être qu'une partie du message. Les arches et les ruines pourraient suivre la même logique."]),
+      progress: Object.freeze([Object.freeze({ slot: "relic", atCount: 1, text: "Même façon d'organiser les formes, mêmes choix de matériaux... ces vestiges semblent liés." })]),
+      completed: Object.freeze(["Ce ne sont pas des monuments isolés. Quelqu'un a structuré ces lieux avec une intention précise."])
+    })
+  });
+
+  const gameCivilization3 = Object.freeze({
+    id: "GAME-civilization_3",
+    title: "Première piste",
+    description: "Suivre la piste sur une nouvelle map et y retrouver une stèle.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-civilization_2", count: 1 }),
+    prerequisites: Object.freeze(["GAME-civilization_2"]),
+    priority: 65,
+    passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredObjects: Object.freeze([Object.freeze({ type: "stele", count: 1, contextRole: "civilizationTrail1" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre une nouvelle map", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "stele", title: "Observer la stèle de cette nouvelle map", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "stele" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Certaines marques ressemblent moins à un symbole qu'à une indication. Peut-être qu'elles montrent une direction."]),
+      progress: Object.freeze([Object.freeze({ slot: "stele", atCount: 1, text: "Les mêmes marques, ici aussi. La piste ne s'arrête donc pas à un seul territoire." })]),
+      completed: Object.freeze(["La piste continue au-delà des cartes que je connaissais déjà."])
+    })
+  });
+
+  const gameCivilization4 = Object.freeze({
+    id: "GAME-civilization_4",
+    title: "La piste continue",
+    description: "Poursuivre sur une deuxième nouvelle map et confirmer le fil conducteur par une nouvelle stèle.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-civilization_3", count: 1 }),
+    prerequisites: Object.freeze(["GAME-civilization_3"]),
+    priority: 64,
+    passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredObjects: Object.freeze([Object.freeze({ type: "stele", count: 1, contextRole: "civilizationTrail2" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre une deuxième nouvelle map", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "stele", title: "Observer une nouvelle stèle", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "stele" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La première stèle m'a donné une direction. Je veux savoir si cette logique tient encore une carte plus loin."]),
+      progress: Object.freeze([Object.freeze({ slot: "stele", atCount: 1, text: "Deux cartes plus loin, et toujours cette logique. Quelqu'un voulait vraiment qu'on puisse suivre ces traces." })]),
+      completed: Object.freeze(["La répétition est trop précise pour être accidentelle. Il doit y avoir quelque chose au bout de ce chemin."])
+    })
+  });
+
+  const gameCivilization5 = Object.freeze({
+    id: "GAME-civilization_5",
+    title: "Le dépôt oublié",
+    description: "Atteindre une troisième nouvelle map, suivre sa stèle jusqu'à une réserve abandonnée et récupérer tout ce qui reste exploitable.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-civilization_4", count: 1 }),
+    prerequisites: Object.freeze(["GAME-civilization_4"]),
+    priority: 63,
+    passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredObjects: Object.freeze([Object.freeze({ type: "stele", count: 1, contextRole: "civilizationTrail3" })]),
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-RESERVE-ABANDONEE", persistent: true, spawnOnce: true, contextRole: "civilizationReserve" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre une troisième nouvelle map", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "stele", title: "Observer la stèle qui termine la piste", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "stele" }) }),
+      Object.freeze({ slot: "reserve", title: "Récupérer les 700 unités encore exploitables", action: "collect", target: 700, requires: Object.freeze(["stele"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "civilization-reserve-proximity",
+      microSceneId: "MSC-CUSTOM-RESERVE-ABANDONEE",
+      fact: "civilizationReserve:v1",
+      slot: "reserve",
+      radius: 2.75,
+      reserve: Object.freeze({
+        items: Object.freeze([
+          Object.freeze({ inventoryKey: "fiber", quantity: 350 }),
+          Object.freeze({ inventoryKey: "azure_ferrite", quantity: 175 }),
+          Object.freeze({ inventoryKey: "magnetic_ore", quantity: 175 })
+        ]),
+        fullMessage: "Il reste des ressources utilisables, mais je ne peux pas en emporter plus. Je reviendrai plus tard.",
+        partialMessage: "Il reste des ressources utilisables ici, mais mon sac est presque plein. Je reviendrai après l'avoir vidé.",
+        exhaustedMessage: "J'ai récupéré tout ce qui pouvait encore servir. Le reste est trop dégradé pour être exploitable."
+      })
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La piste continue encore. Une troisième stèle devrait me dire si elle mène réellement quelque part."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "stele", atCount: 1, text: "Ce n'est pas une ruine ordinaire. On dirait que quelqu'un avait rassemblé des matériaux ici." }),
+        Object.freeze({ slot: "reserve", at: 0.5, text: "Tout n'a pas résisté au temps, mais il reste largement de quoi servir à ma propre construction." })
+      ]),
+      completed: Object.freeze(["C'est tout ce que je peux sauver. Ces matériaux avaient été stockés pour construire autrefois ; ils vont maintenant m'aider à terminer ma propre Base."])
+    })
+  });
+
   const gameEnergy = Object.freeze({
     id: "GAME-energy",
     title: "Comparer les cristaux",
@@ -1448,12 +1582,12 @@
     description: "Étudier vingt-cinq minerais et dix composants technologiques, puis utiliser vingt-cinq unités minérales dans une première recherche comparative.",
     pattern: "SEQUENCE_ACTIONS",
     trigger: Object.freeze({
-      type: "exploration.map_discovered",
-      direction: "east",
-      count: 1,
-      uniqueOnly: true
+      type: "progression.mission_completed",
+      missionId: "GAME-base",
+      count: 1
     }),
-    prerequisites: Object.freeze(["GAME-energy"]),
+    initialState: "active",
+    prerequisites: Object.freeze(["GAME-energy", "GAME-base"]),
     passivePriorityAxis: "research",
     ponderation: 0.25,
     sequence: Object.freeze([
@@ -1570,6 +1704,147 @@
       completed: Object.freeze([
         "Cinquante minerais et vingt-cinq composants comparés : cette méthode d’ingénierie est désormais suffisamment robuste pour ouvrir la suite."
       ])
+    })
+  });
+
+
+  const gameEngineering3 = Object.freeze({
+    id: "GAME-engineering_3",
+    title: "Chauffer pour comprendre",
+    description: "Utiliser le feu du camp pour tester l'effet de la chaleur sur des matériaux réels.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-engineering_2", count: 1 }),
+    initialState: "active",
+    prerequisites: Object.freeze(["GAME-engineering_2"]),
+    priority: 61,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "fire", title: "Observer le feu du camp avant l'expérience", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ cuoType: "base_fire" }) }),
+      Object.freeze({ slot: "experiment", title: "Analyser les matériaux chauffés", action: "research", target: 1, requires: Object.freeze(["fire"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 8 }),
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 5 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 3 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Observer ces matériaux à froid ne me dit pas tout. Je pourrais utiliser le feu du camp et voir comment ils réagissent à la chaleur."]),
+      progress: Object.freeze([Object.freeze({ slot: "fire", atCount: 1, text: "Huit morceaux de bois devraient suffire. Si je concentre mieux la chaleur, l'expérience sera plus lisible." })]),
+      completed: Object.freeze(["Ça fonctionne. Collecter n'est qu'une première étape : certaines ressources doivent être consommées pour apprendre quelque chose."])
+    })
+  });
+
+  const gameFire = Object.freeze({
+    id: "GAME-fire",
+    title: "Alimenter le feu du camp",
+    description: "Quand BlueFox est déjà près de sa Base sur Crystal et que le bois s'accumule, consacrer huit unités à un feu de travail.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze(["GAME-engineering_3"]),
+    repeatable: true,
+    repeatableCondition: Object.freeze({
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 12,
+      inventoryKey: "wood",
+      minimum: 80,
+      rearmIncrease: 8
+    }),
+    priority: 28,
+    passivePriorityAxis: "research",
+    autoPrimaryEligible: false,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "fire", title: "Vérifier le feu du camp", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ cuoType: "base_fire" }) }),
+      Object.freeze({ slot: "feed", title: "Préparer le feu pour le travail", action: "research", target: 1, requires: Object.freeze(["fire"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 8 })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le bois s'accumule. J'en utiliserais bien une partie pour entretenir un feu vraiment utile, puisque je suis déjà au camp."]),
+      progress: Object.freeze([Object.freeze({ slot: "fire", atCount: 1, text: "Ce feu peut faire plus que me réchauffer : il peut préparer mes prochains essais." })]),
+      completed: Object.freeze(["Voilà. Le feu tiendra assez longtemps pour travailler correctement."])
+    })
+  });
+
+  const gameEngineering4 = Object.freeze({
+    id: "GAME-engineering_4",
+    title: "Les limites du feu",
+    description: "Tenter un assemblage plus précis au feu du camp et constater les limites de cette méthode.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-engineering_3", count: 1 }),
+    prerequisites: Object.freeze(["GAME-engineering_3"]),
+    priority: 60,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "materials", title: "Analyser les matériaux de l'essai avancé", action: "analyze", target: 2, requires: Object.freeze([]), params: Object.freeze({ tagsAny: Object.freeze(["mineral", "technology"]) }) }),
+      Object.freeze({ slot: "experiment", title: "Tenter l'assemblage au feu", action: "research", target: 1, requires: Object.freeze(["materials"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 8 }),
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 10 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 5 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "parts", quantity: 2 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je peux aller un peu plus loin. Minerais, fibres, composants... voyons jusqu'où un simple feu de camp peut me mener."]),
+      progress: Object.freeze([Object.freeze({ slot: "experiment", atCount: 1, text: "Ça chauffe assez fort, mais je contrôle mal la température et encore moins l'assemblage. Je perds trop de matière." })]),
+      completed: Object.freeze(["Le feu suffit pour bricoler. Pas pour construire quelque chose de précis. Il me faut un vrai poste de travail."])
+    })
+  });
+
+  const gameEngineering5 = Object.freeze({
+    id: "GAME-engineering_5",
+    title: "Concevoir un établi",
+    description: "Formaliser le plan d'un véritable poste de travail après avoir constaté les limites du feu.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-engineering_4", count: 1 }),
+    prerequisites: Object.freeze(["GAME-engineering_4", "GAME-base"]),
+    priority: 59,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "design", title: "Définir les fonctions nécessaires de l'établi", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "blueprint", title: "Finaliser le Blueprint Établi", action: "research", target: 1, requires: Object.freeze(["design"]), params: Object.freeze({}) })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.blueprint",
+      id: "workbench-build-v1",
+      category: "construction",
+      constructionKind: "workbench",
+      mapId: "crystal",
+      label: "Installer un établi",
+      description: "Installer sur Crystal un poste de travail permanent pour les expériences et fabrications avancées.",
+      requiresShelter: true
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une surface stable, quelques outils, de quoi maintenir les pièces et contrôler mes essais... Je peux concevoir quelque chose de bien plus précis qu'un feu entouré de pierres."]),
+      progress: Object.freeze([Object.freeze({ slot: "blueprint", atCount: 1, text: "Je sais ce que l'établi devra supporter. Il reste à transformer cette idée en plan réellement constructible." })]),
+      completed: Object.freeze(["Le plan est prêt. Sur Crystal, je peux maintenant choisir où installer mon premier véritable établi."])
+    })
+  });
+
+  const gameEngineering6 = Object.freeze({
+    id: "GAME-engineering_6",
+    title: "Installer l'établi",
+    description: "Depuis Crystal, utiliser le Blueprint pour placer l'établi à l'endroit choisi par le joueur.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-engineering_5", count: 1 }),
+    prerequisites: Object.freeze(["GAME-engineering_5", "GAME-base"]),
+    priority: 58,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prepare", title: "Préparer l'installation depuis le Blueprint", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "place", title: "Installer réellement l'établi sur Crystal", action: "research", target: 1, requires: Object.freeze(["prepare"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "engineering-workbench-installed",
+      microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+      fact: "gameEngineering6:workbenchInstalled",
+      slot: "place",
+      radius: 8
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La Base est en place. Je peux enfin choisir un emplacement pour travailler sans gêner les installations principales."]),
+      progress: Object.freeze([Object.freeze({ slot: "place", atCount: 1, text: "L'endroit doit rester accessible : je vais revenir souvent ici pour fabriquer, réparer et expérimenter." })]),
+      completed: Object.freeze(["Mon établi est prêt. Je ne suis plus obligé d'improviser chaque expérience autour du feu."])
     })
   });
 
@@ -5768,6 +6043,32 @@
           placement: Object.freeze({ mode: "near-camp" })
         })
       ])
+    }),
+    workbench: Object.freeze({
+      title: "Installer un établi",
+      description: "Réunir les matériaux du Blueprint puis choisir l'emplacement de l'établi sur Crystal.",
+      pattern: "SEQUENCE_ACTIONS",
+      priority: 58,
+      passivePriorityAxis: "research",
+      sequence: Object.freeze([
+        Object.freeze({ slot: "materials", title: "Réunir les matériaux de l'établi", action: "research", target: 1, params: Object.freeze({}) })
+      ]),
+      effects: Object.freeze([
+        Object.freeze({ type: "inventory.consume", inventoryKey: "magnetic_ore", quantity: 20 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "azure_ferrite", quantity: 20 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "resonant_basalt", quantity: 20 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "stellar_iridium", quantity: 20 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 25 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "parts", quantity: 10 }),
+        Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 20 }),
+        Object.freeze({
+          type: "site.establish",
+          kind: "workbench",
+          microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+          stage: 4,
+          placement: Object.freeze({ mode: "near-bluefox" })
+        })
+      ])
     })
   });
 
@@ -5792,6 +6093,11 @@
     travelShort,
     travelLong,
     gameFlora,
+    gameCivilization1,
+    gameCivilization2,
+    gameCivilization3,
+    gameCivilization4,
+    gameCivilization5,
     researchInitial,
     researchHypothesis,
     specialInvestigator,
@@ -5799,6 +6105,11 @@
     gameEnergy,
     gameEngineering1,
     gameEngineering2,
+    gameEngineering3,
+    gameFire,
+    gameEngineering4,
+    gameEngineering5,
+    gameEngineering6,
     ENE01,
     ENE02,
     ENE03,

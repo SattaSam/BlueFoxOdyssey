@@ -184,6 +184,31 @@
       return true;
     }
 
+    rearmRepeatableMission(missionId, options = {}) {
+      const definition = this.definition(missionId);
+      if (!definition?.repeatable) return false;
+      const lifecycle = this.ensureLifecycle(missionId);
+      if (lifecycle.status !== "completed") return false;
+
+      this.activeMissionIds = this.activeMissionIds.filter((id) => id !== missionId);
+      delete this.memory.state.missions?.[missionId];
+      this.trees.delete(missionId);
+      lifecycle.status = "available";
+      lifecycle.completedAt = 0;
+      lifecycle.activatedAt = 0;
+      lifecycle.pausedAt = 0;
+      lifecycle.repeatCount = Math.max(0, Number(lifecycle.repeatCount) || 0) + 1;
+      lifecycle.rearmedAt = Date.now();
+      lifecycle.source = options.source || "repeatable";
+      lifecycle.selectionReason = "";
+      lifecycle.discoveryReason = options.reason || lifecycle.discoveryReason || "Mission répétable de nouveau disponible.";
+      delete lifecycle.waitingForBibleGate;
+      delete lifecycle.waitingForBibleGateMessage;
+      this.memory.save?.();
+      this.publish();
+      return true;
+    }
+
     startMission(missionId, options = {}) {
       if (!this.definition(missionId)) return false;
       const prerequisites = Array.isArray(options.prerequisites)

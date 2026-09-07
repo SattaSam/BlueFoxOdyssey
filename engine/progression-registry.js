@@ -335,6 +335,23 @@
       return this.increment(this.state.inventory, cleanKey(key), amount);
     }
 
+    grantInventory(key, amount = 1, detail = {}) {
+      const safeKey = cleanKey(key);
+      const quantity = Math.max(0, Number(amount) || 0);
+      if (!quantity) return 0;
+      this.increment(this.state.inventory, safeKey, quantity);
+      this.save();
+      this.publishChange("inventory-granted", {
+        inventoryKey: safeKey,
+        quantity,
+        source: detail.source || "system",
+        reason: detail.reason || null,
+        missionId: detail.missionId || null,
+        mapId: detail.mapId || null
+      });
+      return quantity;
+    }
+
     consumeInventory(key, amount = 1) {
       const safeKey = cleanKey(key);
       const requested = Math.max(0, Number(amount) || 0);
@@ -541,6 +558,7 @@
   BF.getProgressionState = () => registry.snapshot();
   BF.getHistoricalCollectionTotal = (criteria) =>
     registry.historicalCollectionTotal(criteria);
+  BF.grantInventory = (key, amount, detail) => registry.grantInventory(key, amount, detail);
   BF.consumeInventory = (key, amount) => registry.consumeInventory(key, amount);
   BF.availableInventory = (keys) => registry.availableInventory(keys);
   BF.consumeInventoryPool = (keys, amount) =>
