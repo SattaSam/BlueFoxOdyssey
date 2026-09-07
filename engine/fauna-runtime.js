@@ -7,7 +7,7 @@
     return;
   }
 
-  const VERSION = "P2.2.3-r2";
+  const VERSION = "P2.2.3-r3";
   const APPROACH = Object.freeze({
     vigilanceDistance: 6,
     cautiousStopMin: 3.8,
@@ -19,6 +19,7 @@
     cautiousThreatDistance: 2.5,
     intrusionDistance: 2.2,
     acceptedDistance: 3.0,
+    acceptedTolerance: 0.18,
     resetDistance: 5.8,
     calmSeconds: 5.0,
     fleeSeconds: 2.6,
@@ -127,6 +128,13 @@
       acceptedProximity: false,
       acceptedSince: 0,
       calmEmitted: false,
+      cautiousEmitted: false,
+      fleeEmitted: false,
+      behaviorObservedSince: 0,
+      behaviorObservedState: "",
+      behaviorObservedEmitted: false,
+      groupObservedSince: 0,
+      groupObservedEmitted: false,
       parentalProtectSince: 0,
       parentalProtectEmitted: false,
       parentalYoung: null,
@@ -349,6 +357,11 @@
   const emitBehavior = (state, behavior, detail = {}) => {
     const type = BF.ObjectEvents?.types?.PHENOMENON_OBSERVED;
     if (!type || typeof BF.ObjectEvents?.emit !== "function") return false;
+    const tags = [...new Set([
+      "fauna_behavior",
+      behavior,
+      ...(detail.tags || [])
+    ])];
     BF.ObjectEvents.emit(type, state.root, {
       subject: "fauna",
       kind: "fauna_behavior",
@@ -357,10 +370,218 @@
       mapId: BF.currentEngine?.currentMapId || null,
       microSceneId: microSceneIdOf(state.root) || null,
       persistentMicroSceneId: persistentSceneIdOf(state.root),
-      tags: ["fauna_behavior", behavior, ...(detail.tags || [])],
-      ...detail
+      ...detail,
+      tags
     });
     return true;
+  };
+
+
+  const worldPeriod = () => {
+    const clock = BF.currentEngine?.planetClock;
+    const gameMinutes = Number(clock?.gameMinutes);
+    const realTime = Number(clock?.realTime);
+    if (!Number.isFinite(gameMinutes) || !Number.isFinite(realTime)) return null;
+    const elapsedSeconds = Math.max(0, (Date.now() - realTime) / 1000);
+    const totalMinutes = gameMinutes + elapsedSeconds;
+    const hour = Math.floor((totalMinutes % (20 * 60)) / 60);
+    return hour < 2 || hour >= 17 ? "night" : "day";
+  };
+
+  const missionMemory = () =>
+    BF.currentEngine?.missionManager?.memory || null;
+
+  const instanceIdOf = (root) =>
+    String(
+      root?.userData?.instanceId ||
+      root?.userData?.worldAnchor?.userData?.instanceId ||
+      ""
+    );
+
+  const microSceneObjectIndexOf = (root) => {
+    const candidates = [
+      root?.userData?.microSceneObjectIndex,
+      root?.userData?.microScenePivot?.userData?.microSceneObjectIndex,
+      root?.parent?.userData?.microSceneObjectIndex,
+      root?.userData?.worldAnchor?.userData?.microSceneObjectIndex,
+      root?.userData?.worldAnchor?.userData?.microScenePivot?.userData?.microSceneObjectIndex
+    ];
+    const value = candidates.find((candidate) =>
+      candidate !== null && candidate !== undefined && candidate !== ""
+    );
+    return value === undefined ? null : String(value);
+  };
+
+  const persistentBehaviorIdentity = (state) => {
+    const root = state?.root;
+    const persistentSceneId = persistentSceneIdOf(root);
+    const microSceneId = microSceneIdOf(root);
+    const slot = microSceneObjectIndexOf(root);
+    const cuo = String(
+      root?.userData?.catalogId ||
+      root?.userData?.functional?.id ||
+      state?.type ||
+      root?.userData?.libraryType ||
+      "fauna"
+    );
+    if (persistentSceneId && slot !== null) {
+      return `persistent:${persistentSceneId}:slot:${slot}:cuo:${cuo}`;
+    }
+    const mapId = String(BF.currentEngine?.currentMapId || "");
+    if (mapId && microSceneId && slot !== null) {
+      return `msc:${mapId}:${microSceneId}:slot:${slot}:cuo:${cuo}`;
+    }
+    const instanceId = instanceIdOf(root);
+    return instanceId ? `session:${instanceId}` : "";
+  };
+
+  const recordPersistentEncounter = (state, period) => {
+    const memory = missionMemory();
+    const behaviorIdentity = persistentBehaviorIdentity(state);
+    if (!memory || !behaviorIdentity) return { familiar: false, temporalContrast: false };
+
+    const encounterKey = `fauna:calmEncounters:${behaviorIdentity}`;
+    const previousEncounters = Math.max(0, Number(memory.getFact?.(encounterKey, 0)) || 0);
+    const encounters = previousEncounters + 1;
+    memory.setFact?.(encounterKey, encounters);
+
+    let temporalContrast = false;
+    if (period) {
+      const periodKey = `fauna:periods:${behaviorIdentity}`;
+      const previousPeriods = Array.isArray(memory.getFact?.(periodKey, []))
+        ? memory.getFact(periodKey, [])
+        : [];
+      const periods = [...new Set([...previousPeriods, period])];
+      if (periods.length !== previousPeriods.length) {
+        memory.setFact?.(periodKey, periods);
+      }
+      temporalContrast = previousPeriods.length > 0 &&
+        !previousPeriods.includes(period) &&
+        periods.includes("day") &&
+        periods.includes("night");
+    }
+    memory.save?.();
+    return { familiar: encounters >= 2, temporalContrast, encounters };
+  };
+
+  const emitCalmFacts = (state, elapsed, distance) => {
+    if (
+      !state.acceptedProximity ||
+      state.calmEmitted ||
+      distance > APPROACH.acceptedDistance + APPROACH.acceptedTolerance ||
+      elapsed - state.acceptedSince < APPROACH.calmSeconds
+    ) return false;
+    const speed = playerSpeed();
+    if (speed != null && speed > 0.12) return false;
+
+    const period = worldPeriod();
+    state.calmEmitted = emitBehavior(state, "calm_nearby", {
+      durationSeconds: APPROACH.calmSeconds,
+      period,
+      tags: [
+        "fauna_behavior",
+        "calm_nearby",
+        ...(period ? [`period_${period}`] : [])
+      ]
+    });
+    if (!state.calmEmitted) return false;
+
+    const persistent = recordPersistentEncounter(state, period);
+    if (persistent.familiar) {
+      emitBehavior(state, "familiar_encounter", {
+        encounterCount: persistent.encounters,
+        period,
+        tags: [
+          "fauna_behavior",
+          "familiar_encounter",
+          ...(period ? [`period_${period}`] : [])
+        ]
+      });
+    }
+    if (persistent.temporalContrast) {
+      emitBehavior(state, "temporal_contrast", {
+        periods: ["day", "night"],
+        tags: ["fauna_behavior", "temporal_contrast", "period_day", "period_night"]
+      });
+    }
+    return true;
+  };
+
+  const updateObservedBehavior = (state, elapsed, distance) => {
+    const observableState =
+      distance >= 4 && distance <= APPROACH.vigilanceDistance &&
+      state.state === "observe";
+    if (!observableState) {
+      state.behaviorObservedSince = 0;
+      state.behaviorObservedState = "";
+      state.behaviorObservedEmitted = false;
+      return false;
+    }
+    if (state.behaviorObservedState !== state.state) {
+      state.behaviorObservedState = state.state;
+      state.behaviorObservedSince = elapsed;
+      state.behaviorObservedEmitted = false;
+    }
+    if (
+      !state.behaviorObservedEmitted &&
+      elapsed - state.behaviorObservedSince >= 5
+    ) {
+      state.behaviorObservedEmitted = emitBehavior(state, "behavior_observed", {
+        behavior: state.state,
+        distance,
+        durationSeconds: 5,
+        tags: ["fauna_behavior", "behavior_observed", `behavior_${state.state}`]
+      });
+    }
+    return state.behaviorObservedEmitted;
+  };
+
+  const peacefulSceneMembers = (state) => {
+    const sceneId = microSceneIdOf(state.root);
+    if (sceneId !== "MSC-PEACEFUL-FAUNA-001") return [];
+    const persistentId = persistentSceneIdOf(state.root);
+    const members = [];
+    registry.forEach((root) => {
+      const candidate = states.get(root);
+      if (!candidate || microSceneIdOf(root) !== sceneId) return;
+      if (persistentId && persistentSceneIdOf(root) !== persistentId) return;
+      members.push(candidate);
+    });
+    return members;
+  };
+
+  const updatePeacefulGroupObservation = (state, elapsed) => {
+    if (microSceneIdOf(state.root) !== "MSC-PEACEFUL-FAUNA-001") return false;
+    const members = peacefulSceneMembers(state);
+    if (members.length < 2) return false;
+    const representative = members.slice().sort((left, right) =>
+      instanceIdOf(left.root).localeCompare(instanceIdOf(right.root))
+    )[0];
+    if (representative !== state) return false;
+    const types = new Set(members.map((member) => member.type));
+    if (types.size < 2) return false;
+    const distances = members.map((member) => distanceToPlayer(member.root));
+    const visible = distances.filter((distance) => distance >= 3.5 && distance <= 6);
+    const fleeing = members.some((member) =>
+      member.state === "flee" || elapsed < member.fleeUntil
+    );
+    if (visible.length < 2 || fleeing) {
+      state.groupObservedSince = 0;
+      state.groupObservedEmitted = false;
+      return false;
+    }
+    state.groupObservedSince ||= elapsed;
+    if (
+      !state.groupObservedEmitted &&
+      elapsed - state.groupObservedSince >= 5
+    ) {
+      state.groupObservedEmitted = emitBehavior(state, "peaceful_group", {
+        speciesCount: types.size,
+        durationSeconds: 5,
+        tags: ["fauna_behavior", "peaceful_group", "multi_species", "no_flee"]
+      });
+    }
+    return state.groupObservedEmitted;
   };
 
   const parentalYoungState = () => {
@@ -422,6 +643,8 @@
       state.acceptedProximity = false;
       state.acceptedSince = 0;
       state.calmEmitted = false;
+      state.cautiousEmitted = false;
+      state.fleeEmitted = false;
       return { threat: false };
     }
 
@@ -432,6 +655,13 @@
       state.cautiousStopSince ||= elapsed;
       if (elapsed - state.cautiousStopSince >= APPROACH.cautiousStopSeconds) {
         state.cautiousQualified = true;
+        if (!state.cautiousEmitted) {
+          state.cautiousEmitted = emitBehavior(state, "cautious_approach", {
+            distance,
+            durationSeconds: APPROACH.cautiousStopSeconds,
+            tags: ["fauna_behavior", "cautious_approach", "no_flee"]
+          });
+        }
       }
     } else if (!state.cautiousQualified) {
       state.cautiousStopSince = 0;
@@ -442,7 +672,7 @@
       : state.closureSpeed < APPROACH.rapidClosureSpeed * 0.65;
     if (
       state.cautiousQualified &&
-      distance <= APPROACH.acceptedDistance &&
+      distance <= APPROACH.acceptedDistance + APPROACH.acceptedTolerance &&
       slowForAcceptance
     ) {
       state.acceptedProximity = true;
@@ -475,12 +705,20 @@
     if (approach.threat) {
       state.state = "flee";
       state.fleeUntil = elapsed + APPROACH.fleeSeconds;
+      if (!state.fleeEmitted) {
+        state.fleeEmitted = emitBehavior(state, "flee", {
+          closureSpeed: state.closureSpeed,
+          distance,
+          tags: ["fauna_behavior", "flee", "intrusive_approach"]
+        });
+      }
       return;
     }
     if (elapsed < state.fleeUntil) {
       state.state = "flee";
       return;
     }
+    if (state.fleeEmitted) state.fleeEmitted = false;
     if (distance < APPROACH.vigilanceDistance) {
       state.state = "observe";
       return;
@@ -607,6 +845,9 @@
     if (!updateParentalProtection(state, elapsed)) {
       chooseState(state, elapsed, distance);
     }
+    emitCalmFacts(state, elapsed, distance);
+    updateObservedBehavior(state, elapsed, distance);
+    updatePeacefulGroupObservation(state, elapsed);
     animateMovement(state, elapsed, distance);
     animateParts(state, elapsed, distance);
   };

@@ -12,10 +12,6 @@ const catalog = context.window.BlueFox3D.BibleCatalog;
 const byId = (id) => catalog.find((mission) => mission.id === id);
 
 for (const id of ['FAU-02', 'FAU-06']) assert.ok(byId(id), `${id} absent`);
-for (const id of ['FAU-01','FAU-03','FAU-04','FAU-05','FAU-07','FAU-08','FAU-11','FAU-12']) {
-  assert.equal(byId(id), undefined, `${id} ne doit pas être intégré dans R1 Data-only`);
-}
-
 const f02 = byId('FAU-02');
 assert.equal(f02.pattern, 'CONTEXT_MSC');
 assert.deepEqual(Array.from(f02.prerequisites), ['FAU-01']);

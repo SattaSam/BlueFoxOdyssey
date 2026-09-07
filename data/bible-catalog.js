@@ -1574,6 +1574,7 @@
   });
 
 
+
   const ENE01 = Object.freeze({
     id: "ENE-01",
     title: "Les traces laissées dans le vivant",
@@ -1854,6 +1855,77 @@
     })
   });
 
+
+  const FAU01 = Object.freeze({
+    id: "FAU-01",
+    title: "Approche prudente",
+    description:
+      "Découvrir un nid de faune puis approcher une créature avec précaution, sans provoquer sa fuite.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze([]),
+    priority: 323,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 20,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-NID-DE-FAUNE5",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "faunaFirstApproach"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachFaunaNest",
+        title: "Rejoindre un territoire où un nid de faune est présent",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true })
+      }),
+      Object.freeze({
+        slot: "cautiousApproach",
+        title: "Approcher une créature progressivement sans la faire fuir",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachFaunaNest"]),
+        params: Object.freeze({
+          subject: "fauna",
+          microSceneId: "MSC-CUSTOM-NID-DE-FAUNE5",
+          tagsAll: Object.freeze(["fauna_behavior", "cautious_approach", "no_flee"])
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je vais ralentir avant d'entrer dans sa zone proche et observer sa réaction."
+      ]),
+      completed: Object.freeze([
+        "En marquant des arrêts et en réduisant progressivement la distance, je peux approcher sans déclencher de fuite."
+      ])
+    })
+  });
+
   const FAU02 = Object.freeze({
     id: "FAU-02",
     title: "Territoire animal",
@@ -1904,6 +1976,195 @@
       ]),
       completed: Object.freeze([
         "La même définition de nid apparaît sur trois maps distinctes. Les deux passages entre ces territoires matérialisent deux limites sans supposer qu’une même instance physique ait migré."
+      ])
+    })
+  });
+
+
+  const FAU03 = Object.freeze({
+    id: "FAU-03",
+    title: "Rythme jour et nuit",
+    description:
+      "Observer calmement une créature durant une période du cycle puis confirmer une nouvelle observation durant la période opposée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-02",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-02"]),
+    priority: 321,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "firstPeriod",
+        title: "Observer calmement une créature dans la période actuelle",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "calm_nearby"])
+        })
+      }),
+      Object.freeze({
+        slot: "oppositePeriod",
+        title: "Confirmer une observation dans la période opposée",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["firstPeriod"]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "temporal_contrast"])
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je veux comparer le même type de présence animale entre jour et nuit, sans confondre le cycle réel avec l'heure de l'interface."
+      ]),
+      completed: Object.freeze([
+        "Deux observations calmes dans des périodes opposées du cycle réel confirment une variation temporelle exploitable."
+      ])
+    })
+  });
+
+  const FAU04 = Object.freeze({
+    id: "FAU-04",
+    title: "Distance et réaction",
+    description:
+      "Comparer une approche prudente, une fuite provoquée par une approche rapide et un retour au calme près d'une créature déjà approchée avec précaution.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-03",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-03"]),
+    priority: 320,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 28,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "indifference",
+        title: "Approcher progressivement une créature sans provoquer de fuite",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "cautious_approach", "no_flee"])
+        })
+      }),
+      Object.freeze({
+        slot: "flee",
+        title: "Observer une fuite provoquée par une approche rapide",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["indifference"]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "flee", "intrusive_approach"])
+        })
+      }),
+      Object.freeze({
+        slot: "neutrality",
+        title: "Rester immobile près de la première créature jusqu'au retour au calme",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["flee"]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "calm_nearby"]),
+          relation: Object.freeze({
+            fromSlot: "indifference",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je vais comparer la réaction à une arrivée prudente et à une fermeture de distance trop rapide."
+      ]),
+      completed: Object.freeze([
+        "La réaction dépend bien de la dynamique d'approche : prudence tolérée, charge repoussée par la fuite, puis calme retrouvé après une approche maîtrisée."
+      ])
+    })
+  });
+
+  const FAU05 = Object.freeze({
+    id: "FAU-05",
+    title: "Observer un petit groupe",
+    description:
+      "Observer calmement trois individus distincts sans provoquer leur fuite.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-04",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-04"]),
+    priority: 319,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 24,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "firstIndividual",
+        title: "Observer un premier individu sans fuite",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "calm_nearby"])
+        })
+      }),
+      Object.freeze({
+        slot: "otherIndividuals",
+        title: "Observer deux autres individus distincts sans fuite",
+        action: "observe",
+        target: 2,
+        requires: Object.freeze(["firstIndividual"]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "calm_nearby"]),
+          distinctBy: "instanceId",
+          relation: Object.freeze({
+            fromSlot: "firstIndividual",
+            differentBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Un individu isolé ne suffit pas. Je vais répéter cette approche sur plusieurs membres du groupe."
+      ]),
+      completed: Object.freeze([
+        "Trois individus distincts ont toléré une présence calme sans fuite."
       ])
     })
   });
@@ -1992,6 +2253,137 @@
       ]),
       completed: Object.freeze([
         "La même espèce est confirmée sur une autre map à l’est. Le déplacement saisonnier reste une interprétation narrative de ces deux observations."
+      ])
+    })
+  });
+
+
+  const FAU07 = Object.freeze({
+    id: "FAU-07",
+    title: "Comportement à distance",
+    description:
+      "Observer pendant plusieurs secondes un comportement animal réel depuis une distance prudente.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-06",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-06"]),
+    priority: 317,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 24,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "observationDistance",
+        title: "S'arrêter à distance prudente d'une créature",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "cautious_approach"])
+        })
+      }),
+      Object.freeze({
+        slot: "behavior",
+        title: "Maintenir l'observation du comportement pendant cinq secondes",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["observationDistance"]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "behavior_observed"]),
+          relation: Object.freeze({
+            fromSlot: "observationDistance",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je vais rester assez loin pour laisser l'animal réagir naturellement tout en suivant son comportement."
+      ]),
+      completed: Object.freeze([
+        "Le comportement a été maintenu et observé plusieurs secondes sans forcer un contact."
+      ])
+    })
+  });
+
+  const FAU08 = Object.freeze({
+    id: "FAU-08",
+    title: "Coexistence locale",
+    description:
+      "Sur une nouvelle map, observer au moins deux espèces proches l'une de l'autre pendant cinq secondes sans provoquer de fuite.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-07",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-07"]),
+    priority: 316,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 28,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-PEACEFUL-FAUNA-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "faunaMixedGroup"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachMixedGroup",
+        title: "Rejoindre une nouvelle map avec plusieurs espèces proches",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true })
+      }),
+      Object.freeze({
+        slot: "observeMixedGroup",
+        title: "Observer plusieurs espèces proches pendant cinq secondes sans fuite",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachMixedGroup"]),
+        params: Object.freeze({
+          subject: "fauna",
+          microSceneId: "MSC-PEACEFUL-FAUNA-001",
+          tagsAll: Object.freeze(["fauna_behavior", "peaceful_group", "multi_species", "no_flee"])
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je vais chercher un endroit où plusieurs espèces occupent le même espace sans se disperser."
+      ]),
+      completed: Object.freeze([
+        "Plusieurs espèces sont restées proches et calmes pendant toute l'observation."
       ])
     })
   });
@@ -2138,6 +2530,138 @@
       ]),
       completed: Object.freeze([
         "Le brouteur a poussé puis réutilisé la boule à deux reprises. L'utilisation d'outil est confirmée par le comportement réel."
+      ])
+    })
+  });
+
+
+  const FAU11 = Object.freeze({
+    id: "FAU-11",
+    title: "Familiarité",
+    description:
+      "Retrouver trois individus déjà rencontrés et réussir avec chacun une nouvelle approche calme sans fuite.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-10",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-10"]),
+    priority: 313,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 26,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "firstFamiliar",
+        title: "Retrouver un premier individu déjà rencontré",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "familiar_encounter"])
+        })
+      }),
+      Object.freeze({
+        slot: "otherFamiliar",
+        title: "Retrouver deux autres individus déjà rencontrés",
+        action: "observe",
+        target: 2,
+        requires: Object.freeze(["firstFamiliar"]),
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "familiar_encounter"]),
+          distinctBy: "instanceId",
+          relation: Object.freeze({
+            fromSlot: "firstFamiliar",
+            differentBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Certaines créatures ont déjà toléré ma présence. Je vais vérifier si cette familiarité se retrouve lors d'une nouvelle rencontre."
+      ]),
+      completed: Object.freeze([
+        "Trois individus déjà rencontrés ont de nouveau accepté une approche calme sans fuite."
+      ])
+    })
+  });
+
+  const FAU12 = Object.freeze({
+    id: "FAU-12",
+    title: "Présence paisible",
+    description:
+      "Découvrir une scène de faune paisible et maintenir une observation calme pendant plus de cinq secondes sans provoquer de fuite.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-03",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-03"]),
+    priority: 312,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 22,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-PEACEFUL-FAUNA-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "faunaPeacefulContext"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachPeacefulScene",
+        title: "Découvrir une scène de faune paisible sur une nouvelle map",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true })
+      }),
+      Object.freeze({
+        slot: "peacefulObservation",
+        title: "Maintenir une observation calme pendant cinq secondes",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachPeacefulScene"]),
+        params: Object.freeze({
+          subject: "fauna",
+          microSceneId: "MSC-PEACEFUL-FAUNA-001",
+          tagsAll: Object.freeze(["fauna_behavior", "peaceful_group", "no_flee"])
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je vais chercher un groupe réellement paisible et rester suffisamment longtemps pour vérifier que ma présence ne le perturbe pas."
+      ]),
+      completed: Object.freeze([
+        "Le groupe est resté paisible pendant toute l'observation. Ma présence n'a déclenché aucune fuite."
       ])
     })
   });
@@ -5285,10 +5809,18 @@
     ENE08,
     ENE09,
     ENE10,
+    FAU01,
     FAU02,
+    FAU03,
+    FAU04,
+    FAU05,
     FAU06,
+    FAU07,
+    FAU08,
     FAU09,
     FAU10,
+    FAU11,
+    FAU12,
     T04,
     T05,
     T06,
