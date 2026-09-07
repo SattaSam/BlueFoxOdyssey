@@ -12,8 +12,7 @@ const catalog = context.window.BlueFox3D.BibleCatalog;
 const byId = (id) => catalog.find((mission) => mission.id === id);
 
 for (const id of ['FAU-02', 'FAU-06']) assert.ok(byId(id), `${id} absent`);
-assert.equal(byId('FAU-09'), undefined, 'FAU-09 doit rester hors du lot data-only');
-for (const id of ['FAU-01','FAU-03','FAU-04','FAU-05','FAU-07','FAU-08','FAU-10','FAU-11','FAU-12']) {
+for (const id of ['FAU-01','FAU-03','FAU-04','FAU-05','FAU-07','FAU-08','FAU-11','FAU-12']) {
   assert.equal(byId(id), undefined, `${id} ne doit pas être intégré dans R1 Data-only`);
 }
 
@@ -33,6 +32,4 @@ assert.equal(f06.mapGeneration.requiredObjects[0].identityField, 'objectId');
 assert.deepEqual(Array.from(f06.sequence[2].params.relation.sameBy), ['objectId']);
 assert.deepEqual(Array.from(f06.sequence[2].params.relation.differentBy), ['mapId']);
 
-
-assert.doesNotMatch(catalogSource, /id: "FAU-10"/);
 console.log('PASS fauna-data-only-r1');

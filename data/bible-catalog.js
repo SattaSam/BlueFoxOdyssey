@@ -1716,6 +1716,152 @@
     })
   });
 
+  const FAU09 = Object.freeze({
+    id: "FAU-09",
+    title: "Réaction parentale",
+    description:
+      "Observer une réaction protectrice réelle d'un adulte envers un jeune dans la micro-scène parentale.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-08",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-08"]),
+    priority: 315,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-FUNA-PARENTAL",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "faunaParentalContext"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachParentalContext",
+        title: "Rejoindre un nouveau territoire où observer un groupe parental",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true
+        })
+      }),
+      Object.freeze({
+        slot: "observeProtection",
+        title: "Observer une réaction protectrice envers le jeune",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachParentalContext"]),
+        params: Object.freeze({
+          subject: "fauna",
+          microSceneId: "MSC-CUSTOM-FUNA-PARENTAL",
+          tagsAll: Object.freeze(["fauna_behavior", "parental_protect"])
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Le groupe ne réagit pas seulement individuellement. Je vais observer ce qui se passe quand je m'approche du plus jeune."
+      ]),
+      completed: Object.freeze([
+        "Un adulte s'est réellement interposé pour protéger le jeune. Ce comportement parental est maintenant observé, pas seulement supposé."
+      ])
+    })
+  });
+
+  const FAU10 = Object.freeze({
+    id: "FAU-10",
+    title: "Utilisation d'outil",
+    description:
+      "Observer un brouteur utiliser réellement une boule de paille comme outil et répéter ce comportement.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "FAU-09",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["FAU-09"]),
+    priority: 314,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-FAUNA-TOOL-USE-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "faunaToolUseContext"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachToolUseContext",
+        title: "Rejoindre un nouveau territoire où un comportement d'outil peut être observé",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true
+        })
+      }),
+      Object.freeze({
+        slot: "observeToolUse",
+        title: "Observer deux cycles complets d'utilisation de la boule",
+        action: "observe",
+        target: 2,
+        requires: Object.freeze(["reachToolUseContext"]),
+        params: Object.freeze({
+          subject: "fauna",
+          microSceneId: "MSC-FAUNA-TOOL-USE-001",
+          tagsAll: Object.freeze(["fauna_behavior", "tool_use_cycle"])
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ce brouteur ne semble pas déplacer cette boule au hasard. Je vais vérifier s'il reproduit volontairement le même geste."
+      ]),
+      completed: Object.freeze([
+        "Le brouteur a poussé puis réutilisé la boule à deux reprises. L'utilisation d'outil est confirmée par le comportement réel."
+      ])
+    })
+  });
+
   const T04 = Object.freeze({
     id: "T04",
     title: "Comprendre qu’un projet peut progresser en parallèle",
@@ -4851,6 +4997,8 @@
     gameEngineering2,
     FAU02,
     FAU06,
+    FAU09,
+    FAU10,
     T04,
     T05,
     T06,

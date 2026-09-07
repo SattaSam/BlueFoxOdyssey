@@ -7,12 +7,29 @@
     return;
   }
 
-  const VERSION = "P2.2.3-r1";
+  const VERSION = "P2.2.3-r2";
+  const APPROACH = Object.freeze({
+    vigilanceDistance: 6,
+    cautiousStopMin: 3.8,
+    cautiousStopMax: 5.4,
+    cautiousStopSeconds: 1.1,
+    rapidClosureSpeed: 1.05,
+    cautiousRapidClosureSpeed: 2.8,
+    threatDistance: 3.5,
+    cautiousThreatDistance: 2.5,
+    intrusionDistance: 2.2,
+    acceptedDistance: 3.0,
+    resetDistance: 5.8,
+    calmSeconds: 5.0,
+    fleeSeconds: 2.6,
+    fleeOffset: 2.4
+  });
   const FAUNA_TYPES = new Set([
     "fun_creature", "small_creature", "brouteur", "sauteur",
     "patte_creature", "nocturnal_animal"
   ]);
   const SPECIAL_OWNED = new Set(["nocturnal_animal"]);
+  const PARENTAL_SCENE_ID = "MSC-CUSTOM-FUNA-PARENTAL";
   const registry = new Set();
   const toolBalls = new Set();
   const states = new WeakMap();
@@ -25,6 +42,15 @@
     BF.currentEngine?.character?.root ||
     BF.currentEngine?.characterController?.root ||
     BF.characterController?.root || null;
+
+  const playerSpeed = () => {
+    const speed = Number(
+      BF.currentEngine?.character?.speed ??
+      BF.currentEngine?.characterController?.speed ??
+      BF.characterController?.speed
+    );
+    return Number.isFinite(speed) ? Math.max(0, speed) : null;
+  };
 
   const distanceToPlayer = (root) => {
     const player = playerRoot();
@@ -93,10 +119,22 @@
       stateSince: seconds(),
       nextStateAt: seconds() + 3 + Math.random() * 5,
       fleeUntil: 0,
+      lastDistance: Infinity,
+      lastDistanceAt: 0,
+      closureSpeed: 0,
+      cautiousStopSince: 0,
+      cautiousQualified: false,
+      acceptedProximity: false,
+      acceptedSince: 0,
+      calmEmitted: false,
+      parentalProtectSince: 0,
+      parentalProtectEmitted: false,
+      parentalYoung: null,
       forageDirection: Math.random() * Math.PI * 2,
       enabled: true,
       specialOwned: SPECIAL_OWNED.has(type),
       toolUseSlot: type === "brouteur" ? grazerSequence++ : -1,
+      toolUseCycleCount: 0,
       toolUse: null
     };
   };
@@ -155,8 +193,17 @@
   const sameMissionScene = (grazer, ball) => {
     const mission = String(grazer.userData?.bibleMissionId || "");
     if (!new Set(["FAU-10", "fauna_tool_use"]).has(mission)) return false;
+    const grazerScene =
+      grazer.userData?.biblePersistentScene ||
+      grazer.userData?.persistentMicroSceneId ||
+      null;
+    const ballScene =
+      ball.userData?.biblePersistentScene ||
+      ball.userData?.persistentMicroSceneId ||
+      null;
     return mission === String(ball.userData?.bibleMissionId || "") &&
-      grazer.userData?.biblePersistentScene === ball.userData?.biblePersistentScene;
+      Boolean(grazerScene) &&
+      grazerScene === ballScene;
   };
 
   const nearestToolBall = (state, missionOnly) => {
@@ -265,6 +312,11 @@
       }
       tool.rollDistance = distance;
       if (t >= 1) {
+        state.toolUseCycleCount += 1;
+        emitBehavior(state, "tool_use_cycle", {
+          cycle: state.toolUseCycleCount,
+          toolInstanceId: ball.userData?.instanceId || null
+        });
         tool.phase = "recover";
         tool.phaseStarted = elapsed;
       }
@@ -281,21 +333,155 @@
     return !dayBlock || dayBlock.classList.contains("night");
   };
 
+  const microSceneIdOf = (root) => String(
+    root?.userData?.microSceneId ||
+    root?.userData?.worldAnchor?.userData?.microSceneId ||
+    root?.userData?.worldRoot?.userData?.microSceneId ||
+    ""
+  );
+
+  const persistentSceneIdOf = (root) =>
+    root?.userData?.persistentMicroSceneId ||
+    root?.userData?.worldAnchor?.userData?.persistentMicroSceneId ||
+    root?.userData?.biblePersistentScene ||
+    null;
+
+  const emitBehavior = (state, behavior, detail = {}) => {
+    const type = BF.ObjectEvents?.types?.PHENOMENON_OBSERVED;
+    if (!type || typeof BF.ObjectEvents?.emit !== "function") return false;
+    BF.ObjectEvents.emit(type, state.root, {
+      subject: "fauna",
+      kind: "fauna_behavior",
+      state: behavior,
+      cuoType: state.type,
+      mapId: BF.currentEngine?.currentMapId || null,
+      microSceneId: microSceneIdOf(state.root) || null,
+      persistentMicroSceneId: persistentSceneIdOf(state.root),
+      tags: ["fauna_behavior", behavior, ...(detail.tags || [])],
+      ...detail
+    });
+    return true;
+  };
+
+  const parentalYoungState = () => {
+    let young = null;
+    registry.forEach((root) => {
+      if (young || microSceneIdOf(root) !== PARENTAL_SCENE_ID) return;
+      const candidate = states.get(root);
+      if (candidate?.type === "fun_creature") young = candidate;
+    });
+    return young;
+  };
+
+  const updateParentalProtection = (state, elapsed) => {
+    if (microSceneIdOf(state.root) !== PARENTAL_SCENE_ID) return false;
+    const young = parentalYoungState();
+    if (!young || young === state) return false;
+    const player = playerRoot();
+    if (!player) return false;
+    const playerToYoung = Math.hypot(
+      Number(player.position?.x || 0) - Number(young.root.position?.x || 0),
+      Number(player.position?.z || 0) - Number(young.root.position?.z || 0)
+    );
+    const protectorToYoung = state.root.position.distanceTo(young.root.position);
+    if (playerToYoung > 4.6 || protectorToYoung > 7.5) {
+      state.parentalProtectSince = 0;
+      state.parentalYoung = null;
+      return false;
+    }
+    state.parentalYoung = young.root;
+    state.state = "protect";
+    state.parentalProtectSince ||= elapsed;
+    if (
+      !state.parentalProtectEmitted &&
+      elapsed - state.parentalProtectSince >= 1.2
+    ) {
+      state.parentalProtectEmitted = emitBehavior(state, "parental_protect", {
+        protectedInstanceId: young.root?.userData?.instanceId || null
+      });
+    }
+    return true;
+  };
+
+  const updateApproach = (state, elapsed, distance) => {
+    if (!Number.isFinite(distance)) return { threat: false };
+    if (!Number.isFinite(state.lastDistance)) {
+      state.lastDistance = distance;
+      state.lastDistanceAt = elapsed;
+      return { threat: false };
+    }
+    const dt = Math.max(0.001, elapsed - state.lastDistanceAt);
+    const rawClosure = (state.lastDistance - distance) / dt;
+    state.closureSpeed = state.closureSpeed * 0.55 + rawClosure * 0.45;
+    state.lastDistance = distance;
+    state.lastDistanceAt = elapsed;
+
+    if (distance >= APPROACH.resetDistance) {
+      state.cautiousStopSince = 0;
+      state.cautiousQualified = false;
+      state.acceptedProximity = false;
+      state.acceptedSince = 0;
+      state.calmEmitted = false;
+      return { threat: false };
+    }
+
+    const speed = playerSpeed();
+    const nearlyStill = speed != null ? speed <= 0.12 : Math.abs(state.closureSpeed) <= 0.12;
+    const inCautiousBand = distance >= APPROACH.cautiousStopMin && distance <= APPROACH.cautiousStopMax;
+    if (inCautiousBand && nearlyStill) {
+      state.cautiousStopSince ||= elapsed;
+      if (elapsed - state.cautiousStopSince >= APPROACH.cautiousStopSeconds) {
+        state.cautiousQualified = true;
+      }
+    } else if (!state.cautiousQualified) {
+      state.cautiousStopSince = 0;
+    }
+
+    const slowForAcceptance = speed != null
+      ? speed <= 0.12
+      : state.closureSpeed < APPROACH.rapidClosureSpeed * 0.65;
+    if (
+      state.cautiousQualified &&
+      distance <= APPROACH.acceptedDistance &&
+      slowForAcceptance
+    ) {
+      state.acceptedProximity = true;
+      state.acceptedSince ||= elapsed;
+    }
+
+    const threatDistance = state.cautiousQualified
+      ? APPROACH.cautiousThreatDistance
+      : APPROACH.threatDistance;
+    const threatSpeed = state.cautiousQualified
+      ? APPROACH.cautiousRapidClosureSpeed
+      : APPROACH.rapidClosureSpeed;
+    const rapidThreat =
+      !state.acceptedProximity &&
+      distance < threatDistance &&
+      state.closureSpeed >= threatSpeed;
+    const closeIntrusion =
+      !state.acceptedProximity &&
+      !state.cautiousQualified &&
+      distance < APPROACH.intrusionDistance;
+    return { threat: rapidThreat || closeIntrusion };
+  };
+
   const chooseState = (state, elapsed, distance) => {
+    const approach = updateApproach(state, elapsed, distance);
     if (state.type === "nocturnal_animal") {
       state.state = isNight() ? (distance < 3.2 ? "observe" : "forage") : "sleep";
       return;
     }
-    if (distance < 1.7) {
+    if (approach.threat) {
       state.state = "flee";
-      state.fleeUntil = elapsed + 2.2;
+      state.fleeUntil = elapsed + APPROACH.fleeSeconds;
       return;
     }
     if (elapsed < state.fleeUntil) {
       state.state = "flee";
       return;
     }
-    if (distance < 4.8) {
+    if (distance < APPROACH.vigilanceDistance) {
       state.state = "observe";
       return;
     }
@@ -374,9 +560,24 @@
         const dx = anchor.x - player.position.x;
         const dz = anchor.z - player.position.z;
         const len = Math.hypot(dx, dz) || 1;
-        const amount = 0.55 + Math.sin(elapsed * 4.2 + state.phase) * 0.08;
+        const amount = APPROACH.fleeOffset + Math.sin(elapsed * 4.2 + state.phase) * 0.12;
         root.position.x = anchor.x + (dx / len) * amount;
         root.position.z = anchor.z + (dz / len) * amount;
+        root.rotation.y = Math.atan2(dx, dz);
+      }
+      return;
+    }
+    if (state.state === "protect" && state.parentalYoung) {
+      const player = playerRoot();
+      const young = state.parentalYoung;
+      if (player) {
+        const dx = Number(player.position?.x || 0) - Number(young.position?.x || 0);
+        const dz = Number(player.position?.z || 0) - Number(young.position?.z || 0);
+        const len = Math.hypot(dx, dz) || 1;
+        const targetX = Number(young.position?.x || 0) + (dx / len) * 1.15;
+        const targetZ = Number(young.position?.z || 0) + (dz / len) * 1.15;
+        root.position.x += (targetX - root.position.x) * 0.12;
+        root.position.z += (targetZ - root.position.z) * 0.12;
         root.rotation.y = Math.atan2(dx, dz);
       }
       return;
@@ -403,7 +604,9 @@
       animateParts(state, elapsed, distance);
       return;
     }
-    chooseState(state, elapsed, distance);
+    if (!updateParentalProtection(state, elapsed)) {
+      chooseState(state, elapsed, distance);
+    }
     animateMovement(state, elapsed, distance);
     animateParts(state, elapsed, distance);
   };
@@ -452,11 +655,21 @@
     restore,
     getState(root) {
       const state = states.get(root);
-      return state ? Object.freeze({ type: state.type, state: state.state, enabled: state.enabled }) : null;
+      return state ? Object.freeze({
+        type: state.type,
+        state: state.state,
+        enabled: state.enabled,
+        closureSpeed: state.closureSpeed,
+        cautiousQualified: state.cautiousQualified,
+        acceptedProximity: state.acceptedProximity,
+        acceptedSince: state.acceptedSince,
+        lastDistance: state.lastDistance,
+        fleeUntil: state.fleeUntil
+      }) : null;
     },
     setState(root, nextState) {
       const state = states.get(root);
-      const allowed = new Set(["rest", "observe", "forage", "flee", "play", "sleep", "tool_use"]);
+      const allowed = new Set(["rest", "observe", "forage", "flee", "play", "sleep", "tool_use", "protect"]);
       if (!state || !allowed.has(nextState)) return false;
       state.previousState = state.state;
       state.state = nextState;

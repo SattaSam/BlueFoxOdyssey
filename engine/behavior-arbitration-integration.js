@@ -690,9 +690,54 @@
     return selected;
   };
 
+  const faunaRoot = (object) =>
+    object?.userData?.worldAnchor || object?.userData?.worldRoot || object || null;
+
+  const faunaRuntimeState = (object) => {
+    const root = faunaRoot(object);
+    return root ? BF.FaunaRuntime?.getState?.(root) || null : null;
+  };
+
+  const beginCautiousFaunaApproach = (engine, object, axis, source, now) => {
+    const state = faunaRuntimeState(object);
+    if (!state || state.acceptedProximity) return false;
+    const anchor = targetPosition(object);
+    const origin = engine?.character?.root?.position;
+    if (!anchor || !origin || directDistance(engine, object) <= 3.0) return false;
+    const away = origin.clone().sub(anchor).setY(0);
+    if (away.lengthSq() < 0.001) away.set(0, 0, 1);
+    away.normalize();
+    const cautiousPoint = anchor.clone().addScaledVector(away, 4.8);
+    const accepted = engine.character.setTarget(cautiousPoint, "walk");
+    if (accepted === false) return false;
+    engine.__bacFaunaApproach = {
+      object,
+      axis,
+      source,
+      cautiousPoint,
+      phase: "outer",
+      startedAt: now,
+      arrivedAt: 0
+    };
+    engine.showWorldMarker?.(cautiousPoint);
+    engine.callbacks?.onStatus?.(
+      "BlueFox s'arrête d'abord à distance pour ne pas brusquer l'animal."
+    );
+    return true;
+  };
+
   const commitTarget = (engine, object, axis, source = "autonomy") => {
     if (!object) return false;
     const now = Date.now();
+
+    if (
+      source === "autonomy" &&
+      faunaRuntimeState(object) &&
+      !faunaRuntimeState(object).acceptedProximity &&
+      directDistance(engine, object) > 3.0
+    ) {
+      return beginCautiousFaunaApproach(engine, object, axis, source, now);
+    }
 
     const lock = engine.__bacTargetLock;
     if (
@@ -970,6 +1015,7 @@
     engine.targetInteraction = function targetInteractionWithBAC(object, retry = false) {
       if (!retry && object?.userData?.requestedInteractionSource === "manual") {
         this.__bacTargetLock = null;
+        this.__bacFaunaApproach = null;
         const intendedAxis = isCollectableDefinition(objectDefinition(object))
           ? "collection"
           : objectAxis(this, object);
@@ -988,6 +1034,58 @@
     }
     const originalAutonomy = engine.updateAutonomy.bind(engine);
     engine.updateAutonomy = function updateAutonomyWithBAC(now) {
+      const cautiousFauna = this.__bacFaunaApproach;
+      if (cautiousFauna) {
+        const { object, axis, source } = cautiousFauna;
+        if (!object?.userData?.active || !faunaRuntimeState(object)) {
+          this.__bacFaunaApproach = null;
+        } else if (this.character.root.position.distanceTo(this.character.target) > 0.2) {
+          return;
+        } else if (!cautiousFauna.arrivedAt) {
+          cautiousFauna.arrivedAt = now;
+          this.character.stop?.();
+          this.lastActivityAt = now;
+          return;
+        } else if (
+          cautiousFauna.phase === "outer" &&
+          now - cautiousFauna.arrivedAt >= 1200
+        ) {
+          const anchor = targetPosition(object);
+          const fromAnimal = this.character.root.position.clone().sub(anchor).setY(0);
+          if (fromAnimal.lengthSq() < 0.001) fromAnimal.set(0, 0, 1);
+          fromAnimal.normalize();
+          const innerPoint = anchor.clone().addScaledVector(fromAnimal, 3.0);
+          const accepted = this.character.setTarget(innerPoint, "walk");
+          if (accepted === false) {
+            this.__bacFaunaApproach = null;
+            return false;
+          }
+          cautiousFauna.phase = "inner";
+          cautiousFauna.cautiousPoint = innerPoint;
+          cautiousFauna.arrivedAt = 0;
+          this.showWorldMarker?.(innerPoint);
+          return;
+        } else if (
+          cautiousFauna.phase === "inner" &&
+          now - cautiousFauna.arrivedAt < 800
+        ) {
+          return;
+        } else if (cautiousFauna.phase === "outer") {
+          return;
+        } else {
+          this.__bacFaunaApproach = null;
+          object.userData.requestedInteractionSource = source;
+          if (
+            axis === "collection" &&
+            preferredKind() === objectKind(object)
+          ) {
+            object.userData.requestedInteraction =
+              acquisitionAction(objectDefinition(object)) ||
+              object.userData.requestedInteraction;
+          }
+          return this.targetInteraction(object);
+        }
+      }
       if (this.transitioning || this.pendingInteraction || this.pendingGate || this.pendingZoneExploration || this.currentRoutine || this.missionManager?.currentAction) {
         if (this.persistentNavigationIntent && !this.transitioning && !this.pendingInteraction && !this.currentRoutine && !this.missionManager?.currentAction) {
           this.resumePersistentNavigation?.();
