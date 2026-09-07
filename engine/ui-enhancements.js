@@ -461,11 +461,12 @@
       frustration: "frustration"
     };
     const key = bac?.relation?.dominantEmotion;
-    if (!key) return { label: "indisponible", badge: "ÉMOTION · INDISPONIBLE" };
+    if (!key) return { key: "indisponible", label: "indisponible", badge: "ÉMOTION · INDISPONIBLE" };
     const rawValue = Number(bac?.relation?.emotions?.[key]);
     const value = Number.isFinite(rawValue) ? Math.round(rawValue) : null;
     const label = labels[key] || String(key);
     return {
+      key,
       label: value == null ? label : `${label} · ${value}%`,
       badge: `ÉMOTION · ${label.toLocaleUpperCase("fr")}`
     };
@@ -939,6 +940,13 @@
     const raw = String(value ?? "").trim();
     if (!raw) return "";
 
+    if (/^(?:natural_decor|decors_nature)$/i.test(raw)) {
+      return "Décors naturels";
+    }
+    const definition = global.BlueFox3D?.ObjectLibrary?.getById?.(raw);
+    const human = definition?.label || definition?.name || definition?.title;
+    if (human) return String(human);
+
     const normalized = raw
       .replace(/^offline-/i, "")
       .replace(/^doc-/i, "")
@@ -955,15 +963,19 @@
       wood: "le bois",
       crystal: "les cristaux",
       bush: "les buissons",
-      adap: "les plantes adaptatives"
+      adap: "les plantes adaptatives",
+      "natural decor": "Décors naturels",
+      "decors nature": "Décors naturels"
     };
 
     const words = normalized.split(/\s+/).filter(Boolean);
     const meaningful = words.filter((word) => ![
       "offline", "doc", "bio", "res", "resource", "resources", "m", "s"
     ].includes(word.toLowerCase()));
-    const aliasKey = meaningful.at(-1)?.toLowerCase() || normalized.toLowerCase();
+    const aliasKey = meaningful.join(" ").toLowerCase() || normalized.toLowerCase();
     if (aliases[aliasKey]) return aliases[aliasKey];
+    const lastAlias = meaningful.at(-1)?.toLowerCase();
+    if (lastAlias && aliases[lastAlias]) return aliases[lastAlias];
 
     const label = meaningful.join(" ") || normalized;
     if (!label || /^(?:observation|resource)$/i.test(label)) {
@@ -1017,7 +1029,10 @@
         event.detail?.kind ||
         null;
       if (subject) {
-        const key = String(subject);
+        const rawKey = String(subject);
+        const key = /^(?:natural_decor|decors_nature)$/i.test(rawKey)
+          ? "natural_decor"
+          : rawKey;
         bucket.subjects.set(
           key,
           (bucket.subjects.get(key) || 0) + weight
@@ -1061,20 +1076,36 @@
           topSubjects,
           Number.isFinite(axisPriority) ? axisPriority : null
         );
+        const psychology = BF?.getMultiProgressionState?.()?.psychology || {};
+        const obsessions = Object.entries(psychology.missionObsessions || {})
+          .filter(([, value]) => Number(value?.pressure) > 0)
+          .map(([id, value]) => `${id}:${Math.round(Number(value.pressure) || 0)}`)
+          .sort();
+        const memories = Object.values(psychology.missionMemories || {})
+          .filter((memory) => memory?.missionId)
+          .map((memory) => `${memory.missionId}:${memory.valence || "neutral"}:${Number(memory.scoreTrauma) || 0}`)
+          .sort();
+        let enrichedText = text;
+        if (obsessions.length) {
+          enrichedText += " Certaines pistes reviennent avec insistance dans mes pensées, même lorsque je tente de les laisser de côté.";
+        }
+        if (memories.some((item) => item.includes(":negative:"))) {
+          enrichedText += " Quelques souvenirs restent plus lourds que les autres et continuent d’influencer ma manière d’aborder ce domaine.";
+        }
         return {
           id: bucket.id,
           label: bucket.label,
           score: bucket.score,
           lastAt: bucket.lastAt,
-          text,
-          signature: [
-            bucket.events.length,
-            Math.round(bucket.score * 10),
-            bucket.firstAt,
-            bucket.lastAt,
-            topSubjects.join(","),
-            text
-          ].join(":")
+          text: enrichedText,
+          metrics: {
+            events: bucket.events.length,
+            score: Math.round(bucket.score * 10) / 10,
+            subjects: bucket.subjects.size,
+            missions: bucket.missionIds.size,
+            lastAt: bucket.lastAt
+          },
+          psychologySignature: [...obsessions, ...memories].join("|")
         };
       })
       .filter((theme) => theme.text)
@@ -1226,6 +1257,24 @@
     return sentences.join(" ");
   }
 
+  const consolidatedJournalPanels = new WeakSet();
+
+  function consolidateJournalNarrativeAtOpen(panel, emotion) {
+    if (!panel || consolidatedJournalPanels.has(panel)) return;
+    consolidatedJournalPanels.add(panel);
+    const BF = global.BlueFox3D;
+    BF?.consolidateJournalNarrative?.({
+      themes: buildJournalEvolutionThemes(),
+      mood: {
+        key: String(emotion?.key || "indisponible"),
+        label: emotion?.label || "indisponible",
+        text: emotion?.key && emotion.key !== "indisponible"
+          ? `Aujourd’hui, je me sens surtout traversé par ${String(emotion.label).toLocaleLowerCase("fr")}.`
+          : "Je n’arrive pas encore à mettre un mot précis sur mon humeur."
+      }
+    });
+  }
+
   function renderJournalNarrativeNotes(report) {
     const host = report?.querySelector(".living-notes");
     if (!host) return;
@@ -1237,12 +1286,20 @@
     const daily = entries
       .filter((entry) => Number(entry.at) >= dayStart.getTime())
       .slice(0, 8);
-    const evolutionThemes = buildJournalEvolutionThemes();
+    const narrativeState = global.BlueFox3D?.getJournalNarrativeState?.() || {};
+    const evolutionThemes = Object.values(narrativeState.themes || {})
+      .sort((left, right) =>
+        Number(right?.metrics?.score || 0) - Number(left?.metrics?.score || 0) ||
+        Number(right?.updatedAt || 0) - Number(left?.updatedAt || 0)
+      );
+    const pastThoughts = Array.isArray(narrativeState.pastThoughts)
+      ? narrativeState.pastThoughts.slice(-4).reverse()
+      : [];
     const signature = daily
       .map((entry) => `${entry.id}:${entry.at}`)
       .join("|") + "||" + evolutionThemes
-        .map((theme) => `${theme.id}:${theme.signature}`)
-        .join("|");
+        .map((theme) => `${theme.id}:${theme.updatedAt || 0}`)
+        .join("|") + "||" + pastThoughts.map((item) => `${item.key}:${item.at}`).join("|");
     const meta = report.querySelector(".journal-temporal-meta");
     const thoughtsPresent = Boolean(
       meta?.querySelector(".journal-current-state-row .journal-current-thoughts")
@@ -1358,6 +1415,16 @@
     }
 
     host.append(makeEvolutionCard(evolutionThemes));
+    if (pastThoughts.length) {
+      host.append(makeCard(
+        "PENSÉES PASSÉES",
+        pastThoughts.map((item) => ({
+          title: item.label || "Humeur précédente",
+          text: item.text || ""
+        })),
+        ""
+      ));
+    }
   }
 
   function enhanceJournal(panel) {
@@ -1417,6 +1484,7 @@
         </article>
       </div>`;
     }
+    consolidateJournalNarrativeAtOpen(panel, emotion);
     renderJournalNarrativeNotes(report);
   }
 

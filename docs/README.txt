@@ -8,23 +8,32 @@ Ces fichiers sont les documents de référence officiels maintenus :
 - RECOVERY_CHECKPOINT_2026-09-01.md
 - GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md
 
-Base technique courante au 02/09/2026 :
-- HEAD validé avant mise à jour documentaire : 8b34d8912667f02140c0c2999b1dfa3f37a8e9ee
-- commit : spawn base fix
+Base technique courante au 08/09/2026 :
+- HEAD moteur validé avant mise à jour documentaire : 1f20ba014686f5f6eadac78a22b89077bca8e380
+- commit : /!\ GAME CIVilisation ENINERING + Etabli+feu +fichiers sensibles /!\ GROS LOT
+- parent : 3705d40399437058fcc62a9bc99f2ee96defc75e — Missions FAUNA R2
 - le HEAD GitHub courant reste la seule base technique de reprise ;
-- aucun nouveau recovery checkpoint n'est créé pour cette clôture ;
-- ROADMAP_TODO.md reste la seule TODO active.
+- ROADMAP_TODO.md reste la seule TODO active ;
+- aucun nouveau recovery checkpoint n'est créé pour cette mise à jour.
 
 État validé ajouté à la référence :
-- chaîne Camp → Refuge → Base renforcée raccordée au moteur missionnel ;
-- fin Shelter/Base par effet automatique réel, sans interaction BlueFox finale fictive ;
-- progression historique distinguée du stock physique courant ;
-- réévaluation du manque de stock sur événements d'inventaire pertinents, sans polling ajouté ;
-- spawn réussi avant consommation et consommation unique/idempotente ;
-- preset canonique propriétaire lorsqu'il existe ;
-- Base renforcée sur crystal : x=-2.7567, y=0.25, z=4.768 ;
-- après succès Base, Refuge autonome retiré visuellement et de la persistance ; Camp conservé ;
-- spawn final validé en jeu puis commit moteur vérifié bit-for-bit.
+- industrialisation missionnelle réalisée depuis le 2 septembre : FLO, GEO-01→07, COL, ENV, LOC, SUR, GAME R1/R2, FAUNA R1/R2 et ENE-01→10 ;
+- lot GAME Civilisation/Engineering validé au HEAD : GAME-civilization_1→5, GAME-engineering_3→6 et GAME-fire ;
+- réserve abandonnée persistante : 350 fibres + 175 azure_ferrite + 175 magnetic_ore, prélèvement limité par la capacité du sac sans faux RESOURCE_COLLECTED ;
+- GAME-base réconciliée sur le stock physique courant par événements d'inventaire, sans polling ;
+- missions répétables supportées génériquement par MissionManager ; GAME-fire consomme 8 bois et ne force pas un retour au camp ;
+- Blueprint et construction WORKBENCH disponibles uniquement sur Crystal après la Base ; coût réel : 20 magnetic_ore + 20 azure_ferrite + 20 resonant_basalt + 20 stellar_iridium + 25 fiber + 10 parts + 20 wood ;
+- placement joueur de l'établi via l'UI existante ; site WORKBENCH persistant avec anchor/rotation réels ;
+- ProgressionRegistry expose un crédit d'inventaire canonique sans progression historique de collecte artificielle ;
+- FAUNA R2 et ENE-01→10 préservées dans le cumulatif post-commit.
+
+Points explicitement encore ouverts :
+- industrialiser ENE-11→14 maintenant que l'établi existe réellement ;
+- améliorer la console/commande joueur des drones dans Recherche en réutilisant le runtime drone existant ;
+- généraliser le Kit d'expédition aux objets transportables fabriqués (accumulateur, puis futurs objets activables comme une balise) ;
+- rendre le Journal évolutif lazy à l'ouverture et persistant par briques stables, sans reconstruction/recalcul continu ;
+- ENE-15 reste différé tant que ses prérequis documentaires ne sont pas réellement industrialisés ;
+- poursuivre les audits CPU/cadence, autorité missionnelle, Survival et IMI tant qu'une clôture runtime complète n'est pas prouvée.
 
 Règle de priorité documentaire :
 1. décision utilisateur la plus récente ;

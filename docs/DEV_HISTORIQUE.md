@@ -1,5 +1,99 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Sessions du 3 au 8 septembre 2026 — industrialisation massive puis passerelle Civilisation / Engineering / Workbench
+
+### Base finale de référence
+- HEAD moteur : `1f20ba014686f5f6eadac78a22b89077bca8e380`
+- Parent : `3705d40399437058fcc62a9bc99f2ee96defc75e` — Missions FAUNA R2
+- Commit final : `/!\ GAME CIVilisation ENINERING + Etabli+feu +fichiers sensibles /!\ GROS LOT`
+- Contrôle post-commit : 7 fichiers attendus, aucun parasite, blobs conformes au candidat livré.
+
+### Industrialisation réalisée depuis la référence du 2 septembre
+Lots successifs à préserver :
+- FLO et réordonnancement de chaîne ;
+- GEO-01→07 ;
+- COL puis ENV ;
+- LOC ;
+- SUR et passes de correction de régression 2A/2B/2C ;
+- GAME R1 et R2 ;
+- FAUNA R1/R2 ;
+- ENE-01→10 ;
+- lot final GAME Civilisation / Engineering / Workbench.
+
+### GAME R1 / R2
+R1 :
+- GAME-flora ;
+- GAME-research_initial ;
+- GAME-research_hypothesis ;
+- GAME-special_investigator ;
+- GAME-special_archivist.
+Archiviste : 5 familles différentes observées historiquement.
+
+R2 :
+- GAME-energy ;
+- GAME-engineering_1 ;
+- GAME-engineering_2.
+Aucun axe Engineering parallèle n'a été créé : l'ingénierie reste dans Recherche/BibleRuntime.
+
+### FAUNA
+- FAU-01→12 industrialisées.
+- Runtime FAUNA R2 préservé.
+- FAU-09/10 disposent de comportements runtime dédiés déjà validés.
+- Le lot final Civilisation/Engineering ne modifie pas le runtime FAUNA.
+
+### ENE-01→10
+- ENE-01→10 intégrées.
+- ENE-08 utilise le retour dynamique vers la map mémorisée du Giant Tree.
+- Aucun faux état/bridge énergétique parallèle.
+- ENE-11→14 volontairement différées jusqu'à présence réelle d'un établi.
+
+### Lot Civilisation / réserve
+- GAME-civilization_1→5 intégré.
+- Départ après Refuge + 10 stèles observées historiquement.
+- Trois nouvelles maps successives avec une nouvelle stèle garantie sur chacune.
+- Troisième map : `MSC-CUSTOM-RESERVE-ABANDONEE`.
+- Réserve persistante : 350 `fiber` + 175 `azure_ferrite` + 175 `magnetic_ore`.
+- Prélèvement limité à la capacité réelle du sac ; reliquat conservé pour les visites suivantes.
+- Crédit via `ProgressionRegistry.grantInventory()`, sans faux `RESOURCE_COLLECTED` et donc sans gonfler les compteurs COL historiques.
+
+### GAME-base
+- Sémantique corrigée : les objectifs fibres/minéraux représentent le stock physique courant.
+- Réconciliation seulement sur événements d'inventaire pertinents ; pas de polling.
+- Les slots stock-backed peuvent redescendre si le stock est dépensé avant construction.
+- Les 100 études rocheuses restent historiques.
+- Finalisation/consommation réelles et idempotentes conservées.
+
+### Engineering / feu / établi
+- GAME-engineering_3→6 intégré.
+- GAME-fire générique répétable ; 8 bois par occurrence.
+- GAME-fire ne provoque pas seule un retour au camp.
+- MissionManager reçoit uniquement la primitive générique `rearmRepeatableMission()`.
+- Blueprint Établi débloqué via Recherche.
+- Construction uniquement sur Crystal après Base.
+- Coût : 20 `magnetic_ore` + 20 `azure_ferrite` + 20 `resonant_basalt` + 20 `stellar_iridium` + 25 `fiber` + 10 `parts` + 20 `wood`.
+- `MSC-CUSTOM-ETABLI-VIDE` implantée par placement joueur.
+- `ui-enhancements.js` généralise le consommateur historique de placement à CAMP / REFUGE / WORKBENCH.
+- Anchor et rotation réels du workbench sont persistés pour les futures missions de retour à l'établi.
+
+### Demandes/suggestions utilisateur encore ouvertes identifiées
+1. **ENE-11→14** : prochaine passe missionnelle ; l'établi nécessaire existe désormais.
+2. **Console drone joueur** : à construire dans Recherche en réutilisant le runtime scout/harvest existant.
+3. **Kit d'expédition générique** : accumulateur puis futurs objets fabriqués transportables/activables, par exemple une balise.
+4. **Journal évolutif** : calcul uniquement à l'ouverture ; briques persistantes/stables ; enrichissement seulement des branches ayant réellement évolué de façon majeure.
+5. **ENE-15** : différé jusqu'à industrialisation réelle de ses prérequis documentaires.
+6. **CPU/cadence, autorité missionnelle, cohérence Survival et IMI** : restent à revalider/clôturer au HEAD courant.
+7. **Scouting drone inter-map** : idée future séparée ; ne pas l'introduire implicitement avec ENE-13.
+8. **Console drone** : doit préserver le mode autonome et ne donner priorité à l'ordre joueur que lorsqu'il existe réellement.
+9. **Objets activables depuis le Kit** : balise et futurs objets possibles uniquement si leur propriétaire expose une action d'activation canonique.
+
+### Discipline de reprise
+- ne pas reconstruire le dépôt complet : BASE partielle exacte limitée au périmètre et à ses consommateurs ;
+- ne pas redéfinir ENE-11→14 : repartir de la stratégie déjà validée puis vérifier sa compatibilité au HEAD ;
+- aucun scouting drone inter-map implicite dans ENE-13 ;
+- aucun second runtime drone, inventaire Kit, moteur craft ou propriétaire Journal parallèle.
+
+---
+
 ## Session du 2 septembre 2026 — Shelter / Base renforcée — validation runtime et commit
 
 ### Base finale
@@ -18,96 +112,112 @@ Finaliser la chaîne `Camp → Refuge → Base renforcée` sans nouveau proprié
 - Stock insuffisant : mission active + réévaluation sur événements d'inventaire pertinents, sans polling ajouté.
 - Spawn réussi avant consommation ; consommation unique/idempotente.
 - Preset canonique propriétaire lorsqu'il existe ; `autonomousPlacement()` reste le fallback des constructions sans preset.
-- Faux positif du gate Base corrigé : la finalisation exige le site réellement établi par la mission.
+- Faux positif du gate Base corrigé : finalisation exige le site réellement établi par la mission.
 - Position Base renforcée sur crystal : `x=-2.7567, y=0.25, z=4.768`.
-- Après succès réel de la Base renforcée, le Refuge autonome est retiré visuellement, ses colliders sont retirés et `sites.refuge` est supprimé ; le Camp reste présent.
+- Après succès réel de la Base renforcée, le Refuge autonome est retiré visuellement, colliders retirés et `sites.refuge` supprimé ; Camp conservé.
 
 ### Validation
 - batterie dédiée Shelter/Base : PASS ;
 - stock insuffisant, reprise événementielle, idempotence, faux gate, fallback sans preset, suppression Refuge et reload couverts ;
 - spawn final validé en jeu ;
-- commit `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee` vérifié contre le cumulatif livré : les 11 blobs Git correspondent bit-for-bit.
+- commit vérifié contre le cumulatif livré.
 
 ### Décisions durables
-- pas de migration automatique de sauvegarde pour compenser ce chantier ;
-- pas d'action finale fictive lorsqu'une mission se termine par un effet automatique réel ;
-- un changement de stade ne retire le site précédent qu'après succès du nouveau stade ;
-- la TODO courante reste `ROADMAP_TODO.md`.
+- pas de migration automatique de sauvegarde ;
+- pas d'action finale fictive quand effet automatique réel ;
+- changement de stade : retrait du précédent uniquement après succès du nouveau ;
+- TODO courante = `ROADMAP_TODO.md`.
+
+---
+
+## Session du 30 août 2026 — Passe 4 validée / diagnostic CPU et Survival différé
+
+### Passe 4 — validation runtime
+- Recherche reste fenêtrée.
+- Recherche et Inventaire ne provoquent plus d’écran noir dans les cycles testés.
+- Cause crash React : bridges UI retiraient des nœuds que React considérait encore comme siens.
+- Correction : masquer sans retirer.
+- Kit d’expédition : dernière position ouverte/fermée persistée.
+- message de proximité : `Camp hors de portée.`
+
+### Diagnostic différé — CPU / cadence décisionnelle
+Symptômes historiques :
+- consommation CPU perçue en hausse ;
+- temps trop long entre actions sur map dense ;
+- état prolongé « observation du terrain / choix de la prochaine action » ;
+- actions locales aléatoires possibles malgré plusieurs missions actives.
+
+À revalider au HEAD courant avant correction.
+
+### Survival — cohérence énergie / repos / alimentation
+État historique :
+- `energy = 0,55 × rest + 0,32 × food + 0,13 × safety`;
+- décisions repos/alimentation utilisent aussi rest et food.
+Demande persistante :
+- cohérence de la barre Énergie ;
+- pas de jauge/moteur parallèle ;
+- `survival-ai-bridge.js` reste propriétaire.
+
+---
+
+## Session du 31 août → 1 septembre 2026 — Trigger/cible missionnelle SUR-03 — clôture en FAIL moteur
+
+### Décision durable
+IMI conserve trois relations explicites :
+- `REVEAL-ONLY`
+- `SAME-DEFINITION`
+- `SAME-INSTANCE`
+
+### Échec historique
+Les migrations automatiques de vieux `bibleTarget` ont échoué en jeu et ont été rejetées.
+
+### Contrat de reprise durable
+Le cycle complet doit rester testé :
+`chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction → progression`
+
+Fausses pistes interdites :
+- réarmement artificiel planner/BAC sans preuve ;
+- timer/bridge parallèle ;
+- migration runtime de sauvegarde sans preuve complète.
 
 ---
 
 ## Session du 28 août 2026 — Recovery checkpoint / clarification des propriétaires
 
-### Base finale
-- HEAD : `c75fa77b2afe59a0d3dc41fc00453c3dc47a1d64`
-- Commit : `RECOVERY_CHECKPOINT — moteur stabilisé, T11 return + T13 autocraft encore ouverts`
-- Parent : `69d35d51d137a324136a7c56bb46857b4a9ec3eb`
-
-### Contexte
-Une stratégie de récupération en plusieurs passes avait produit un cumulatif contractuellement cohérent sur des tests isolés mais insuffisant en jeu. Les tests runtime utilisateur ont révélé des régressions et des comportements non restaurés.
-
-Décision :
-- ne plus considérer les cumulatifs 1→4 comme base de confiance ;
-- conserver uniquement les modifications prouvées ;
-- rétablir les propriétaires effectifs du runtime final chargé par `index.html`.
-
-### Changements structurants du checkpoint
-- `MissionManager` reste propriétaire de `chooseRunnableMissionAction()`.
-- `behavior-arbitration-integration.js` ne remplace plus ce choix par une shortlist concurrente.
-- `BibleRuntime` ne réécrit plus le lifecycle ; il interprète effets, compteurs et gates.
-- `bible-map-prescription-v19.js` ne relance plus un second exécuteur du retour connu.
-- `WorldEngine` porte une directive joueur de navigation réellement persistante.
-- Règle B validée : terminer l’action atomique, puis exécuter la directive avant toute nouvelle décision.
-- `PathPlanner` ne transforme plus l’absence de chemin en cible directe.
-- `CharacterController` émet un échec de navigation explicite.
-- `save-ui-bridge.js` force le flush des mémoires différées avant snapshot.
-- une réévaluation causale ne révèle au maximum qu’une nouvelle mission.
-- nettoyage UI ajouté pour éviter la conservation de contenu Recherche dans Inventaire.
-
-### Tests de réfutation
-Le candidat a été testé avec des contrats génériques incluant des missions `FUTURE-*` afin d’éviter les branches T11/T13.
-Les consommateurs ObjectM0, travel-cycle, explore-scope, target arbitration et fallback V19 ont été contrôlés.
-
-Limite de preuve : l’environnement de travail n’a pas permis de cloner le dépôt complet par réseau pour relancer toute la suite historique ; aucun PASS n’a été inventé pour cette partie.
-
-### Résultats runtime après commit
-Deux défauts restent ouverts :
-1. **T11 — Comprendre comment préparer une ration** : après les collectes, BlueFox continue des collectes locales pour Shelter au lieu d’effectuer le retour autonome vers un abri. Ce cycle avait déjà été historiquement validé.
-2. **T13 — Préparer une excursion prolongée** : BlueFox ne fabrique pas les rations de façon autonome malgré la présence de la mécanique ration.
-
-Décision de reprise :
-- T11 et T13 deviennent deux chantiers séparés ;
-- le checkpoint est conservé afin de ne pas élargir à nouveau la surface de régression ;
-- T11 sera traité par récupération différentielle du dernier flux historiquement fonctionnel ;
-- T13 sera traité par traçage générique de la chaîne CRAFT/BAC/propriétaire réel.
+### Décisions structurantes durables
+- MissionManager propriétaire de `chooseRunnableMissionAction()`.
+- BAC ne remplace pas ce choix.
+- BibleRuntime n'écrit pas le lifecycle.
+- Bible-map-prescription ne devient pas second exécuteur du retour connu.
+- WorldEngine porte la directive joueur persistante.
+- PathPlanner ne force pas une cible directe en absence de chemin.
+- CharacterController émet un échec de navigation.
+- save-ui-bridge flush les mémoires différées.
+- une réévaluation causale révèle au maximum une mission.
 
 ---
 
 ## Session du 23 août 2026 — Double interaction missionnelle / unicité nœud × instance
 
-### Base finale de session
-- HEAD validé et commité : `b757aa457ce5eca4a994ff8f35dcc482aca5c77f` — `double action observe`.
-
 ### Décision durable
-- sur un objet collectable, 0..N études missionnelles réellement dues peuvent précéder la collecte ;
-- `observer`, `inspecter`, `analyser` restent des verbes narratifs d’une même action physique lorsque le CUO le prévoit ;
-- l’acquisition reprend sur la même instance ;
-- `MissionNode.distinctValues` porte l’unicité nœud × instance ;
-- fan-out observation et collecte conservé ;
-- annulation nettoie toute la transaction.
+- 0..N études missionnelles réellement dues peuvent précéder la collecte ;
+- observer/inspecter/analyser sont des nuances d’une même action physique lorsque CUO le prévoit ;
+- acquisition reprend sur la même instance ;
+- `MissionNode.distinctValues` porte unicité nœud × instance ;
+- fan-out conservé ;
+- annulation nettoie la transaction.
 
-Validation en jeu : T06 et `GAME-shelter / plantStudy`.
+Validation historique en jeu : T06 et GAME-shelter / plantStudy.
 
 ---
 
 ## Session du 19 août 2026 — P01→P04, narration Bible et sécurisation du cumulatif
 
 - P01→P04 intégrées et validées en jeu.
-- `GAME-shelter` actif en parallèle après P03.
-- CUO/ObjectM0 étendu génériquement pour le matching missionnel.
-- narration Bible vers bulles/journal, queue narrative et `speechQuietUntil`.
-- incident de cumulatif : un patch thématique avait supprimé des comportements déjà validés.
-- règle renforcée : tout patch partagé doit partir du HEAD complet et préserver tout comportement validé.
+- GAME-shelter actif en parallèle après P03.
+- CUO/ObjectM0 étendu génériquement.
+- narration Bible vers bulles/journal.
+- règle renforcée : tout patch partagé doit partir du HEAD et préserver les comportements validés.
 
 ---
 
@@ -115,7 +225,7 @@ Validation en jeu : T06 et `GAME-shelter / plantStudy`.
 
 - `special-object-runtime.js` raccordé au RuntimeBudget existant.
 - retrait du pré-flush artificiel de progression.
-- `MissionMemory` conserve dirty/flush.
+- MissionMemory conserve dirty/flush.
 - incident de troncature `save-ui-bridge.js` : interdiction de reconstruire un fichier depuis un extrait.
 - protections population/MSC conservées.
 
@@ -127,121 +237,3 @@ Validation en jeu : T06 et `GAME-shelter / plantStudy`.
 - narration souveraine ; technique traduit sans réécrire.
 - MSC : rôles `triggerContext`, `objectiveSubject`, `scenarioSupport`.
 - décision : limiter les patrons, mutualiser par paramètres, développer les raccords seulement sur besoin réel.
-
----
-
-## Session du 30 août 2026 — Passe 4 validée / diagnostic CPU et Survival différé
-
-### Base finale de session
-- HEAD : `a62c25ad75fc63dce4546dfe0bd8861d45842376`
-- Commit : `Dernier cumulatif Passe 4 ergonomie UI + menu recherche fenetre`
-- Parent : `b277d811756e980f4d6cae92c709fe147973ca04`
-
-### Passe 4 — validation runtime
-- Recherche reste fenêtrée.
-- Recherche et Inventaire ne provoquent plus d’écran noir dans les cycles testés.
-- Cause du crash React localisée : des bridges UI retiraient des nœuds que React considérait encore comme siens.
-- Correction conservée :
-  - Recherche masque `.bluefox-research-runtime` au lieu de le retirer ;
-  - Inventaire masque la grille React historique au lieu de `remove()`.
-- Kit d’expédition : dernière position ouverte/fermée persistée.
-- message de proximité : `Camp hors de portée.`
-- T11 : guidance ajoutée via `uiGuidance`.
-
-### T13 — validations de la session précédente conservées
-Le cumulatif P1→P3 + compilateur a été validé en jeu sur :
-- collecte prioritaire des ingrédients nécessaires ;
-- fabrication réelle du lot de rations ;
-- déplacement autonome après craft ;
-- présence de `MSC-CUSTOM-BOSQUET-BIO` sur la deuxième nouvelle map.
-
-### Diagnostic différé — CPU / cadence décisionnelle
-Symptômes runtime utilisateur :
-- consommation CPU perçue en hausse, y compris sur maps connues ;
-- sur map dense, temps trop long entre actions malgré environ 15 plantes proches et plusieurs missions compatibles ;
-- état prolongé « observation du terrain / choix de la prochaine action » ;
-- BlueFox peut revenir au camp puis réaliser des observations/collectes locales aléatoires alors que plusieurs missions restent en cours.
-
-Constats confirmés dans le HEAD :
-- le garde-fou pathfinding est toujours présent :
-  - `TARGET_CANDIDATES = 6` pour le coût de route BAC ;
-  - le résultat `interactionApproachPoint()` du candidat choisi est réutilisé pendant 1,2 s si BlueFox n’a pas bougé de plus de 0,5 unité ;
-- ce garde-fou ne couvre pas les rescans d’intérêt sur tous les interactables, ni les scans répétés de l’historique ObjectEvents, ni une décision suivante ;
-- `MissionManager` replannifie au plus tôt après 1,2 s et peut poser des `retryAfter` de 4–5 s ;
-- `MissionManager.update()` appelle `ensureMissionTransitionIntent()` à chaque frame ;
-- pour un voyage inconnu, le HEAD calcule actuellement `missionUnknownTravelPlan()` avant de confirmer que l’intention mémorisée est encore suffisante ; cette fonction peut parcourir la topologie connue ;
-- le cumulatif P1→P3 a fortement étendu `survival-rations-ai-v0-3.js`; après déblocage ration, `RationPolicy.autonomyCandidate()` est consulté depuis le cycle BAC et doit être profilé ;
-- Passe 4 n’a ajouté aucune nouvelle boucle, minuterie ni MutationObserver : sa causalité directe sur la hausse CPU n’est pas démontrée.
-
-### Autorité missionnelle — non encore localisée
-À reprendre sans correctif prématuré :
-- identifier le cas exact où `hasPrimaryMissionAuthority()` devient faux ou insuffisant alors que des missions compatibles restent actives ;
-- distinguer :
-  - primaire active mais momentanément non-runnable ;
-  - arbre terminé mais lifecycle encore actif en attente d’une gate ;
-  - secondaire runnable mais primaire non réévaluée ;
-  - attente artificielle causée par `retryAfter`.
-
-### Survival — cohérence énergie / repos / alimentation
-État confirmé :
-- `energy = 0,55 × rest + 0,32 × food + 0,13 × safety`;
-- les décisions de repos/alimentation utilisent aussi directement `rest` et `food`;
-- `preventiveMicroRest` est actuellement vrai si `rest < 62` ou `energy < 62`.
-
-Demande utilisateur à reprendre :
-- rendre la barre Énergie plus cohérente avec l’état réellement utilisé par Survival/BAC ;
-- lisser les compteurs énergie/repos/alimentation pour éviter des divergences peu intuitives ;
-- ne pas créer de jauge ou moteur parallèle ;
-- conserver `survival-ai-bridge.js` comme propriétaire.
-
----
-
-## Session du 31 août → 1 septembre 2026 — Trigger/cible missionnelle SUR-03 — clôture en FAIL moteur
-
-### Base de référence
-- HEAD avant clôture : `e12558f40f38129e4d3b4a3e6d85f54b3a2cac6f`
-- Commit : `pass CPU 2 (musique)`
-
-### Cause fonctionnelle démontrée
-La sauvegarde contenait un ancien `bibleTarget:SUR-03` :
-- `binding:"definition"`
-- `instanceId` du premier buisson déclencheur
-- `objectId:"doc-bio-bush-m-001"`
-- `cuoType:"bush"`
-- `mapId:"generated-a2996d72-0005"`
-
-Preuves console :
-- MissionManager propose bien `SUR-03:studyPlants` / `analyze`;
-- `ActionBridge.execute()` retourne `false`;
-- `targetInteraction()` n'est jamais appelé;
-- aucune cible n'est sélectionnée tant que le vieux binding est présent;
-- binding neutralisé temporairement : ObjectM0 sélectionne immédiatement `DOC-NAT-TREE-L-002` / `crystalline_tree`.
-
-Conclusion prouvée :
-le vieux binding implicite de définition rend l'objectif multi-définition impossible.
-
-### Décision durable d'intégration
-L'IMI conserve trois relations explicites :
-- `REVEAL-ONLY`
-- `SAME-DEFINITION`
-- `SAME-INSTANCE`
-
-### Échec des correctifs moteur de la session
-Les variantes de migration automatique de vieux `bibleTarget` ont réussi des tests isolés mais ont échoué en jeu.
-Décision utilisateur :
-- rejeter tous les patchs moteur/runtime de ce chantier;
-- ne pas les réutiliser à la prochaine session;
-- repartir du HEAD GitHub propre;
-- seule la mise à jour IMI est retenue pour commit.
-
-### Fausses pistes à éviter
-- réarmement artificiel du planner/BAC sans preuve;
-- timer/bridge parallèle;
-- considérer `bibleTarget === null` comme preuve suffisante;
-- protéger un binding sur la seule présence de `mapId`;
-- tester la migration sans couvrir les consommateurs réels.
-
-### Contrat de reprise
-Le prochain chantier devra couvrir :
-`chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction → progression`
-et préserver les vrais cas `SAME-DEFINITION` / `SAME-INSTANCE`.

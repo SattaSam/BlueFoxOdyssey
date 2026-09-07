@@ -237,3 +237,10 @@
     min-height: 58vh;
   }
 }
+
+/* Journal narratif : densité verticale accrue, taille de police inchangée. */
+.journal-current-thoughts .journal-narrative-entry,
+.journal-narrative-notes .journal-narrative-entry,
+.journal-evolution-copy {
+  line-height: 1.28;
+}

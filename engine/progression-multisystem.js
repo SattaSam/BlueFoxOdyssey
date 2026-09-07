@@ -47,6 +47,11 @@
       missionMemories: {},
       completedMissionPsychology: {}
     },
+    journalNarrative: {
+      themes: {},
+      mood: null,
+      pastThoughts: []
+    },
     journal: [],
     processedEventIds: []
   });
@@ -67,6 +72,14 @@
         missionObsessions: { ...(saved.psychology?.missionObsessions || {}) },
         missionMemories: { ...(saved.psychology?.missionMemories || {}) },
         completedMissionPsychology: { ...(saved.psychology?.completedMissionPsychology || {}) }
+      },
+      journalNarrative: {
+        ...base.journalNarrative,
+        ...(saved.journalNarrative || {}),
+        themes: { ...(saved.journalNarrative?.themes || {}) },
+        pastThoughts: Array.isArray(saved.journalNarrative?.pastThoughts)
+          ? saved.journalNarrative.pastThoughts.slice(-6)
+          : []
       },
       journal: Array.isArray(saved.journal)
         ? saved.journal.slice(-MAX_JOURNAL_ENTRIES)
@@ -272,6 +285,74 @@
       return true;
     }
 
+    consolidateJournalNarrative(candidate = {}) {
+      const narrative = this.state.journalNarrative = this.state.journalNarrative || {
+        themes: {},
+        mood: null,
+        pastThoughts: []
+      };
+      narrative.themes = narrative.themes || {};
+      narrative.pastThoughts = Array.isArray(narrative.pastThoughts)
+        ? narrative.pastThoughts.slice(-6)
+        : [];
+
+      const incomingThemes = Array.isArray(candidate.themes) ? candidate.themes : [];
+      incomingThemes.forEach((theme) => {
+        if (!theme?.id || !theme?.text) return;
+        const id = cleanKey(theme.id, "");
+        if (!id) return;
+        const previous = narrative.themes[id];
+        const metrics = theme.metrics || {};
+        const previousMetrics = previous?.metrics || {};
+        const eventDelta = Math.max(0, Number(metrics.events) - Number(previousMetrics.events || 0));
+        const scoreDelta = Math.max(0, Number(metrics.score) - Number(previousMetrics.score || 0));
+        const subjectDelta = Math.max(0, Number(metrics.subjects) - Number(previousMetrics.subjects || 0));
+        const missionDelta = Math.max(0, Number(metrics.missions) - Number(previousMetrics.missions || 0));
+        const psychologicalChanged = String(theme.psychologySignature || "") !==
+          String(previous?.psychologySignature || "");
+        const significant = !previous || eventDelta >= 3 || scoreDelta >= 3 ||
+          subjectDelta >= 2 || missionDelta >= 1 || psychologicalChanged;
+        if (!significant) return;
+        narrative.themes[id] = {
+          id,
+          label: theme.label || id,
+          text: theme.text,
+          metrics: clone(metrics),
+          psychologySignature: String(theme.psychologySignature || ""),
+          updatedAt: Date.now()
+        };
+      });
+
+      const mood = candidate.mood?.key ? {
+        key: String(candidate.mood.key),
+        label: String(candidate.mood.label || candidate.mood.key),
+        text: String(candidate.mood.text || ""),
+        at: Date.now()
+      } : null;
+      if (mood) {
+        const previousMood = narrative.mood;
+        if (previousMood?.key && previousMood.key !== mood.key) {
+          narrative.pastThoughts.push({
+            key: previousMood.key,
+            label: previousMood.label,
+            text: previousMood.text,
+            at: Number(previousMood.at) || Date.now()
+          });
+          narrative.pastThoughts = narrative.pastThoughts.slice(-6);
+        }
+        if (!previousMood || previousMood.key !== mood.key || previousMood.text !== mood.text) {
+          narrative.mood = mood;
+        }
+      }
+
+      this.save();
+      return clone(narrative);
+    }
+
+    getJournalNarrative() {
+      return clone(this.state.journalNarrative || { themes: {}, mood: null, pastThoughts: [] });
+    }
+
     narrativeAxisScore(axis) {
       const key = cleanKey(axis, "");
       return key ? Number(this.state.psychology?.narrativeAxes?.[key]) || 0 : 0;
@@ -450,6 +531,8 @@
       limit: MAX_JOURNAL_ENTRIES
     };
   };
+  BF.getJournalNarrativeState = () => system.getJournalNarrative();
+  BF.consolidateJournalNarrative = (candidate) => system.consolidateJournalNarrative(candidate);
   BF.getMapProgressionIndicators = (mapId) => system.getMapIndicators(mapId);
   BF.getNarrativeAxisScore = (axis) => system.narrativeAxisScore(axis);
   BF.getMissionObsessionPressure = (missionId) => system.missionObsessionPressure(missionId);

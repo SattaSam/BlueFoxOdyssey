@@ -2,13 +2,13 @@
 
 ## État de référence
 
-Dernière mise à jour : **2 septembre 2026**
+Dernière mise à jour : **8 septembre 2026**
 
 ### Version de travail
-- Base GitHub courante validée avant mise à jour documentaire : commit `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee`.
-- Commit : `spawn base fix`.
+- Base GitHub courante validée avant mise à jour documentaire : commit `1f20ba014686f5f6eadac78a22b89077bca8e380`.
+- Commit : `/!\ GAME CIVilisation ENINERING + Etabli+feu +fichiers sensibles /!\ GROS LOT`.
+- Parent : `3705d40399437058fcc62a9bc99f2ee96defc75e` — Missions FAUNA R2.
 - Le HEAD GitHub courant est la seule base technique de reprise.
-- Aucun nouveau recovery checkpoint n'est créé pour cette clôture.
 - Les recovery checkpoints existants restent historiques et ne priment pas sur le HEAD courant.
 - `ROADMAP_TODO.md` est la seule TODO active.
 
@@ -33,6 +33,7 @@ Principes majeurs :
 - `WorldEngine` : monde, transitions, navigation et directive joueur persistante ;
 - `ObjectM0` : CUO, matching missionnel, études dues, même instance, fan-out ;
 - `BibleRuntime` : interprétation Bible, effets, gates et sites persistants sans posséder le lifecycle ;
+- `ProgressionRegistry` : progression centrale et inventaires canoniques ;
 - UI : jamais propriétaire du gameplay ;
 - `map-registry.js` : protégé.
 
@@ -53,7 +54,8 @@ Suggestion de changement de map — règle B :
 - une réévaluation ne révèle au maximum qu'une nouvelle mission ;
 - une mission terminée ne reste pas principale ;
 - les missions tutoriel servent de banc d'industrialisation d'un moteur générique ;
-- aucune interaction finale fictive ne doit être ajoutée lorsqu'une mission se termine par un effet automatique réel.
+- aucune interaction finale fictive ne doit être ajoutée lorsqu'une mission se termine par un effet automatique réel ;
+- une mission explicitement `repeatable` peut être réarmée par MissionManager sans modifier le contrat des missions ordinaires.
 
 ### CUO / relation trigger-cible
 - observer / inspecter / analyser restent des nuances missionnelles d'une même étude physique lorsque le CUO le prévoit ;
@@ -79,37 +81,69 @@ La sauvegarde doit préserver :
 - MSC/sites persistants ;
 - recettes/research unlocks ;
 - ration et compteurs de craft ;
-- directive joueur persistante.
+- directive joueur persistante ;
+- sites de construction placés par le joueur, dont le WORKBENCH et son anchor réel.
 
 Les états différés doivent être flushés avant snapshot.
 Aucune propagation ou migration artificielle rejetée par le runtime ne doit être réintroduite.
 
-## Tutoriel et constructions — état courant
+## Tutoriel, missions industrialisées et constructions — état courant
 
 ### T01 → T13
-- T01→T10 : comportements historiques validés à préserver.
-- T13 : chaîne de craft/excursion validée en jeu : collecte utile, fabrication réelle des rations, déplacement autonome, deuxième nouvelle map et Bosquet bio.
+- T01→T13 : chaîne tutorielle et comportements historiquement validés à préserver.
+- T13 : collecte utile, craft réel de rations et excursion sur nouvelles maps restent des garde-fous de non-régression.
 - LOC : map-scopé ; progression conservée hors map, affichage uniquement map active.
-- Les points encore ouverts sont suivis exclusivement dans `ROADMAP_TODO.md`.
+
+### Industrialisation missionnelle acquise
+Depuis la dernière référence documentaire, le moteur a été étendu par lots sans nouveau propriétaire parallèle :
+- FLO-01→07 ;
+- GEO-01→07 ;
+- paliers COL et missions ENV ;
+- LOC industrialisées ;
+- SUR ;
+- GAME R1/R2 ;
+- FAU-01→12 avec runtime FAUNA R2 ;
+- ENE-01→10 ;
+- GAME-civilization_1→5 ;
+- GAME-engineering_3→6 et GAME-fire.
 
 ### Camp → Refuge → Base renforcée
-État validé et commité au commit moteur `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee` :
+État courant :
 - Camp : `MSC-CUSTOM-CAMP` ;
 - Refuge : `MSC-CUSTOM-CAMP-BASE` ;
 - Base renforcée : `MSC-CUSTOM-CAMP-BASE-REINFORCED` ;
-- Shelter démarre après Camp selon le lifecycle existant ;
-- Base renforcée devient activable après completion de Shelter ;
-- les objectifs historiques peuvent être complets alors que le stock physique courant reste insuffisant ;
-- le moteur attend alors le stock réel et réévalue sur événement d'inventaire, sans polling supplémentaire ;
-- Base renforcée consomme 500 fibres + 500 ressources du pool minéral/cristal et requiert 100 études rocheuses ;
-- le pool minéral est résolu par le matching sémantique existant ;
-- le spawn est tenté avant toute consommation ;
-- un échec de spawn ne consomme rien ;
-- la consommation est idempotente ;
-- les presets canoniques sont propriétaires lorsqu'ils existent et ne sont pas rejetés par l'arbitrage de placement générique ;
-- position Base renforcée sur crystal : `x=-2.7567, y=0.25, z=4.768`, rotation canonique inchangée ;
-- au succès de la Base renforcée, le Refuge autonome précédent est retiré visuellement et de la persistance ; le Camp reste présent ;
-- la composition finale validée en jeu est Camp + Base renforcée, la MSC renforcée embarquant elle-même la partie refuge attendue.
+- GAME-base signifie désormais réellement **disposer** de 500 fibres + 500 ressources du pool minéral/cristal au moment de construire ;
+- les slots stock-backed sont réconciliés uniquement sur événements d'inventaire pertinents ;
+- 100 études rocheuses restent une progression historique distincte ;
+- spawn avant consommation, effets idempotents et persistance des sites conservés ;
+- au succès Base, le Refuge autonome précédent est retiré et le Camp est conservé.
+
+### Civilisation → réserve → ingénierie → établi
+Chaîne désormais intégrée :
+- après le Refuge et 10 stèles observées historiquement, GAME-civilization_1→5 mène sur trois nouvelles maps ;
+- chaque nouvelle map possède une nouvelle stèle garantie ;
+- la troisième map contient `MSC-CUSTOM-RESERVE-ABANDONEE` ;
+- la réserve offre 350 fibres + 350 minerais ordinaires répartis en 175 `azure_ferrite` + 175 `magnetic_ore` ;
+- le prélèvement respecte la capacité réelle du sac et conserve le reliquat persistant jusqu'à épuisement ;
+- le crédit de réserve ne simule pas de `RESOURCE_COLLECTED` et ne gonfle pas les compteurs COL ;
+- GAME-engineering_3/4 consomment réellement des ressources et introduisent les limites du feu ;
+- GAME-fire est répétable, locale à Crystal/proximité d'un site et consomme 8 bois sans provoquer seule un retour ;
+- GAME-engineering_5 débloque le Blueprint Établi ;
+- GAME-engineering_6 conduit à l'implantation réelle de `MSC-CUSTOM-ETABLI-VIDE` sur Crystal ;
+- le joueur choisit le placement ; anchor et rotation sont persistés pour les futures missions « retour à l'établi ».
+
+## Prochaine continuité explicitement préservée
+
+Le prochain jalon missionnel est ENE-11→14.
+La stratégie déjà validée doit être reprise et rebasée sur le HEAD ; elle ne doit pas être redéfinie arbitrairement.
+ENE-15 reste différé tant que ses prérequis ARCH-17 / DIP-02 ne sont pas réellement industrialisés.
+
+## Suggestions utilisateur encore ouvertes
+
+- console drone joueur dans le menu Recherche, en réutilisant les drones scout/harvest et leur runtime existant ;
+- Kit d'expédition générique pour les objets fabriqués transportables, d'abord l'accumulateur puis de futurs objets activables comme une balise ;
+- Journal évolutif calculé à l'ouverture seulement, avec briques persistantes et stables qui ne sont enrichies que lors d'évolutions majeures réelles ;
+- éventuel scouting drone inter-map uniquement dans une passe future dédiée, pas implicitement avec ENE-13.
 
 ## Industrialisation
 
@@ -117,6 +151,7 @@ Le moteur doit continuer à être généralisé par propriétaires et patrons ex
 - données/contrats plutôt que branches par ID ;
 - propriétaires existants plutôt que bridges ;
 - tests de réfutation avec missions fictives `FUTURE-*` lorsque la primitive est générique ;
-- validation des consommateurs réels avant PASS.
+- validation des consommateurs réels avant PASS ;
+- BASE partielle exacte limitée au périmètre : ne pas reconstruire le dépôt complet.
 
 Les travaux encore ouverts sont listés uniquement dans `ROADMAP_TODO.md`.
