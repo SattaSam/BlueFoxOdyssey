@@ -2131,6 +2131,155 @@
   });
 
 
+  const ENE11 = Object.freeze({
+    id: "ENE-11",
+    title: "Premier accumulateur",
+    description: "Revenir à l’établi de Crystal, assembler un premier prototype avec des ressources réelles puis valider que la charge reste exploitable.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-10", count: 1 }),
+    initialState: "active",
+    prerequisites: Object.freeze(["ENE-10", "GAME-engineering_6"]),
+    priority: 298,
+    passivePriorityAxis: "research",
+    ponderation: 0.9,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prototype", title: "Assembler le prototype à l’établi", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "charge", title: "Valider narrativement la charge du prototype", action: "research", target: 1, requires: Object.freeze(["prototype"]), params: Object.freeze({}) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "ene11-workbench-prototype",
+      microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+      fact: "ene11:workbenchPrototype:v1",
+      slot: "prototype",
+      radius: 8
+    })]),
+    completionGate: Object.freeze({
+      type: "proximity.shelter",
+      mapId: "crystal",
+      shelterKinds: Object.freeze(["workbench"]),
+      radius: 8,
+      scope: "current-map"
+    }),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 12 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "crystal", quantity: 8 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 6 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.recipe",
+      id: "accumulator-basic-v1",
+      category: "energy",
+      label: "Fabriquer un accumulateur",
+      description: "Assembler un accumulateur transportable à l’établi.",
+      requiresShelter: true,
+      mapId: "crystal",
+      requirements: Object.freeze([
+        Object.freeze({ inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 12 }),
+        Object.freeze({ inventoryKey: "crystal", quantity: 8 }),
+        Object.freeze({ inventoryKey: "fiber", quantity: 6 })
+      ]),
+      output: Object.freeze({ objectId: "accumulator", quantity: 1 })
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["L’expérience voyage. Il me faut maintenant un contenant réel, assemblé proprement à l’établi."]),
+      progress: Object.freeze([Object.freeze({ slot: "prototype", atCount: 1, text: "Le prototype tient. La charge elle-même reste une propriété du montage, pas un nouvel objet à stocker." })]),
+      completed: Object.freeze(["Le prototype a rempli son rôle. Je peux désormais fabriquer de vrais accumulateurs transportables à l’établi."])
+    })
+  });
+
+  const ENE12 = Object.freeze({
+    id: "ENE-12",
+    title: "Réveiller une ancienne machine",
+    description: "Transporter un accumulateur jusqu’à une machine abandonnée et lui céder cette réserve d’énergie.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-11", count: 1 }),
+    prerequisites: Object.freeze(["ENE-11"]),
+    priority: 297,
+    passivePriorityAxis: "research",
+    ponderation: 0.95,
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-MACHINE-ABANDONNEE", persistent: true, spawnOnce: true, contextRole: "energyMachineTest" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "machine", title: "Approcher la machine abandonnée avec un accumulateur", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "ene12-machine-proximity",
+      microSceneId: "MSC-CUSTOM-MACHINE-ABANDONNEE",
+      fact: "ene12:machineReached:v1",
+      slot: "machine",
+      radius: 3.5,
+      inventoryConsume: Object.freeze({
+        inventoryKey: "accumulator",
+        quantity: 1,
+        missingMessage: "Il me faut un accumulateur réel dans mon inventaire avant d’alimenter cette machine."
+      })
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Un accumulateur n’a d’intérêt que s’il peut alimenter autre chose que mes propres essais. Une vieille machine fera un bon test."]),
+      completed: Object.freeze(["L’accumulateur a été cédé à la machine. Elle répond de nouveau : assez pour confirmer que cette énergie peut alimenter une technologie existante."])
+    })
+  });
+
+  const ENE13 = Object.freeze({
+    id: "ENE-13",
+    title: "Donner de l’autonomie au drone",
+    description: "Réutiliser le drone éclaireur existant, lui consacrer un accumulateur puis confirmer un premier repérage autonome sur la map courante.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-12", count: 1 }),
+    prerequisites: Object.freeze(["ENE-12"]),
+    priority: 296,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "activate", title: "Activer le drone éclaireur avec un accumulateur", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "scout", title: "Laisser le drone repérer un objet sur cette map", action: "research", target: 1, requires: Object.freeze(["activate"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "ene13-scout-drone", activationSlot: "activate", scoutSlot: "scout" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le drone éclaireur existe déjà. Je n’ai pas besoin d’en inventer un autre : seulement de lui donner une réserve d’énergie autonome."]),
+      progress: Object.freeze([Object.freeze({ slot: "activate", atCount: 1, text: "L’accumulateur est engagé. Maintenant je veux voir ce que le drone sait réellement repérer seul, ici, sur cette map." })]),
+      completed: Object.freeze(["Le drone a effectué son premier repérage autonome. Il transporte surtout de l’information ; c’est exactement ce qu’il me faut."])
+    })
+  });
+
+  const ENE14 = Object.freeze({
+    id: "ENE-14",
+    title: "Le réseau énergétique planétaire",
+    description: "Relier trois mesures de cristaux chargés, calibrer la lecture au Giant Tree puis formaliser la synthèse dans Recherche.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-13", count: 1 }),
+    prerequisites: Object.freeze(["ENE-13"]),
+    priority: 295,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CHARGED-CRYSTALS-001", persistent: true, spawnOnce: true, contextRole: "energyNetworkSample" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "measurements", title: "Comparer la signature sur trois maps", action: "analyze", target: 3, requires: Object.freeze([]), params: Object.freeze({ objectId: "RES-ENER-M-001", distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "calibration", title: "Calibrer la lecture au Giant Tree", action: "research", target: 1, requires: Object.freeze(["measurements"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "synthesis", title: "Formaliser la synthèse dans Recherche", action: "research", target: 1, requires: Object.freeze(["calibration"]), params: Object.freeze({}) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "ene14-giant-tree-calibration",
+      microSceneId: "MSC-CUSTOM-GIANTCRISTAL-TREE",
+      fact: "ene14:giantTreeCalibration:v1",
+      slot: "calibration",
+      radius: 5
+    })]),
+    runtimeValidation: Object.freeze({ type: "ene14-energy-network", reuseMissionId: "GEO-07", reuseSlot: "measurements", reuseAmount: 3 }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les mesures locales et le Giant Tree commencent à dessiner la même chose : un réseau énergétique à l’échelle de la planète."]),
+      completed: Object.freeze(["La synthèse tient : les signatures mesurées et le Giant Tree appartiennent au même réseau énergétique planétaire. Ce réseau reste une interprétation de mesures réelles, pas un nouvel objet physique."])
+    })
+  });
+
   const FAU01 = Object.freeze({
     id: "FAU-01",
     title: "Approche prudente",
@@ -6120,6 +6269,10 @@
     ENE08,
     ENE09,
     ENE10,
+    ENE11,
+    ENE12,
+    ENE13,
+    ENE14,
     FAU01,
     FAU02,
     FAU03,

@@ -1949,6 +1949,17 @@
           changed = true;
           return;
         }
+        if (context.inventoryConsume) {
+          const requirement = context.inventoryConsume;
+          const keys = this.inventoryKeysForRequirement(requirement);
+          const quantity = Math.max(0, Number(requirement.quantity) || 0);
+          const transactionId = `${mission.id}:${context.id || context.fact}:inventory-consume:v1`;
+          const removed = BF.consumeInventoryPoolOnce?.(transactionId, keys, quantity) || 0;
+          if (removed !== quantity) {
+            BF.currentEngine?.callbacks?.onStatus?.(requirement.missingMessage || "Ressource missionnelle manquante.");
+            return;
+          }
+        }
         if (context.slot) {
           if (!this.progressRuntimeValidationSlot(mission.id, context.slot, 1)) {
             return;
@@ -2258,7 +2269,63 @@
       return { matched: candidates.length, activatedMissionId };
     }
 
+    handleEnergyMissionObjectEvent(rawEvent = {}) {
+      const type = String(rawEvent?.type || "");
+      const detail = rawEvent?.detail || {};
+      const source = String(detail.interactionSource || "");
+      const droneType = String(detail.droneType || "");
+      const tags = new Set(asArray(rawEvent?.tags).map(lower));
+      const types = BF.ObjectEvents?.types || {};
+      const mission = this.byId.get("ENE-13");
+      if (!mission || !this.missionLifecycle(mission.id).active) return false;
+
+      if (
+        type === String(types.DRONE_ACTIVATED || "DRONE_ACTIVATED") &&
+        source === "drone" &&
+        droneType === "scout_drone"
+      ) {
+        const transactionId = "ENE-13:scout-activation:accumulator:v1";
+        const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1) || 0;
+        if (removed !== 1) {
+          BF.currentEngine?.callbacks?.onStatus?.("Il me faut un accumulateur réel avant d’alimenter le drone éclaireur.");
+          return false;
+        }
+        return this.progressRuntimeValidationSlot(
+          mission.id,
+          mission.runtimeValidation?.activationSlot || "activate",
+          1
+        );
+      }
+
+      if (
+        type === String(types.OBJECT_SEEN || "OBJECT_SEEN") &&
+        source === "drone" &&
+        tags.has("drone-scouted")
+      ) {
+        return this.progressRuntimeValidationSlot(
+          mission.id,
+          mission.runtimeValidation?.scoutSlot || "scout",
+          1
+        );
+      }
+      return false;
+    }
+
+    reconcileEnergyMissionRuntime(mission) {
+      if (!mission || !this.missionLifecycle(mission.id).active) return false;
+      const validation = mission.runtimeValidation || {};
+      if (validation.type !== "ene14-energy-network") return false;
+      const completed = this.missionLifecycle(validation.reuseMissionId).completed;
+      if (!completed) return false;
+      return this.progressRuntimeValidationSlot(
+        mission.id,
+        validation.reuseSlot || "measurements",
+        Math.max(1, Number(validation.reuseAmount) || 1)
+      );
+    }
+
     onObjectEvent(rawEvent) {
+      this.handleEnergyMissionObjectEvent(rawEvent);
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
       this.recordObservation(rawEvent);
@@ -4252,12 +4319,12 @@
         ? reward.requirements
         : [];
       return requirements.every((requirement) => {
-        const key = requirement.inventoryKey || requirement.resource;
+        const keys = this.inventoryKeysForRequirement(requirement);
         const quantity =
           Math.max(0, Number(requirement.quantity) || 0) * requested;
         return Boolean(
-          key &&
-          BF.progression?.availableInventory?.([key]) >= quantity
+          keys.length &&
+          BF.progression?.availableInventory?.(keys) >= quantity
         );
       });
     }
@@ -4271,10 +4338,10 @@
         ? reward.requirements
         : [];
       for (const requirement of requirements) {
-        const key = requirement.inventoryKey || requirement.resource;
+        const keys = this.inventoryKeysForRequirement(requirement);
         const quantity =
           Math.max(0, Number(requirement.quantity) || 0) * requested;
-        const removed = BF.consumeInventoryPool?.([key], quantity) || 0;
+        const removed = BF.consumeInventoryPool?.(keys, quantity) || 0;
         if (removed !== quantity) return 0;
       }
 
@@ -4402,6 +4469,7 @@
         if (lifecycle?.status === "active") {
           this.emitRevealedOnce(mission);
           this.applyActivationInventoryCredits(mission);
+          this.reconcileEnergyMissionRuntime(mission);
           this.handleConstructionReady(mission);
         }
 
