@@ -75,6 +75,8 @@
       this.constructionResourceSignatures = new Map();
       this.boundProgressionChanged = (event) =>
         this.onProgressionChanged(event.detail || {});
+      this.boundSiteEstablished = (event) =>
+        this.onSiteEstablished(event.detail || {});
     }
 
     defaultState() {
@@ -593,6 +595,20 @@
         base: sites.base || null,
         workbench: sites.workbench || null
       };
+    }
+
+    canAccessWorkbench(mapId = BF.currentEngine?.currentMapId) {
+      const targetMapId = String(mapId || "");
+      if (!targetMapId || String(BF.currentEngine?.currentMapId || "") !== targetMapId) return false;
+      if (!this.siteBucket(targetMapId)?.workbench) return false;
+      const anchor = this.microSceneProximityAnchor("MSC-CUSTOM-ETABLI-VIDE");
+      const player = BF.currentEngine?.character?.root?.position;
+      if (!anchor || !player) return false;
+      const point = this.observationPoint(anchor, BF.currentEngine);
+      return Math.hypot(
+        Number(player.x) - Number(point.x),
+        Number(player.z) - Number(point.z)
+      ) <= 8;
     }
 
     constructionAvailability(kind, mapId = BF.currentEngine?.currentMapId) {
@@ -2262,11 +2278,51 @@
       const selected = options.allowActivation === false
         ? null
         : candidates[0] || null;
-      const activatedMissionId = selected && this.activateMission(selected, event)
+      if (!selected) {
+        return { matched: candidates.length, activatedMissionId: null, activatedMissionIds: [] };
+      }
+
+      const concurrentGroup = String(
+        selected.concurrentAvailabilityGroup || ""
+      ).trim();
+      if (concurrentGroup) {
+        const concurrentCandidates = candidates.filter((mission) =>
+          String(mission.concurrentAvailabilityGroup || "").trim() === concurrentGroup
+        );
+        const activatedMissionIds = [];
+        concurrentCandidates.forEach((mission) => {
+          if (this.activateMission(mission, event)) {
+            activatedMissionIds.push(mission.id);
+          }
+        });
+
+        // Les missions concurrentes sont toutes confiées au lifecycle canonique
+        // comme secondaires actives. MissionManager reste seul propriétaire de
+        // la sélection de la mission principale et peut réarbitrer plus tard
+        // sans réémettre l'événement causal.
+        const manager = this.manager();
+        if (activatedMissionIds.length > 1) {
+          manager?.selectBestPrimary?.(performance.now(), true);
+          manager?.memory?.save?.();
+          manager?.publish?.();
+        }
+        return {
+          matched: candidates.length,
+          activatedMissionId:
+            manager?.primaryMissionId || activatedMissionIds[0] || null,
+          activatedMissionIds
+        };
+      }
+
+      const activatedMissionId = this.activateMission(selected, event)
         ? selected.id
         : null;
 
-      return { matched: candidates.length, activatedMissionId };
+      return {
+        matched: candidates.length,
+        activatedMissionId,
+        activatedMissionIds: activatedMissionId ? [activatedMissionId] : []
+      };
     }
 
     handleEnergyMissionObjectEvent(rawEvent = {}) {
@@ -2284,11 +2340,13 @@
         source === "drone" &&
         droneType === "scout_drone"
       ) {
-        const transactionId = "ENE-13:scout-activation:accumulator:v1";
-        const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1) || 0;
-        if (removed !== 1) {
-          BF.currentEngine?.callbacks?.onStatus?.("Il me faut un accumulateur réel avant d’alimenter le drone éclaireur.");
-          return false;
+        if (detail.accumulatorConsumed !== true) {
+          const transactionId = "ENE-13:scout-activation:accumulator:v1";
+          const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1) || 0;
+          if (removed !== 1) {
+            BF.currentEngine?.callbacks?.onStatus?.("Il me faut un accumulateur réel avant d’alimenter le drone éclaireur.");
+            return false;
+          }
         }
         return this.progressRuntimeValidationSlot(
           mission.id,
@@ -2324,11 +2382,36 @@
       );
     }
 
+    onSiteEstablished(detail = {}) {
+      if (String(detail.kind || "") !== "deployed_beacon") return false;
+      const mission = this.byId.get("BAL-03");
+      if (!mission || !this.missionLifecycle(mission.id).active) return false;
+      const validation = mission.runtimeValidation || {};
+      if (validation.type !== "bal03-deployed-beacon") return false;
+      const fact = this.manager()?.memory?.getFact?.(validation.requiredMapFact, null);
+      const field = String(validation.requiredMapField || "mapId");
+      const targetMapId = String(fact?.[field] || fact?.mapId || "");
+      if (!targetMapId || String(detail.mapId || "") !== targetMapId) return false;
+      return this.progressRuntimeValidationSlot(
+        mission.id,
+        validation.slot || "deployBeacon",
+        1
+      );
+    }
+
     onObjectEvent(rawEvent) {
       this.handleEnergyMissionObjectEvent(rawEvent);
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
       this.recordObservation(rawEvent);
+      const droneHistoricalObservation =
+        String(rawEvent?.detail?.interactionSource || "") === "drone" &&
+        String(rawEvent?.type || "") === String(BF.ObjectEvents?.types?.OBJECT_SEEN || "OBJECT_SEEN") &&
+        new Set(asArray(rawEvent?.tags).map(lower)).has("drone-scouted");
+      // Le Scout enrichit l'historique mondial via l'événement canonique, mais
+      // ne crédite aucune observation missionnelle ordinaire. ENE-13 a déjà
+      // consommé explicitement cet événement juste au-dessus.
+      if (droneHistoricalObservation) return;
       const activeBefore = new Set(
         this.catalog
           .filter((mission) => this.missionLifecycle(mission.id).active)
@@ -3904,11 +3987,10 @@
       return true;
     }
 
-    sitePlacementValid(mission, placement, engine = BF.currentEngine) {
-      const effect = this.constructionPlacementEffect(mission);
+    microScenePlacementValid(microSceneId, placement, engine = BF.currentEngine) {
       const anchor = placement?.anchor;
-      if (!engine?.currentMap || !effect || !anchor) return false;
-      const scene = BF.MicroScenes?.get?.(effect.microSceneId);
+      const scene = BF.MicroScenes?.get?.(microSceneId);
+      if (!engine?.currentMap || !scene || !anchor) return false;
       const radius = Math.max(2, Number(scene?.radius) || 4);
       const bounds = Number(engine.currentMap.bounds);
       if (
@@ -3930,43 +4012,81 @@
       });
     }
 
-    beginSitePlacement(mission) {
-      if (this.activePlacement?.missionId === mission?.id) return true;
-      if (this.activePlacement) this.cleanupPlacement();
-      const engine = BF.currentEngine;
+    sitePlacementValid(mission, placement, engine = BF.currentEngine) {
       const effect = this.constructionPlacementEffect(mission);
+      return Boolean(
+        effect?.microSceneId &&
+        this.microScenePlacementValid(effect.microSceneId, placement, engine)
+      );
+    }
+
+    autonomousMicroScenePlacement(spec = {}, engine = BF.currentEngine) {
+      const microSceneId = String(spec.microSceneId || "");
+      if (!microSceneId || !engine?.character?.root) return null;
+      const origin = spec.referenceAnchor || engine.character.root.position;
+      const referenceYaw = Number(spec.referenceYaw) || 0;
+      const key = String(spec.id || microSceneId);
+      const baseAngle = referenceYaw + ((key.length * 47) % 360) * Math.PI / 180;
+      for (const radius of spec.referenceAnchor ? [5, 7, 10] : [7, 10, 13]) {
+        for (let index = 0; index < 8; index += 1) {
+          const angle = baseAngle + index * Math.PI / 4;
+          const placement = {
+            anchor: {
+              x: Number(origin.x) + Math.cos(angle) * radius,
+              y: Number(origin.y) || 0,
+              z: Number(origin.z) + Math.sin(angle) * radius
+            },
+            rotation: [0, angle + Math.PI, 0]
+          };
+          if (this.microScenePlacementValid(microSceneId, placement, engine)) {
+            return placement;
+          }
+        }
+      }
+      return null;
+    }
+
+    beginMicroScenePlacement(spec = {}) {
+      const engine = BF.currentEngine;
+      const microSceneId = String(spec.microSceneId || "");
+      const placementId = String(spec.id || spec.missionId || microSceneId || "micro-scene");
+      const missionId = spec.missionId ? String(spec.missionId) : placementId;
+      const mapId = String(spec.mapId || engine?.currentMapId || "");
       const canvas = engine?.renderer?.domElement;
-      if (!engine?.THREE || !engine?.raycaster || !engine?.groundPlane || !canvas || !effect) return false;
-      if (String(engine.currentMapId) !== String(this.missionTargetMapId(mission) || engine.currentMapId)) return false;
+      if (!microSceneId || !BF.MicroScenes?.get?.(microSceneId)) return false;
+      if (this.activePlacement?.placementId === placementId) return true;
+      if (this.activePlacement) this.cleanupPlacement();
+      if (!engine?.THREE || !engine?.raycaster || !engine?.groundPlane || !canvas) return false;
+      if (!mapId || String(engine.currentMapId || "") !== mapId) return false;
 
       const previewRoot = new engine.THREE.Group();
-      previewRoot.name = `BlueFoxSitePreview:${mission.id}`;
+      previewRoot.name = `BlueFoxMicroScenePreview:${placementId}`;
       engine.currentMap?.group?.add(previewRoot);
       const spawner = new BF.ObjectSpawner({
         THREE: engine.THREE,
         scene: previewRoot,
         palette: BF.maps?.[engine.currentMapId]?.palette
       });
-      const records = spawner.spawnMicroScene(effect.microSceneId, {
+      const records = spawner.spawnMicroScene(microSceneId, {
         origin: { x: 0, y: 0, z: 0 },
         rotation: [0, 0, 0],
         scene: previewRoot,
         force: true,
-        source: `preview:${mission.id}`
+        source: `preview:${placementId}`
       });
       if (!records?.length) {
         previewRoot.parent?.remove(previewRoot);
         return false;
       }
-      // Le preview conserve les matériaux réels de la MSC afin que le joueur
-      // juge précisément son apparence et sa rotation avant installation.
-      const clonedMaterials = [];
-      const setPreviewOpacity = () => {};
 
-      const confirmationToken = Symbol(`site-placement:${mission.id}`);
-      let yaw = 0;
+      const clonedMaterials = [];
+      const confirmationToken = Symbol(`micro-scene-placement:${placementId}`);
+      let yaw = Number(spec.initialYaw) || 0;
       let candidate = null;
       let finalizing = false;
+      const label = String(spec.label || "structure");
+      const kind = String(spec.kind || "micro-scene");
+
       const movePreview = (event) => {
         if (finalizing) return;
         const rect = canvas.getBoundingClientRect();
@@ -3981,36 +4101,30 @@
         candidate = { x: point.x, y: 0, z: point.z };
         previewRoot.position.set(candidate.x, 0, candidate.z);
         previewRoot.rotation.set(0, yaw, 0);
-        previewRoot.userData.validPlacement = this.sitePlacementValid(
-          mission,
+        previewRoot.userData.validPlacement = this.microScenePlacementValid(
+          microSceneId,
           { anchor: candidate, rotation: [0, yaw, 0] },
           engine
         );
       };
+
       const pointerup = (event) => {
-        // Le clic gauche reste intégralement au déplacement de BlueFox.
-        // Le clic droit confirme uniquement la position de la MSC.
         if (event.button !== 2 || finalizing) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         if (!candidate) return;
         const placement = { anchor: { ...candidate }, rotation: [0, yaw, 0] };
-        if (!this.sitePlacementValid(mission, placement, engine)) {
+        if (!this.microScenePlacementValid(microSceneId, placement, engine)) {
           engine.callbacks?.onStatus?.(
             "Emplacement invalide : choisissez une zone libre à l'intérieur du plateau."
           );
           return;
         }
         finalizing = true;
-        const label = effect.kind === "refuge"
-          ? "refuge"
-          : effect.kind === "workbench"
-            ? "établi"
-            : "camp";
         const cancel = () => {
           finalizing = false;
           engine.callbacks?.onStatus?.(
-            `Placement du ${label} repris. Choisissez un autre emplacement ou Échap pour annuler.`
+            spec.resumeMessage || `Placement de ${label} repris. Choisissez un autre emplacement ou Échap pour annuler.`
           );
         };
         const rotate = (nextYaw) => {
@@ -4022,41 +4136,41 @@
             anchor: { ...candidate },
             rotation: [0, yaw, 0]
           };
-          if (!this.sitePlacementValid(mission, finalPlacement, engine)) {
+          if (!this.microScenePlacementValid(microSceneId, finalPlacement, engine)) {
             finalizing = false;
             engine.callbacks?.onStatus?.("Emplacement devenu invalide.");
             return false;
           }
-          if (!this.applyEffects(mission, {
-            placement: finalPlacement,
-            source: "player",
-            confirmationToken
-          })) {
+          if (typeof spec.onInstall === "function" && spec.onInstall(finalPlacement, confirmationToken) === false) {
             finalizing = false;
-            engine.callbacks?.onStatus?.(
-              "Construction impossible à cet emplacement ou ressources insuffisantes."
-            );
             return false;
           }
           this.cleanupPlacement();
-          this.manager()?.syncLifecycleFromTrees?.();
-          this.manager()?.publish?.();
-          global.dispatchEvent?.(new CustomEvent("bluefox:site-established", {
-            detail: { missionId: mission.id, mapId: engine.currentMapId, kind: effect.kind }
-          }));
           return true;
         };
         global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-finalize-request", {
           detail: {
-            missionId: mission.id,
+            missionId,
             mapId: engine.currentMapId,
-            kind: effect.kind,
+            kind,
+            label,
             yaw,
             onRotate: rotate,
             onCancel: cancel,
             onInstall: install
           }
         }));
+        if (!["camp", "refuge", "workbench"].includes(kind)) {
+          const overlay = global.document?.getElementById?.("bluefox-site-placement-finalize");
+          if (overlay) {
+            const title = overlay.querySelector?.("strong");
+            if (title) title.textContent = `Positionnement de ${label}`;
+            const installButton = [...(overlay.querySelectorAll?.("button") || [])].find((button) =>
+              String(button.textContent || "").startsWith("Installer")
+            );
+            if (installButton) installButton.textContent = `Installer ${label}`;
+          }
+        }
       };
       const contextmenu = (event) => {
         if (!this.activePlacement || finalizing) return;
@@ -4066,10 +4180,10 @@
         if (event.key !== "Escape") return;
         event.preventDefault();
         global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-finalize-close", {
-          detail: { missionId: mission.id }
+          detail: { missionId }
         }));
         this.cleanupPlacement();
-        engine.callbacks?.onStatus?.("Placement annulé. La mission reste active.");
+        engine.callbacks?.onStatus?.(spec.cancelMessage || "Placement annulé. L'objet reste disponible.");
       };
       const handlers = { pointermove: movePreview, pointerup, contextmenu, keydown };
       Object.entries(handlers).forEach(([type, handler]) => {
@@ -4080,7 +4194,9 @@
         });
       });
       this.activePlacement = {
-        missionId: mission.id,
+        placementId,
+        missionId,
+        microSceneId,
         canvas,
         previewRoot,
         handlers,
@@ -4088,12 +4204,56 @@
         confirmationToken
       };
       engine.callbacks?.onStatus?.(
-        "Placement : déplacez la structure avec la souris. Clic gauche : déplacement de BlueFox. Clic droit : confirmer la position. Molette : caméra. Échap : annuler."
+        spec.startMessage || `Placement de ${label} : déplacez avec la souris. Clic gauche : déplacement de BlueFox. Clic droit : confirmer. Molette : caméra. Échap : annuler.`
       );
       global.dispatchEvent?.(new CustomEvent("bluefox:site-placement-started", {
-        detail: { missionId: mission.id, mapId: engine.currentMapId, kind: effect.kind }
+        detail: { missionId, mapId: engine.currentMapId, kind, microSceneId }
       }));
       return true;
+    }
+
+    beginSitePlacement(mission) {
+      const effect = this.constructionPlacementEffect(mission);
+      const engine = BF.currentEngine;
+      if (!effect) return false;
+      const targetMapId = String(this.missionTargetMapId(mission) || engine?.currentMapId || "");
+      const label = effect.kind === "refuge"
+        ? "refuge"
+        : effect.kind === "workbench"
+          ? "établi"
+          : "camp";
+      const resumeMessage = effect.kind === "workbench"
+        ? "Placement de l’établi repris. Choisissez un autre emplacement ou Échap pour annuler."
+        : `Placement du ${label} repris. Choisissez un autre emplacement ou Échap pour annuler.`;
+      return this.beginMicroScenePlacement({
+        id: `site:${mission.id}`,
+        missionId: mission.id,
+        mapId: targetMapId,
+        microSceneId: effect.microSceneId,
+        kind: effect.kind,
+        label,
+        resumeMessage,
+        cancelMessage: "Placement annulé. La mission reste active.",
+        startMessage: "Placement : déplacez la structure avec la souris. Clic gauche : déplacement de BlueFox. Clic droit : confirmer la position. Molette : caméra. Échap : annuler.",
+        onInstall: (placement, confirmationToken) => {
+          if (!this.applyEffects(mission, {
+            placement,
+            source: "player",
+            confirmationToken
+          })) {
+            engine?.callbacks?.onStatus?.(
+              "Construction impossible à cet emplacement ou ressources insuffisantes."
+            );
+            return false;
+          }
+          this.manager()?.syncLifecycleFromTrees?.();
+          this.manager()?.publish?.();
+          global.dispatchEvent?.(new CustomEvent("bluefox:site-established", {
+            detail: { missionId: mission.id, mapId: engine?.currentMapId, kind: effect.kind }
+          }));
+          return true;
+        }
+      });
     }
 
     handleConstructionReady(mission) {
@@ -4312,6 +4472,13 @@
         reward.requiresShelter !== false &&
         options.ignoreShelter !== true &&
         BF.canAccessCampInventory?.() !== true
+      ) {
+        return false;
+      }
+      if (
+        reward.requiresWorkbench === true &&
+        options.ignoreWorkbench !== true &&
+        this.canAccessWorkbench(reward.mapId || BF.currentEngine?.currentMapId) !== true
       ) {
         return false;
       }
@@ -4574,6 +4741,14 @@
         "bluefox:rations-changed",
         this.boundRationsChanged
       );
+      global.removeEventListener?.(
+        "bluefox:site-established",
+        this.boundSiteEstablished
+      );
+      global.addEventListener?.(
+        "bluefox:site-established",
+        this.boundSiteEstablished
+      );
       return Boolean(this.unsubscribeObjectEvents);
     }
 
@@ -4710,6 +4885,15 @@
     runtime.survivalCapabilityUnlocked(capability);
 
 
+  BF.MicroScenePlacement = Object.freeze({
+    start: (options) => runtime.beginMicroScenePlacement(options || {}),
+    cancel: () => runtime.cleanupPlacement(),
+    isValid: (microSceneId, placement, engine) =>
+      runtime.microScenePlacementValid(microSceneId, placement, engine || BF.currentEngine),
+    suggest: (options, engine) =>
+      runtime.autonomousMicroScenePlacement(options || {}, engine || BF.currentEngine)
+  });
+
   BF.Research = Object.freeze({
     list: (options) => runtime.researchEntries(options),
     get: (id) => runtime.researchRewardById(id),
@@ -4724,7 +4908,8 @@
       runtime.startConstruction(kind, options),
     resumePlacement: (missionId) =>
       runtime.resumeConstructionPlacement(missionId),
-    cancelPlacement: () => runtime.cleanupPlacement()
+    cancelPlacement: () => runtime.cleanupPlacement(),
+    canAccessWorkbench: (mapId) => runtime.canAccessWorkbench(mapId)
   });
   BF.getResearchEntries = (options) =>
     runtime.researchEntries(options);

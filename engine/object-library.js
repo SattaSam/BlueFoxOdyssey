@@ -1549,7 +1549,7 @@
         root.userData.lanternMushroomCluster = true;
         root.userData.lanternCount = 3;
       } else if (type === "survey_beacon") {
-        const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.16,1.8,8),darkMetal); mast.position.y=0.9; root.add(mast); const head=new THREE.Mesh(new THREE.OctahedronGeometry(0.34,1),material(THREE,{color:0x6ddfff,emissive:0x147aa0,emissiveIntensity:1.25,metalness:0.4})); head.position.y=1.85; root.add(head); colliders=[{offset:new THREE.Vector3(),radius:0.24}];
+        const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.16,1.8,8),darkMetal); mast.position.y=0.9; root.add(mast); const head=new THREE.Mesh(new THREE.OctahedronGeometry(0.34,1),material(THREE,{color:0x6ddfff,emissive:0x147aa0,emissiveIntensity:1.25,metalness:0.4})); head.name="SurveyBeaconHead"; head.position.y=1.85; root.add(head); colliders=[{offset:new THREE.Vector3(),radius:0.24}];
       } else if (type === "fossil_root_arch") {
         [-1,1].forEach(side=>{const rootLeg=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.58,3.1,8),material(THREE,{color:0x73624d,roughness:0.98})); rootLeg.position.set(side*1.35,1.55,0); rootLeg.rotation.z=side*-0.18; root.add(rootLeg);}); const crown=new THREE.Mesh(new THREE.TorusGeometry(1.38,0.34,9,28,Math.PI),material(THREE,{color:0x73624d,roughness:0.98})); crown.position.y=3.05; root.add(crown); colliders=[{offset:new THREE.Vector3(-1.35,0,0),radius:0.4},{offset:new THREE.Vector3(1.35,0,0),radius:0.4}];
       } else {

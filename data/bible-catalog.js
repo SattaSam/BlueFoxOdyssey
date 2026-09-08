@@ -2153,13 +2153,6 @@
       slot: "prototype",
       radius: 8
     })]),
-    completionGate: Object.freeze({
-      type: "proximity.shelter",
-      mapId: "crystal",
-      shelterKinds: Object.freeze(["workbench"]),
-      radius: 8,
-      scope: "current-map"
-    }),
     effects: Object.freeze([
       Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 12 }),
       Object.freeze({ type: "inventory.consume", inventoryKey: "crystal", quantity: 8 }),
@@ -2172,6 +2165,7 @@
       label: "Fabriquer un accumulateur",
       description: "Assembler un accumulateur transportable à l’établi.",
       requiresShelter: true,
+      requiresWorkbench: true,
       mapId: "crystal",
       requirements: Object.freeze([
         Object.freeze({ inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 12 }),
@@ -2203,20 +2197,30 @@
       requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-MACHINE-ABANDONNEE", persistent: true, spawnOnce: true, contextRole: "energyMachineTest" })])
     }),
     sequence: Object.freeze([
-      Object.freeze({ slot: "machine", title: "Approcher la machine abandonnée avec un accumulateur", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) })
+      Object.freeze({ slot: "approach", title: "Approcher la machine abandonnée avec un accumulateur", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "machine", title: "Céder l’accumulateur à la machine", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ catalogManaged: true }) })
     ]),
-    proximityContexts: Object.freeze([Object.freeze({
-      id: "ene12-machine-proximity",
-      microSceneId: "MSC-CUSTOM-MACHINE-ABANDONNEE",
-      fact: "ene12:machineReached:v1",
-      slot: "machine",
-      radius: 3.5,
-      inventoryConsume: Object.freeze({
-        inventoryKey: "accumulator",
-        quantity: 1,
-        missingMessage: "Il me faut un accumulateur réel dans mon inventaire avant d’alimenter cette machine."
+    proximityContexts: Object.freeze([
+      Object.freeze({
+        id: "ene12-machine-approach",
+        microSceneId: "MSC-CUSTOM-MACHINE-ABANDONNEE",
+        fact: "ene12:machineApproached:v1",
+        slot: "approach",
+        radius: 3.5
+      }),
+      Object.freeze({
+        id: "ene12-machine-proximity",
+        microSceneId: "MSC-CUSTOM-MACHINE-ABANDONNEE",
+        fact: "ene12:machineReached:v1",
+        slot: "machine",
+        radius: 3.5,
+        inventoryConsume: Object.freeze({
+          inventoryKey: "accumulator",
+          quantity: 1,
+          missingMessage: "Il me faut un accumulateur réel dans mon inventaire avant d’alimenter cette machine."
+        })
       })
-    })]),
+    ]),
     narrative: Object.freeze({
       revealed: Object.freeze(["Un accumulateur n’a d’intérêt que s’il peut alimenter autre chose que mes propres essais. Une vieille machine fera un bon test."]),
       completed: Object.freeze(["L’accumulateur a été cédé à la machine. Elle répond de nouveau : assez pour confirmer que cette énergie peut alimenter une technologie existante."])
@@ -2226,7 +2230,7 @@
   const ENE13 = Object.freeze({
     id: "ENE-13",
     title: "Donner de l’autonomie au drone",
-    description: "Réutiliser le drone éclaireur existant, lui consacrer un accumulateur puis confirmer un premier repérage autonome sur la map courante.",
+    description: "Réutiliser le drone éclaireur existant, lui consacrer ses composants et un accumulateur puis confirmer un premier balayage autonome d’un plateau sur la map courante.",
     pattern: "SEQUENCE_ACTIONS",
     trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-12", count: 1 }),
     prerequisites: Object.freeze(["ENE-12"]),
@@ -2235,13 +2239,13 @@
     ponderation: 1,
     sequence: Object.freeze([
       Object.freeze({ slot: "activate", title: "Activer le drone éclaireur avec un accumulateur", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
-      Object.freeze({ slot: "scout", title: "Laisser le drone repérer un objet sur cette map", action: "research", target: 1, requires: Object.freeze(["activate"]), params: Object.freeze({ catalogManaged: true }) })
+      Object.freeze({ slot: "scout", title: "Laisser le drone balayer un plateau de cette map", action: "research", target: 1, requires: Object.freeze(["activate"]), params: Object.freeze({ catalogManaged: true }) })
     ]),
     runtimeValidation: Object.freeze({ type: "ene13-scout-drone", activationSlot: "activate", scoutSlot: "scout" }),
     narrative: Object.freeze({
       revealed: Object.freeze(["Le drone éclaireur existe déjà. Je n’ai pas besoin d’en inventer un autre : seulement de lui donner une réserve d’énergie autonome."]),
       progress: Object.freeze([Object.freeze({ slot: "activate", atCount: 1, text: "L’accumulateur est engagé. Maintenant je veux voir ce que le drone sait réellement repérer seul, ici, sur cette map." })]),
-      completed: Object.freeze(["Le drone a effectué son premier repérage autonome. Il transporte surtout de l’information ; c’est exactement ce qu’il me faut."])
+      completed: Object.freeze(["Le drone a balayé son premier plateau de façon autonome. Il transporte surtout de l’information ; c’est exactement ce qu’il me faut."])
     })
   });
 
@@ -2254,6 +2258,7 @@
     prerequisites: Object.freeze(["ENE-13"]),
     priority: 295,
     passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "ENE-13-BRANCH",
     ponderation: 1,
     navigation: Object.freeze({ autonomousUnknownTravel: true }),
     mapGeneration: Object.freeze({
@@ -2277,6 +2282,183 @@
     narrative: Object.freeze({
       revealed: Object.freeze(["Les mesures locales et le Giant Tree commencent à dessiner la même chose : un réseau énergétique à l’échelle de la planète."]),
       completed: Object.freeze(["La synthèse tient : les signatures mesurées et le Giant Tree appartiennent au même réseau énergétique planétaire. Ce réseau reste une interprétation de mesures réelles, pas un nouvel objet physique."])
+    })
+  });
+
+  const BAL01 = Object.freeze({
+    id: "BAL-01",
+    title: "Comprendre une balise abandonnée",
+    description: "Retrouver une balise d’arpentage abandonnée et analyser son principe de relais fixe après les premiers essais du drone éclaireur.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-13", count: 1 }),
+    prerequisites: Object.freeze(["ENE-13"]),
+    priority: 295,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "ENE-13-BRANCH",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([Object.freeze({
+        id: "MSC-TECH-RELAY-001",
+        persistent: true,
+        spawnOnce: true,
+        contextRole: "beaconReverseEngineeringSource"
+      })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "analyzeBeacon",
+        title: "Analyser une balise d’arpentage abandonnée",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "survey_beacon" })
+      }),
+      Object.freeze({
+        slot: "understandRelay",
+        title: "Interpréter le principe de relais",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["analyzeBeacon"]),
+        params: Object.freeze({ catalogManaged: true })
+      })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "bal01-relay-understanding",
+      microSceneId: "MSC-TECH-RELAY-001",
+      fact: "bal01:relayUnderstood:v1",
+      slot: "understandRelay",
+      radius: 5
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le Scout fonctionne, mais sans repère fixe il reste lié à ma présence. Les anciennes balises d’arpentage pourraient expliquer comment maintenir un lien avec une zone distante."]),
+      completed: Object.freeze(["Cette balise ne transporte rien : elle maintient surtout un repère technique stable. Je peux probablement en reconstruire le principe à l’établi."])
+    })
+  });
+
+  const BAL02 = Object.freeze({
+    id: "BAL-02",
+    title: "Rétroconcevoir une balise",
+    description: "Revenir à l’établi, reproduire le principe du relais étudié et formaliser un Blueprint de balise transportable.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "BAL-01", count: 1 }),
+    prerequisites: Object.freeze(["BAL-01", "GAME-engineering_6"]),
+    priority: 294,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reverseEngineer",
+        title: "Rétroconcevoir le relais à l’établi",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ catalogManaged: true })
+      }),
+      Object.freeze({
+        slot: "formalizeBlueprint",
+        title: "Formaliser le Blueprint de la balise",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["reverseEngineer"]),
+        params: Object.freeze({ catalogManaged: true })
+      })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({
+        id: "bal02-workbench-reverse-engineering",
+        microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+        fact: "bal02:workbenchReverseEngineering:v1",
+        slot: "reverseEngineer",
+        radius: 8
+      }),
+      Object.freeze({
+        id: "bal02-workbench-blueprint",
+        microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+        fact: "bal02:workbenchBlueprint:v1",
+        slot: "formalizeBlueprint",
+        radius: 8
+      })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.recipe",
+      id: "deployed-beacon-v1",
+      category: "technology",
+      label: "Balise d’arpentage BlueFox",
+      description: "Assembler une balise transportable destinée à être implantée comme relais persistant.",
+      requiresShelter: true,
+      requiresWorkbench: true,
+      requirements: Object.freeze([
+        Object.freeze({ inventoryKey: "core", quantity: 1 }),
+        Object.freeze({ inventoryKey: "accumulator", quantity: 1 }),
+        Object.freeze({ inventoryKey: "parts", quantity: 6 }),
+        Object.freeze({ inventoryKey: "wood", quantity: 8 }),
+        Object.freeze({ inventoryKey: "stellar_iridium", quantity: 4 })
+      ]),
+      output: Object.freeze({ objectId: "deployed_beacon", quantity: 1 })
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le principe est simple, mais pas rudimentaire : un mât, un noyau de calcul, une réserve d’énergie et des matériaux capables de maintenir le signal proprement."]),
+      completed: Object.freeze(["Le Blueprint est cohérent. Je peux maintenant fabriquer une balise reconnaissable des anciennes et l’emporter dans mon Kit d’expédition."])
+    })
+  });
+
+  const BAL03 = Object.freeze({
+    id: "BAL-03",
+    title: "Implanter un premier relais",
+    description: "S’éloigner de trois nouvelles maps, atteindre un plateau riche en minerai puis y implanter une balise BlueFox persistante.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "BAL-02", count: 1 }),
+    prerequisites: Object.freeze(["BAL-02"]),
+    priority: 293,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachRemoteMap",
+        title: "Découvrir 3 nouvelles maps avant l’implantation",
+        action: "travel",
+        target: 3,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          mapGenerationOnCount: Object.freeze({
+            3: Object.freeze({
+              size: 1,
+              biome: "magnetic",
+              requiredObjects: Object.freeze([Object.freeze({
+                type: "magnetic_ore",
+                count: 10,
+                contextRole: "firstRemoteHarvestRichVein"
+              })])
+            })
+          })
+        })
+      }),
+      Object.freeze({
+        slot: "deployBeacon",
+        title: "Implanter la balise sur le plateau riche",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["reachRemoteMap"]),
+        params: Object.freeze({ catalogManaged: true })
+      })
+    ]),
+    runtimeValidation: Object.freeze({
+      type: "bal03-deployed-beacon",
+      slot: "deployBeacon",
+      requiredMapFact: "tutorialExcursion:BAL-03",
+      requiredMapField: "generatedTargetMapId"
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une balise n’a d’intérêt que si elle m’évite un aller-retour inutile. Je vais l’installer assez loin de mes bases, sur une petite zone dont les ressources justifient un relais permanent."]),
+      progress: Object.freeze([Object.freeze({ slot: "reachRemoteMap", atCount: 3, text: "Cette zone est assez éloignée et le minerai y est abondant. C’est exactement le type d’endroit où un relais autonome peut devenir utile." })]),
+      completed: Object.freeze(["La balise violette est implantée et persiste comme repère de cette map. Un drone pourra désormais utiliser ce relais au lieu de dépendre systématiquement de mon retour physique."])
     })
   });
 
@@ -6273,6 +6455,9 @@
     ENE12,
     ENE13,
     ENE14,
+    BAL01,
+    BAL02,
+    BAL03,
     FAU01,
     FAU02,
     FAU03,

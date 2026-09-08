@@ -2687,6 +2687,7 @@
     researchRefreshPending = true;
     scheduleScan();
   });
+  global.addEventListener("bluefox:special-objects-changed", scheduleScan);
   global.addEventListener("bluefox:mission-state", () => {
     researchRefreshPending = true;
     scheduleScan();
@@ -2731,7 +2732,9 @@
       ? "Positionnement du refuge"
       : detail.kind === "workbench"
         ? "Positionnement de l’établi"
-        : "Positionnement du camp";
+        : detail.kind === "deployed_beacon"
+          ? "Positionnement de la balise"
+          : "Positionnement du camp";
     title.style.cssText = "display:block;font-size:15px;margin-bottom:10px";
 
     const text = document.createElement("div");
@@ -2774,7 +2777,9 @@
       ? "Installer le refuge"
       : detail.kind === "workbench"
         ? "Installer l’établi"
-        : "Installer le camp";
+        : detail.kind === "deployed_beacon"
+          ? "Installer la balise"
+          : "Installer le camp";
     install.style.cssText =
       "padding:8px 13px;border-radius:999px;border:1px solid rgba(96,224,255,.55);background:rgba(12,82,104,.95);color:#fff;cursor:pointer";
 

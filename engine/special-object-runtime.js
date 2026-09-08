@@ -5,14 +5,14 @@
   const SPECIAL_TYPES = new Set([
     "energy_crystal", "abandoned_drone", "nocturnal_animal",
     "electrostatic_storm", "mobile_islet", "carnivorous_plant",
-    "scout_drone", "harvest_drone", "npc_translucent", "npc_rocky"
+    "scout_drone", "harvest_drone", "survey_beacon", "npc_translucent", "npc_rocky"
   ]);
   const sceneCache = new WeakMap();
   const STORAGE_KEY = "bluefox_special_objects_v1";
   const DRONE_TYPES = new Set(["scout_drone", "harvest_drone"]);
   const RECIPES = Object.freeze({
-    scout_drone: Object.freeze({ energy_crystal: 2, drone_components: 8, magnetic_ore: 12 }),
-    harvest_drone: Object.freeze({ energy_crystal: 3, drone_components: 12, magnetic_ore: 18 })
+    scout_drone: Object.freeze({ accumulator: 1, core: 2, parts: 10, energy_crystal: 2, magnetic_ore: 12 }),
+    harvest_drone: Object.freeze({ accumulator: 1, core: 2, parts: 15, energy_crystal: 3, magnetic_ore: 30, stellar_iridium: 6 })
   });
   const defaultState = () => ({ version: 1, drones: {}, resources: {} });
   const loadState = () => {
@@ -180,6 +180,16 @@
       if (proximity < 1.85) {
         applyHazard(root, "carnivorous_plant", 18000, { rest: 2.1, safety: 3.5 }, "La plante carnivore se referme : BlueFox recule de la zone dangereuse.");
       }
+    } else if (type === "survey_beacon") {
+      const deployed = root.userData?.contextRole === "deployed_beacon";
+      const head = root.children?.find?.((child) => child.name === "SurveyBeaconHead");
+      if (deployed && head && head.userData?.blueFoxBeaconStyle !== "deployed-violet") {
+        if (head.material?.clone) head.material = head.material.clone();
+        head.material?.color?.setHex?.(0xa855f7);
+        head.material?.emissive?.setHex?.(0x6d28d9);
+        if (head.material) head.material.emissiveIntensity = 1.65;
+        head.userData.blueFoxBeaconStyle = "deployed-violet";
+      }
     } else if (type === "scout_drone" || type === "harvest_drone") {
       const droneState = state.drones[type];
       const active = Boolean(droneState?.crafted && droneState?.active);
@@ -235,21 +245,95 @@
     });
   };
 
-  const scout = (entries, root) => {
+  const objectWorldPoint = (root) => {
+    if (!root) return null;
+    if (root.getWorldPosition && BF.currentEngine?.THREE) {
+      const point = new BF.currentEngine.THREE.Vector3();
+      root.getWorldPosition(point);
+      return point;
+    }
+    return root.position || null;
+  };
+
+  const zoneIndexOf = (root) => {
+    const map = BF.currentEngine?.currentMap;
+    const point = objectWorldPoint(root);
+    if (!map || !point) return 0;
+    const zones = Array.isArray(map.zoneRegions) ? map.zoneRegions : [];
+    for (let index = 0; index < zones.length; index += 1) {
+      const zone = zones[index];
+      const center = zone.center || {};
+      const half = Number(zone.halfSize) || Math.max(
+        0,
+        (Number(zone.maxX) - Number(zone.minX)) / 2
+      );
+      const minX = Number.isFinite(Number(zone.minX)) ? Number(zone.minX) : Number(center.x) - half;
+      const maxX = Number.isFinite(Number(zone.maxX)) ? Number(zone.maxX) : Number(center.x) + half;
+      const minZ = Number.isFinite(Number(zone.minZ)) ? Number(zone.minZ) : Number(center.z) - half;
+      const maxZ = Number.isFinite(Number(zone.maxZ)) ? Number(zone.maxZ) : Number(center.z) + half;
+      if (point.x >= minX && point.x <= maxX && point.z >= minZ && point.z <= maxZ) {
+        return Number(zone.index ?? index);
+      }
+    }
+    return 0;
+  };
+
+  const observableByScout = (candidate, type) => {
+    if (!candidate || DRONE_TYPES.has(type) || type === "survey_beacon" && candidate.userData?.contextRole === "deployed_beacon") return false;
+    if (candidate.visible === false) return false;
+    const definition = candidate.userData?.functional;
+    const events = new Set(definition?.observation?.events || []);
+    const actions = new Set(definition?.interaction?.actions || []);
+    return events.has("OBJECT_SEEN") || actions.has("observe") || definition?.knowledge?.discoverable === true;
+  };
+
+  const scout = (entries, root = null) => {
     const droneState = state.drones.scout_drone;
+    const mapId = String(BF.currentEngine?.currentMapId || "");
     const now = Date.now();
-    if (!droneState?.active || now - Number(droneState.lastActionAt || 0) < 120000) return;
+    if (
+      !droneState?.active ||
+      String(droneState.deployedMapId || "") !== mapId ||
+      now - Number(droneState.lastActionAt || 0) < 120000
+    ) return false;
+
+    const zones = Array.isArray(BF.currentEngine?.currentMap?.zoneRegions)
+      ? BF.currentEngine.currentMap.zoneRegions
+      : [];
+    const zoneIds = zones.length
+      ? zones.map((zone, index) => Number(zone.index ?? index))
+      : [0];
+    droneState.scannedZones = droneState.scannedZones || {};
+    const mapScans = droneState.scannedZones[mapId] || {};
+    const zoneId = zoneIds.find((id) => !mapScans[id]);
+    if (zoneId == null) return false;
+
     const known = BF.getProgressionState?.().discoveries?.instances || {};
-    const target = entries.find(({ root: candidate, type }) =>
-      candidate !== root && !DRONE_TYPES.has(type) && candidate.visible && !known[candidate.userData.instanceId]
+    const targets = entries.filter(({ root: candidate, type }) =>
+      candidate !== root &&
+      observableByScout(candidate, type) &&
+      zoneIndexOf(candidate) === zoneId &&
+      !known[candidate.userData?.instanceId]
     );
-    if (!target) return;
-    droneState.lastActionAt = now;
-    emitDroneEvent(BF.ObjectEvents.types.OBJECT_SEEN, target.root, {
-      state: "scouted", tags: ["drone-scouted"], quantity: 1
+
+    targets.forEach((target) => {
+      emitDroneEvent(BF.ObjectEvents.types.OBJECT_SEEN, target.root, {
+        state: "scouted",
+        tags: ["drone-scouted"],
+        zoneId,
+        quantity: 1
+      });
     });
+    droneState.lastActionAt = now;
+    mapScans[zoneId] = { scannedAt: now, observed: targets.length };
+    droneState.scannedZones[mapId] = mapScans;
     saveState();
-    announce(`Le drone éclaireur a repéré : ${target.root.userData.functional?.label || target.type}.`);
+    announce(
+      targets.length
+        ? `Le drone éclaireur a balayé le plateau ${zoneId + 1} : ${targets.length} éléments observables enregistrés.`
+        : `Le drone éclaireur a terminé le balayage du plateau ${zoneId + 1}.`
+    );
+    return true;
   };
 
   const harvest = (entries, root) => {
@@ -290,9 +374,9 @@
   };
 
   const updateDrones = (entries) => {
-    const scoutRoot = entries.find((entry) => entry.type === "scout_drone")?.root;
+    const scoutRoot = entries.find((entry) => entry.type === "scout_drone")?.root || null;
     const harvestRoot = entries.find((entry) => entry.type === "harvest_drone")?.root;
-    if (scoutRoot) scout(entries, scoutRoot);
+    scout(entries, scoutRoot);
     if (harvestRoot) harvest(entries, harvestRoot);
   };
 
@@ -305,6 +389,7 @@
 
   let lastBehaviorUpdate = 0;
   const update = (scene, elapsed) => {
+    ensureDeployedDroneVisual("scout_drone");
     const entries = collect(scene);
     entries.forEach((entry) => {
       const budget = BF.RuntimeBudget;
@@ -330,20 +415,41 @@
       : null;
     if (!recipe || state.drones[type]?.crafted || Number(site?.stage || 0) < 3) return false;
     if (BF.canAccessCampInventory && !BF.canAccessCampInventory()) return false;
+    if (BF.Research?.canAccessWorkbench?.(mapId) !== true) return false;
     return Object.entries(recipe).every(([key, amount]) => (BF.availableInventory?.(key) || 0) >= amount);
   };
   const craftDrone = (type) => {
-    if (!canCraft(type)) return false;
+    if (!canCraft(type)) {
+      announce("Assemblage impossible : ressources, Base ou proximité insuffisantes.");
+      return false;
+    }
     Object.entries(RECIPES[type]).forEach(([key, amount]) => BF.consumeInventoryPool?.(key, amount));
-    state.drones[type] = { crafted: true, active: true, craftedAt: Date.now(), lastActionAt: 0 };
+    state.drones[type] = {
+      crafted: true,
+      active: false,
+      inKit: true,
+      deployedMapId: null,
+      craftedAt: Date.now(),
+      lastActionAt: 0,
+      scannedZones: type === "scout_drone" ? {} : undefined
+    };
     saveState();
     const root = collect(BF.currentEngine?.currentMap?.group).find((entry) => entry.type === type)?.root || null;
-    emitDroneEvent(BF.ObjectEvents?.types.OBJECT_CRAFTED, root, { droneType: type, recipe: RECIPES[type], state: "active" });
-    emitDroneEvent(BF.ObjectEvents?.types.DRONE_ACTIVATED, root, { droneType: type, state: "active" });
-    announce(`${type === "scout_drone" ? "Drone éclaireur" : "Drone récolteur"} assemblé et activé.`);
+    emitDroneEvent(BF.ObjectEvents?.types.OBJECT_CRAFTED, root, {
+      droneType: type,
+      recipe: RECIPES[type],
+      state: "kit-ready"
+    });
+    emitDroneEvent(BF.ObjectEvents?.types.DRONE_ACTIVATED, root, {
+      droneType: type,
+      state: "kit-ready",
+      accumulatorConsumed: true
+    });
+    announce(`${type === "scout_drone" ? "Drone éclaireur" : "Drone récolteur"} assemblé et rangé dans le Kit d’expédition.`);
     global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
     return true;
   };
+
   const setDroneActive = (type, active) => {
     if (!state.drones[type]?.crafted) return false;
     state.drones[type].active = Boolean(active);
@@ -352,7 +458,224 @@
     global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
     return true;
   };
-  const snapshot = () => JSON.parse(JSON.stringify({ ...state, recipes: RECIPES }));
+
+  const deployedDroneVisual = (type) => {
+    const group = BF.currentEngine?.currentMap?.group;
+    if (!group) return null;
+    let found = null;
+    group.traverse?.((node) => {
+      if (!found && node?.userData?.blueFoxDeployedDrone === type) found = node;
+    });
+    return found;
+  };
+
+  const ensureDeployedDroneVisual = (type) => {
+    const droneState = state.drones[type];
+    const engine = BF.currentEngine;
+    const mapId = String(engine?.currentMapId || "");
+    if (!droneState?.crafted || !droneState?.deployedMapId || String(droneState.deployedMapId) !== mapId) return null;
+    const existing = deployedDroneVisual(type);
+    if (existing) return existing;
+    if (!engine?.THREE || !engine?.currentMap?.group || !BF.ObjectSpawner) return null;
+    const anchor = droneState.deployedAnchor || engine.character?.root?.position || { x: 0, y: 0, z: 0 };
+    const spawner = new BF.ObjectSpawner({
+      THREE: engine.THREE,
+      scene: engine.currentMap.group,
+      palette: BF.maps?.[mapId]?.palette
+    });
+    const record = spawner.spawn(type, {
+      position: { x: Number(anchor.x) || 0, y: Number(anchor.y) || 0, z: Number(anchor.z) || 0 },
+      force: true,
+      scene: engine.currentMap.group,
+      source: "deployed-drone",
+      instanceId: `${mapId}:${type}:deployed`
+    });
+    if (!record?.root) return null;
+    record.root.name = `BlueFoxDeployedDrone:${type}`;
+    record.root.userData.blueFoxDeployedDrone = type;
+    if (record.instance?.hitbox?.userData) record.instance.hitbox.userData.active = false;
+    sceneCache.delete(engine.currentMap.group);
+    return record.root;
+  };
+
+  const removeDeployedDroneVisual = (type) => {
+    const root = deployedDroneVisual(type);
+    if (!root) return false;
+    root.parent?.remove?.(root);
+    if (BF.currentEngine?.currentMap?.group) sceneCache.delete(BF.currentEngine.currentMap.group);
+    return true;
+  };
+
+  const deployDrone = (type) => {
+    const droneState = state.drones[type];
+    const mapId = String(BF.currentEngine?.currentMapId || "");
+    if (!droneState?.crafted || !mapId) return false;
+    const position = BF.currentEngine?.character?.root?.position || { x: 0, y: 0, z: 0 };
+    droneState.deployedMapId = mapId;
+    droneState.deployedAnchor = {
+      x: Number(position.x) || 0,
+      y: Number(position.y) || 0,
+      z: Number(position.z) || 0
+    };
+    droneState.inKit = false;
+    droneState.active = true;
+    droneState.lastActionAt = Date.now();
+    saveState();
+    ensureDeployedDroneVisual(type);
+    emitDroneEvent(BF.ObjectEvents?.types.DRONE_ACTIVATED, null, {
+      droneType: type,
+      state: "deployed",
+      mapId,
+      accumulatorConsumed: true
+    });
+    announce(`${type === "scout_drone" ? "Drone éclaireur" : "Drone récolteur"} déployé sur ${mapId}.`);
+    global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
+    return true;
+  };
+
+  const recallDrone = (type, reason = "manual") => {
+    const droneState = state.drones[type];
+    if (!droneState?.crafted) return false;
+    const previousMapId = droneState.deployedMapId || null;
+    if (String(previousMapId || "") === String(BF.currentEngine?.currentMapId || "")) {
+      removeDeployedDroneVisual(type);
+    }
+    droneState.deployedMapId = null;
+    droneState.deployedAnchor = null;
+    droneState.inKit = true;
+    droneState.active = false;
+    saveState();
+    announce(`${type === "scout_drone" ? "Drone éclaireur" : "Drone récolteur"} rappelé dans le Kit d’expédition.`);
+    global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", {
+      detail: { ...snapshot(), recallReason: reason, previousMapId }
+    }));
+    return true;
+  };
+
+  const deployedBeaconRecords = (mapId) => {
+    const definition = BF.maps?.[mapId];
+    if (!definition || !BF.PersistentMicroScenes?.list) return [];
+    return BF.PersistentMicroScenes.list(definition).filter((record) =>
+      record?.persistent !== false &&
+      String(record?.contextRole || record?.kind || "") === "deployed_beacon"
+    );
+  };
+  const hasDeployedBeacon = (mapId) => deployedBeaconRecords(String(mapId || "")).length > 0;
+  const getPlanetMapMarkers = (mapId) => hasDeployedBeacon(mapId)
+    ? [{ type: "beacon", label: "Balise BlueFox", mapId: String(mapId) }]
+    : [];
+
+  const installBeaconAt = (placement, options = {}) => {
+    const engine = BF.currentEngine;
+    const mapId = String(options.mapId || engine?.currentMapId || "");
+    const definition = BF.maps?.[mapId];
+    if (!engine?.THREE || !engine?.currentMap || !definition || !placement?.anchor) return false;
+    if (hasDeployedBeacon(mapId)) {
+      announce("Une balise BlueFox est déjà implantée sur cette map.");
+      return false;
+    }
+    const bal03Lifecycle = engine?.missionManager?.memory?.state?.missionLifecycle?.["BAL-03"];
+    if (String(options.missionId || "") === "BAL-03" && bal03Lifecycle?.status === "active") {
+      const fact = engine.missionManager?.memory?.getFact?.("tutorialExcursion:BAL-03", null);
+      const targetMapId = String(fact?.generatedTargetMapId || "");
+      if (!targetMapId || targetMapId !== mapId) {
+        announce("Cette première balise doit être implantée sur le plateau distant identifié par BAL-03.");
+        return false;
+      }
+    }
+    if ((BF.availableInventory?.("deployed_beacon") || 0) < 1) {
+      announce("Aucune balise transportable dans le Kit d’expédition.");
+      return false;
+    }
+    const rotation = Array.isArray(placement.rotation) ? placement.rotation : [0, Number(placement.rotation) || 0, 0];
+    const record = {
+      instanceId: `${mapId}:deployed-beacon:primary`,
+      missionId: options.missionId || "BAL-03",
+      kind: "deployed_beacon",
+      microSceneId: "MSC-DEPLOYED-BEACON-001",
+      contextRole: "deployed_beacon",
+      anchor: { ...placement.anchor },
+      rotation: Number(rotation[1]) || 0,
+      fixedAnchor: true,
+      persistent: true,
+      spawnOnce: true,
+      createdAt: Date.now()
+    };
+    const removed = BF.consumeInventoryPool?.("deployed_beacon", 1) || 0;
+    if (removed !== 1) return false;
+    const spawned = BF.PersistentMicroScenes?.spawnRecord?.(
+      engine.THREE,
+      engine.currentMap,
+      definition,
+      record
+    );
+    if (!spawned) {
+      BF.progression?.addInventory?.("deployed_beacon", 1);
+      BF.progression?.save?.();
+      BF.progression?.publishChange?.("beacon-placement-refund", { mapId, quantity: 1 });
+      return false;
+    }
+    // spawnRecord persiste déjà le record via MissionMemory ; ensure l'inscrit
+    // aussi immédiatement dans la définition runtime afin que les consommateurs
+    // (marqueur Planète, relais drone) le voient sans attendre un reload/hydrate.
+    BF.PersistentMicroScenes?.ensure?.(definition, record);
+    sceneCache.delete(engine.currentMap.group);
+    update(engine.currentMap.group, Number(engine.clock?.elapsedTime) || 0);
+    announce("Balise BlueFox implantée. Sa tête violette identifie ce relais comme une installation personnelle.");
+    global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
+    global.dispatchEvent(new CustomEvent("bluefox:site-established", {
+      detail: { missionId: options.missionId || "BAL-03", mapId, kind: "deployed_beacon" }
+    }));
+    return true;
+  };
+
+  const deployBeacon = (options = {}) => {
+    const engine = BF.currentEngine;
+    const mapId = String(engine?.currentMapId || "");
+    if (!mapId || (BF.availableInventory?.("deployed_beacon") || 0) < 1) return false;
+    if (hasDeployedBeacon(mapId)) return false;
+    const source = options.source || "player";
+    if (source === "autonomy") {
+      const placement = BF.MicroScenePlacement?.suggest?.({
+        id: `deployed-beacon:${mapId}`,
+        microSceneId: "MSC-DEPLOYED-BEACON-001"
+      }, engine);
+      return placement ? installBeaconAt(placement, { ...options, mapId }) : false;
+    }
+    return BF.MicroScenePlacement?.start?.({
+      id: `deployed-beacon:${mapId}`,
+      missionId: options.missionId || "BAL-03",
+      mapId,
+      microSceneId: "MSC-DEPLOYED-BEACON-001",
+      kind: "deployed_beacon",
+      label: "la balise",
+      onInstall: (placement) => installBeaconAt(placement, { ...options, mapId })
+    }) === true;
+  };
+
+  const snapshot = () => JSON.parse(JSON.stringify({
+    ...state,
+    drones: Object.fromEntries(Object.entries(state.drones || {}).map(([type, drone]) => [type, {
+      ...drone,
+      inKit: drone.inKit ?? Boolean(drone.crafted && !drone.deployedMapId)
+    }])),
+    recipes: RECIPES
+  }));
+
+  const onMapTransitionCompleted = (event) => {
+    const detail = event?.detail || {};
+    const fromMapId = String(detail.fromMapId || "");
+    const scoutState = state.drones.scout_drone;
+    if (
+      scoutState?.crafted &&
+      fromMapId &&
+      String(scoutState.deployedMapId || "") === fromMapId &&
+      !hasDeployedBeacon(fromMapId)
+    ) {
+      recallDrone("scout_drone", "map-exit-without-beacon");
+    }
+  };
+  global.addEventListener?.("bluefox:map-transition-completed", onMapTransitionCompleted);
 
   const baseBuildMap = BF.buildMap;
   if (typeof baseBuildMap === "function" && !baseBuildMap.specialObjectRuntimeWrapped) {
@@ -369,6 +692,8 @@
     BF.buildMap = wrappedBuildMap;
   }
 
+  BF.getPlanetMapMarkers = BF.getPlanetMapMarkers || ((mapId) => getPlanetMapMarkers(mapId));
+
   BF.SpecialObjectRuntime = Object.freeze({
     types: Object.freeze([...SPECIAL_TYPES]),
     collect,
@@ -378,6 +703,12 @@
     canCraft,
     craftDrone,
     setDroneActive,
+    deployDrone,
+    recallDrone,
+    deployBeacon,
+    installBeaconAt,
+    hasDeployedBeacon,
+    getPlanetMapMarkers,
     invalidate(scene) { if (scene) sceneCache.delete(scene); }
   });
 })(window);

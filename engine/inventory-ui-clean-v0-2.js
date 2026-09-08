@@ -8,6 +8,7 @@
   const EXPEDITION_KIT_OPEN_KEY = "bluefox_expedition_kit_open_v1";
   const PERSONAL_BAG_OPEN_KEY = "bluefox_personal_bag_open_v1";
   const CAMP_STORAGE_OPEN_KEY = "bluefox_camp_storage_open_v1";
+  const EXPEDITION_INVENTORY_KEYS = new Set(["accumulator", "deployed_beacon"]);
 
   const FALLBACKS = Object.freeze({
     crystal: { label: "Cristaux", icon: "◆" },
@@ -268,17 +269,15 @@
       global.localStorage.getItem("bluefox_auto_deposit_v1") !== "true"
     ) return false;
 
-    const total = Object.values(
-      BF.getProgressionState?.().inventory || {}
-    ).reduce(
-      (sum, amount) =>
-        sum + Math.max(0, Number(amount) || 0),
-      0
+    const depositable = inventoryEntries("inventory").filter(
+      (entry) => !EXPEDITION_INVENTORY_KEYS.has(entry.key)
     );
-    if (!total) return false;
+    if (!depositable.length) return false;
 
     autoDepositRunning = true;
-    BF.depositAllInventory?.();
+    depositable.forEach((entry) => {
+      BF.depositInventory?.(entry.key, entry.amount);
+    });
     autoDepositRunning = false;
     return true;
   };
@@ -530,9 +529,21 @@
     return true;
   };
 
+  const expeditionInventoryCount = (key) => Math.max(
+    0,
+    Number(BF.getProgressionState?.().inventory?.[key]) || 0
+  );
+
+  const scoutMissionActive = () =>
+    BF.currentEngine?.missionManager?.memory?.state?.missionLifecycle?.["ENE-13"]?.status === "active";
+
   const createExpeditionKit = () => {
     const occupied = [];
     const rations = rationCount();
+    const accumulatorCount = expeditionInventoryCount("accumulator");
+    const beaconCount = expeditionInventoryCount("deployed_beacon");
+    const special = BF.SpecialObjectRuntime?.snapshot?.() || {};
+    const scout = special.drones?.scout_drone || null;
 
     if (rations > 0) {
       occupied.push({
@@ -540,11 +551,67 @@
         label: "Rations",
         icon: "◈",
         count: rations,
+        title: `Consommer une ration · ${rations}/50`,
         action: consumeRation
       });
     }
 
-    // Aucun slot vide n'est rendu.
+    if (accumulatorCount > 0) {
+      occupied.push({
+        id: "accumulator",
+        label: "Accumulateurs",
+        icon: "▣",
+        count: accumulatorCount,
+        title: "Réserve d’énergie transportable"
+      });
+    }
+
+    if (beaconCount > 0) {
+      occupied.push({
+        id: "deployed_beacon",
+        label: "Balise BlueFox",
+        icon: "◆",
+        count: beaconCount,
+        title: "Implanter une balise sur la map courante",
+        action: () => BF.SpecialObjectRuntime?.deployBeacon?.({
+          source: "player",
+          missionId: "BAL-03"
+        })
+      });
+    }
+
+    if (scout?.crafted) {
+      const deployedMapId = String(scout.deployedMapId || "");
+      const mapLabel = deployedMapId
+        ? String(BF.maps?.[deployedMapId]?.name || deployedMapId)
+        : "";
+      occupied.push({
+        id: "scout_drone",
+        label: "Drone éclaireur",
+        icon: "◇",
+        count: 1,
+        status: deployedMapId ? `déployé · ${mapLabel}` : "dans le Kit",
+        title: deployedMapId
+          ? `Rappeler le drone éclaireur depuis ${mapLabel}`
+          : "Déployer le drone éclaireur sur la map courante",
+        action: () => deployedMapId
+          ? BF.SpecialObjectRuntime?.recallDrone?.("scout_drone", "kit-manual")
+          : BF.SpecialObjectRuntime?.deployDrone?.("scout_drone")
+      });
+    } else if (scoutMissionActive()) {
+      occupied.push({
+        id: "scout_drone_assembly",
+        label: "Assembler le Scout",
+        icon: "◇",
+        count: 1,
+        status: "prototype",
+        title: "Assembler le premier drone éclaireur avec les ressources requises",
+        action: () => BF.SpecialObjectRuntime?.craftDrone?.("scout_drone")
+      });
+    }
+
+    // Aucun slot vide n'est rendu : chaque entrée correspond à un objet réel
+    // transporté, un drone possédé ou l'assemblage missionnel actif du premier Scout.
     if (!occupied.length) return null;
 
     const details = document.createElement("details");
@@ -569,10 +636,8 @@
       button.type = "button";
       button.className = "expedition-kit-slot";
       button.dataset.expeditionItem = item.id;
-      button.title =
-        item.id === "ration"
-          ? `Consommer une ration · ${item.count}/50`
-          : `Utiliser ${item.label}`;
+      button.title = item.title || `Utiliser ${item.label}`;
+      button.disabled = typeof item.action !== "function";
 
       const icon = document.createElement("span");
       icon.className = "expedition-kit-icon";
@@ -584,12 +649,14 @@
 
       const amount = document.createElement("span");
       amount.className = "expedition-kit-count";
-      amount.textContent = `×${item.count}`;
+      amount.textContent = item.status || `×${item.count}`;
 
       button.append(icon, label, amount);
-      button.addEventListener("click", () => {
-        if (item.action() !== false) scheduleRender();
-      });
+      if (typeof item.action === "function") {
+        button.addEventListener("click", () => {
+          if (item.action() !== false) scheduleRender();
+        });
+      }
       grid.appendChild(button);
     });
 
@@ -611,7 +678,9 @@
     const campAccessible = canAccessCampInventory();
     if (campAccessible) autoDeposit();
 
-    const personal = inventoryEntries("inventory");
+    const personal = inventoryEntries("inventory").filter(
+      (entry) => !EXPEDITION_INVENTORY_KEYS.has(entry.key)
+    );
     const stored = inventoryEntries("campStorage");
     const rations = rationCount();
 
@@ -629,6 +698,9 @@
         amount
       ]),
       rations,
+      expeditionSpecial: BF.SpecialObjectRuntime?.snapshot?.() || null,
+      deployedBeaconCount: expeditionInventoryCount("deployed_beacon"),
+      accumulatorCount: expeditionInventoryCount("accumulator"),
       autoDeposit:
         global.localStorage.getItem(
           "bluefox_auto_deposit_v1"
@@ -760,7 +832,9 @@
     "bluefox:rations-changed",
     "bluefox:mission-state",
     "bluefox:map-state",
-    "bluefox:map-transition-completed"
+    "bluefox:map-transition-completed",
+    "bluefox:special-objects-changed",
+    "bluefox:research-crafted"
   ].forEach((eventName) =>
     global.addEventListener(eventName, scheduleRender)
   );
