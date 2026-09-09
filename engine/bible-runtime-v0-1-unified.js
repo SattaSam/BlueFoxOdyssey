@@ -1970,15 +1970,7 @@
           const keys = this.inventoryKeysForRequirement(requirement);
           const quantity = Math.max(0, Number(requirement.quantity) || 0);
           const transactionId = `${mission.id}:${context.id || context.fact}:inventory-consume:v1`;
-          const consumeOptions = requirement.inventorySource === "expedition"
-            ? { includeExpeditionKeys: keys }
-            : undefined;
-          const removed = BF.consumeInventoryPoolOnce?.(
-            transactionId,
-            keys,
-            quantity,
-            consumeOptions
-          ) || 0;
+          const removed = BF.consumeInventoryPoolOnce?.(transactionId, keys, quantity) || 0;
           if (removed !== quantity) {
             BF.currentEngine?.callbacks?.onStatus?.(requirement.missingMessage || "Ressource missionnelle manquante.");
             return;
@@ -2333,6 +2325,53 @@
       };
     }
 
+    activateDroneRepairMission(detail = {}) {
+      const mission = this.byId.get("DRN-05");
+      const manager = this.manager();
+      if (!mission || !manager || !detail.failureId || !detail.mapId || !detail.instanceId) return false;
+      if (this.missionLifecycle(mission.id).active) return false;
+      if (this.missionLifecycle(mission.id).completed) {
+        manager.rearmRepeatableMission?.(mission.id, {
+          source: "drone-failure",
+          reason: "Un autre drone nécessite un dépannage sur le terrain."
+        });
+      }
+      const event = {
+        type: "drone.failed",
+        instanceId: String(detail.instanceId),
+        objectId: detail.droneType === "harvest_drone" ? "EQP-DRON-M-002" : "EQP-DRON-M-001",
+        cuoType: String(detail.droneType || ""),
+        mapId: String(detail.mapId),
+        zoneId: detail.zoneId ?? null,
+        droneId: detail.droneId || null,
+        failureId: detail.failureId
+      };
+      if (!this.activateMission(mission, event)) return false;
+      manager.memory?.setFact?.("droneRepairTarget:DRN-05", {
+        failureId: detail.failureId,
+        failureIndex: detail.failureIndex || null,
+        droneId: detail.droneId || null,
+        droneType: detail.droneType || null,
+        instanceId: String(detail.instanceId),
+        mapId: String(detail.mapId),
+        zoneId: detail.zoneId ?? null,
+        requirements: { ...(detail.requirements || {}) },
+        failedAt: detail.failedAt || Date.now()
+      });
+      manager.memory?.save?.();
+      if (String(BF.currentEngine?.currentMapId || "") === String(detail.mapId)) {
+        this.progressRuntimeValidationSlot(mission.id, "reachDrone", 1);
+      }
+      return true;
+    }
+
+    activateNextDroneRepairMission() {
+      if (this.missionLifecycle("DRN-05").active) return false;
+      const failures = BF.SpecialObjectRuntime?.failures?.() || [];
+      const next = failures[0];
+      return next ? this.activateDroneRepairMission(next) : false;
+    }
+
     handleDroneMissionObjectEvent(rawEvent = {}) {
       const type = String(rawEvent?.type || "");
       const detail = rawEvent?.detail || {};
@@ -2340,6 +2379,26 @@
       const droneType = String(detail.droneType || "");
       const remote = detail.remote === true;
       let changed = false;
+
+      if (type === String(BF.ObjectEvents?.types?.DRONE_FAILED || "DRONE_FAILED")) {
+        return this.activateDroneRepairMission(detail);
+      }
+
+      if (
+        type === String(BF.ObjectEvents?.types?.OBJECT_REPAIRED || "OBJECT_REPAIRED") &&
+        source === "drone" &&
+        this.missionLifecycle("DRN-05").active
+      ) {
+        const target = this.manager()?.memory?.getFact?.("droneRepairTarget:DRN-05", null);
+        if (target?.failureId && String(target.failureId) === String(detail.failureId || "")) {
+          changed = this.progressRuntimeValidationSlot("DRN-05", "repairDrone", 1) || changed;
+          if (changed) {
+            this.manager()?.memory?.setFact?.("droneRepairTarget:DRN-05", null);
+            this.manager()?.memory?.save?.();
+            this.activateNextDroneRepairMission();
+          }
+        }
+      }
 
       if (this.missionLifecycle("DRN-03").active) {
         if (
@@ -2418,7 +2477,7 @@
       ) {
         if (detail.accumulatorConsumed !== true) {
           const transactionId = "ENE-13:scout-activation:accumulator:v1";
-          const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1, { includeExpeditionKeys: ["accumulator"] }) || 0;
+          const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1) || 0;
           if (removed !== 1) {
             BF.currentEngine?.callbacks?.onStatus?.("Il me faut un accumulateur réel avant d’alimenter le drone éclaireur.");
             return false;
@@ -4566,13 +4625,9 @@
         const keys = this.inventoryKeysForRequirement(requirement);
         const quantity =
           Math.max(0, Number(requirement.quantity) || 0) * requested;
-        const inventoryOptions =
-          requirement?.inventorySource === "expedition"
-            ? { includeExpeditionKeys: keys }
-            : {};
         return Boolean(
           keys.length &&
-          BF.progression?.availableInventory?.(keys, inventoryOptions) >= quantity
+          BF.progression?.availableInventory?.(keys) >= quantity
         );
       });
     }
@@ -4589,12 +4644,7 @@
         const keys = this.inventoryKeysForRequirement(requirement);
         const quantity =
           Math.max(0, Number(requirement.quantity) || 0) * requested;
-        const inventoryOptions =
-          requirement?.inventorySource === "expedition"
-            ? { includeExpeditionKeys: keys }
-            : {};
-        const removed =
-          BF.consumeInventoryPool?.(keys, quantity, inventoryOptions) || 0;
+        const removed = BF.consumeInventoryPool?.(keys, quantity) || 0;
         if (removed !== quantity) return 0;
       }
 
@@ -4697,6 +4747,7 @@
       }
 
       this.migrateLegacyRationUnlock();
+      this.activateNextDroneRepairMission();
       this.reconcileRuntimeCounters();
       this.reconcileHistoricalCollectionChains();
       this.reconcileStockBackedMissions();

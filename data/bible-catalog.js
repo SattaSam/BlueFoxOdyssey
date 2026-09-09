@@ -2217,8 +2217,7 @@
         inventoryConsume: Object.freeze({
           inventoryKey: "accumulator",
           quantity: 1,
-          inventorySource: "expedition",
-          missingMessage: "Il me faut un accumulateur réel dans mon Kit d’expédition avant d’alimenter cette machine."
+          missingMessage: "Il me faut un accumulateur réel dans mon inventaire avant d’alimenter cette machine."
         })
       })
     ]),
@@ -2393,7 +2392,7 @@
       requiresWorkbench: true,
       requirements: Object.freeze([
         Object.freeze({ inventoryKey: "core", quantity: 1 }),
-        Object.freeze({ inventoryKey: "accumulator", quantity: 1, inventorySource: "expedition" }),
+        Object.freeze({ inventoryKey: "accumulator", quantity: 1 }),
         Object.freeze({ inventoryKey: "parts", quantity: 6 }),
         Object.freeze({ inventoryKey: "wood", quantity: 8 }),
         Object.freeze({ inventoryKey: "stellar_iridium", quantity: 4 })
@@ -2566,6 +2565,58 @@
     narrative: Object.freeze({
       revealed: Object.freeze(["Le réseau fonctionne. Il faut maintenant pouvoir le lire et le régler sans transformer chaque drone en nouvelle mission logistique."]),
       completed: Object.freeze(["Le réseau est réglable depuis Recherche, et le cargo rejoint les stocks sans gonfler deux fois l'historique de collecte."])
+    })
+  });
+
+  const DRN05 = Object.freeze({
+    id: "DRN-05",
+    title: "Dépannage sur le terrain",
+    description: "Rejoindre le drone réellement en panne et le réparer sur place avec les ressources que BlueFox transporte.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze([]),
+    repeatable: true,
+    targetBinding: "instance",
+    priority: 288,
+    passivePriorityAxis: "protection",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachDrone",
+        title: "Rejoindre la map du drone en panne",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          targetMapFact: "droneRepairTarget:DRN-05",
+          targetMapField: "mapId",
+          distinctBy: "transition"
+        })
+      }),
+      Object.freeze({
+        slot: "repairDrone",
+        title: "Rejoindre et réparer le drone en panne",
+        action: "inspect",
+        target: 1,
+        requires: Object.freeze(["reachDrone"]),
+        params: Object.freeze({
+          catalogManaged: true,
+          requiredMapFact: "droneRepairTarget:DRN-05",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    runtimeValidation: Object.freeze({
+      type: "drone-field-repair",
+      targetFact: "droneRepairTarget:DRN-05",
+      travelSlot: "reachDrone",
+      repairSlot: "repairDrone"
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Un drone s’est arrêté loin d’ici. Je dois le rejoindre avec de quoi le remettre en état ; les réserves restées au camp ne m’aideront pas une fois sur place."]),
+      completed: Object.freeze(["Le drone est de nouveau opérationnel. Il reprend son travail là où la panne l’avait interrompu."])
     })
   });
 
@@ -6569,6 +6620,7 @@
     DRN02,
     DRN03,
     DRN04,
+    DRN05,
     FAU01,
     FAU02,
     FAU03,

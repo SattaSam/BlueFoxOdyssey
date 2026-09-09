@@ -2448,6 +2448,20 @@
     const title = document.createElement("h3");
     title.textContent = "RÉSEAU HARVEST · 4 EMPLACEMENTS MAX";
     host.append(title);
+    const failures = Array.isArray(state.failures) ? state.failures : [];
+    if (failures.length) {
+      const alert = document.createElement("div");
+      alert.className = "bluefox-drone-failures";
+      failures.forEach((failure) => {
+        const line = document.createElement("p");
+        const needs = Object.entries(failure.requirements || {})
+          .map(([key, amount]) => `${amount} ${key}`)
+          .join(" · ");
+        line.textContent = `PANNE · ${failure.droneType === "scout_drone" ? "Scout" : failure.droneId} · ${failure.mapId}${needs ? ` · Réparation : ${needs}` : ""}`;
+        alert.append(line);
+      });
+      host.append(alert);
+    }
     const slots = document.createElement("div");
     slots.className = "bluefox-drone-slots";
     host.append(slots);
@@ -2478,7 +2492,9 @@
       }
 
       const status = document.createElement("div");
-      status.textContent = drone.deployedMapId
+      status.textContent = drone.failure
+        ? `PANNE · Map : ${drone.failure.mapId || drone.deployedMapId} · Zone : ${drone.failure.zoneLabel || drone.deployedZoneLabel || "inconnue"} · Cargo ${drone.cargoTotal || 0}/${state.cargoCapacity}`
+        : drone.deployedMapId
         ? `Map : ${drone.deployedMapId} · Zone : ${
             drone.deployedZoneLabel ||
             `Plateau ${(Number(drone.deployedZoneId) || 0) + 1}`
@@ -2494,7 +2510,7 @@
         option.selected = String(drone.priority || "collect_all") === key;
         select.append(option);
       });
-      select.disabled = !drone.deployedMapId;
+      select.disabled = !drone.deployedMapId || Boolean(drone.failure);
       select.onchange = () => {
         runtime.setHarvestPriority?.(drone.id, select.value);
         requestResearchRefresh();
@@ -2504,7 +2520,7 @@
       const confirmPriority = document.createElement("button");
       confirmPriority.type = "button";
       confirmPriority.textContent = "Confirmer la priorité";
-      confirmPriority.disabled = !drone.deployedMapId;
+      confirmPriority.disabled = !drone.deployedMapId || Boolean(drone.failure);
       confirmPriority.onclick = () => {
         runtime.setHarvestPriority?.(drone.id, select.value);
         requestResearchRefresh();
@@ -2513,7 +2529,10 @@
 
       const action = document.createElement("button");
       action.type = "button";
-      if (drone.deployedMapId) {
+      if (drone.failure) {
+        action.textContent = "Dépannage requis sur place";
+        action.disabled = true;
+      } else if (drone.deployedMapId) {
         action.textContent = "Rappeler";
         action.onclick = () => {
           runtime.recallDrone?.("harvest_drone", "research-console", drone.id);

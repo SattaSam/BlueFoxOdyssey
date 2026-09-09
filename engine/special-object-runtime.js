@@ -15,6 +15,16 @@
   const HARVEST_INTERVAL_MS = 90000;
   const SCOUT_INTERVAL_MS = 120000;
   const OFFLINE_INTERVAL_MULTIPLIER = 2;
+  const MAX_DRONE_FAILURES = 2;
+  const DRONE_FAILURE_THRESHOLDS = Object.freeze({
+    scout_drone: Object.freeze([500, 2000]),
+    harvest_drone: Object.freeze([1000, 5000])
+  });
+  const DRONE_REPAIR_REQUIREMENTS = Object.freeze({
+    1: Object.freeze({ accumulator: 1 }),
+    2: Object.freeze({ parts: 4, magnetic_ore: 6 })
+  });
+  const DRONE_REPAIR_RADIUS = 4.5;
   const RECIPES = Object.freeze({
     scout_drone: Object.freeze({ accumulator: 1, core: 2, parts: 10, energy_crystal: 2, magnetic_ore: 12 }),
     harvest_drone: Object.freeze({ accumulator: 1, core: 2, parts: 15, energy_crystal: 3, magnetic_ore: 30, stellar_iridium: 6 })
@@ -54,6 +64,14 @@
       lastActionAt: state.drones.harvest_drone.lastActionAt || 0
     });
   }
+  if (state.drones.scout_drone) {
+    state.drones.scout_drone.workTotal = Math.max(0, Number(state.drones.scout_drone.workTotal) || 0);
+    state.drones.scout_drone.failureCount = Math.min(MAX_DRONE_FAILURES, Math.max(0, Number(state.drones.scout_drone.failureCount) || 0));
+  }
+  state.harvestFleet.forEach((drone) => {
+    drone.workTotal = Math.max(0, Number(drone.workTotal) || 0);
+    drone.failureCount = Math.min(MAX_DRONE_FAILURES, Math.max(0, Number(drone.failureCount) || 0));
+  });
   const saveState = () => {
     state.lastRuntimeAt = Date.now();
     global.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -358,7 +376,9 @@
       !known[candidate.userData?.instanceId]
     );
 
-    targets.forEach((target) => {
+    const allowed = workAllowanceBeforeFailure(droneState, "scout_drone", targets.length);
+    const observedTargets = targets.slice(0, allowed);
+    observedTargets.forEach((target) => {
       emitDroneEvent(BF.ObjectEvents.types.OBJECT_SEEN, target.root, {
         state: "scouted",
         tags: ["drone-scouted"],
@@ -367,12 +387,13 @@
       });
     });
     droneState.lastActionAt = now;
-    mapScans[zoneId] = { scannedAt: now, observed: targets.length };
+    recordDroneWork(droneState, "scout_drone", observedTargets.length, now);
+    mapScans[zoneId] = { scannedAt: now, observed: observedTargets.length };
     droneState.scannedZones[mapId] = mapScans;
     saveState();
     announce(
-      targets.length
-        ? `Le drone éclaireur a balayé le plateau ${zoneId + 1} : ${targets.length} éléments observables enregistrés.`
+      observedTargets.length
+        ? `Le drone éclaireur a balayé le plateau ${zoneId + 1} : ${observedTargets.length} éléments observables enregistrés.`
         : `Le drone éclaireur a terminé le balayage du plateau ${zoneId + 1}.`
     );
     return true;
@@ -381,6 +402,128 @@
   const harvestFleet = () => state.harvestFleet || (state.harvestFleet = []);
   const harvestById = (id) =>
     harvestFleet().find((entry) => entry.id === String(id || "")) || null;
+  const ensureDroneReliability = (drone, type) => {
+    if (!drone) return null;
+    drone.workTotal = Math.max(0, Number(drone.workTotal) || 0);
+    drone.failureCount = Math.min(
+      MAX_DRONE_FAILURES,
+      Math.max(0, Number(drone.failureCount) || 0)
+    );
+    drone.failure = drone.failure && typeof drone.failure === "object"
+      ? { ...drone.failure, requirements: { ...(drone.failure.requirements || {}) } }
+      : null;
+    drone.droneType ||= type;
+    return drone;
+  };
+  const droneInstanceId = (drone, type) => {
+    const mapId = String(drone?.deployedMapId || "");
+    const id = String(drone?.id || type || "");
+    return mapId && id ? `${mapId}:${type}:${id}` : "";
+  };
+  const droneByAnyId = (droneId) => {
+    const id = String(droneId || "");
+    if (!id) return null;
+    if (id === "scout_drone" || id === String(state.drones.scout_drone?.id || "")) {
+      return { type: "scout_drone", drone: ensureDroneReliability(state.drones.scout_drone, "scout_drone") };
+    }
+    const harvest = harvestById(id);
+    return harvest ? { type: "harvest_drone", drone: ensureDroneReliability(harvest, "harvest_drone") } : null;
+  };
+  const failureThreshold = (drone, type) => {
+    ensureDroneReliability(drone, type);
+    const thresholds = DRONE_FAILURE_THRESHOLDS[type] || [];
+    return drone.failureCount < MAX_DRONE_FAILURES
+      ? Math.max(0, Number(thresholds[drone.failureCount]) || 0)
+      : 0;
+  };
+  const workAllowanceBeforeFailure = (drone, type, requested) => {
+    const amount = Math.max(0, Math.floor(Number(requested) || 0));
+    if (!amount || !drone || drone.failure) return 0;
+    const threshold = failureThreshold(drone, type);
+    if (!threshold) return amount;
+    return Math.min(amount, Math.max(0, threshold - drone.workTotal));
+  };
+  const failureAnchor = (drone) => ({
+    x: Number(drone?.deployedAnchor?.x) || 0,
+    y: Number(drone?.deployedAnchor?.y) || 0,
+    z: Number(drone?.deployedAnchor?.z) || 0
+  });
+  const syncFailureVisual = (drone, type) => {
+    if (!drone?.deployedMapId) return false;
+    if (String(BF.currentEngine?.currentMapId || "") !== String(drone.deployedMapId)) return false;
+    const root = deployedDroneVisual(type, drone.id || type);
+    const hitbox = hitboxOf(root);
+    if (hitbox?.userData) hitbox.userData.active = Boolean(drone.failure);
+    if (root?.userData) root.userData.blueFoxDroneFailed = Boolean(drone.failure);
+    return Boolean(root);
+  };
+  const triggerDroneFailure = (drone, type, at = Date.now()) => {
+    ensureDroneReliability(drone, type);
+    if (!drone || drone.failure || drone.failureCount >= MAX_DRONE_FAILURES) return false;
+    const threshold = failureThreshold(drone, type);
+    if (!threshold || drone.workTotal < threshold) return false;
+    const index = drone.failureCount + 1;
+    const mapId = String(drone.deployedMapId || "");
+    const failureId = `${drone.id || type}:failure-${index}`;
+    drone.failureCount = index;
+    drone.failure = {
+      id: failureId,
+      index,
+      failedAt: at,
+      mapId,
+      beaconId: mapId ? `deployed-beacon:${mapId}` : null,
+      zoneId: Number(drone.deployedZoneId) || 0,
+      zoneLabel: drone.deployedZoneLabel || zoneLabelFor(mapId, drone.deployedZoneId),
+      anchor: failureAnchor(drone),
+      instanceId: droneInstanceId(drone, type),
+      requirements: { ...(DRONE_REPAIR_REQUIREMENTS[index] || {}) }
+    };
+    drone.active = false;
+    drone.lastFailureAt = at;
+    if (type === "harvest_drone") {
+      state.drones.harvest_drone ||= { crafted: true };
+      state.drones.harvest_drone.active = harvestFleet().some((entry) => entry.active);
+    }
+    saveState();
+    syncFailureVisual(drone, type);
+    emitDroneEvent(
+      BF.ObjectEvents?.types?.DRONE_FAILED || "DRONE_FAILED",
+      deployedDroneVisual(type, drone.id || type),
+      {
+        droneType: type,
+        droneId: drone.id || type,
+        failureId,
+        failureIndex: index,
+        mapId,
+        beaconId: drone.failure.beaconId || null,
+        zoneId: drone.failure.zoneId,
+        instanceId: drone.failure.instanceId,
+        requirements: { ...drone.failure.requirements },
+        state: "failed"
+      }
+    );
+    announce(`${type === "scout_drone" ? "Le Scout" : `Le Harvest ${drone.id}`} est en panne sur ${mapId}.`);
+    global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
+    return true;
+  };
+  const recordDroneWork = (drone, type, amount, at = Date.now()) => {
+    const quantity = Math.max(0, Math.floor(Number(amount) || 0));
+    if (!quantity || !drone || drone.failure) return 0;
+    ensureDroneReliability(drone, type);
+    drone.workTotal += quantity;
+    triggerDroneFailure(drone, type, at);
+    return quantity;
+  };
+  const activeDroneFailures = () => {
+    const failures = [];
+    const scoutState = ensureDroneReliability(state.drones.scout_drone, "scout_drone");
+    if (scoutState?.failure) failures.push({ droneType: "scout_drone", droneId: scoutState.id || "scout_drone", ...scoutState.failure });
+    harvestFleet().forEach((entry) => {
+      const drone = ensureDroneReliability(entry, "harvest_drone");
+      if (drone?.failure) failures.push({ droneType: "harvest_drone", droneId: drone.id, ...drone.failure });
+    });
+    return failures.sort((left, right) => Number(left.failedAt) - Number(right.failedAt));
+  };
   const cargoTotal = (drone) =>
     Object.values(drone?.cargo || {}).reduce(
       (sum, amount) => sum + Math.max(0, Number(amount) || 0),
@@ -580,6 +723,7 @@
       }
     );
     addCargo(drone, key, quantity);
+    recordDroneWork(drone, "harvest_drone", quantity, now);
     saveState();
     return true;
   };
@@ -633,6 +777,7 @@
       }
     );
     addCargo(drone, definition.resource.inventoryKey, 1);
+    recordDroneWork(drone, "harvest_drone", 1, now);
     saveState();
     return true;
   };
@@ -778,7 +923,8 @@
     elapsed,
     sessionEndedAt
   ) => {
-    const amount = Math.max(0, Math.floor(Number(quantity) || 0));
+    const requested = Math.max(0, Math.floor(Number(quantity) || 0));
+    const amount = workAllowanceBeforeFailure(drone, "harvest_drone", requested);
     if (!amount) return 0;
     const interval = HARVEST_INTERVAL_MS * OFFLINE_INTERVAL_MULTIPLIER;
     const respawnMs = Math.max(
@@ -802,7 +948,9 @@
     state.resources[resourceKey] = {
       respawnAt: sessionEndedAt + lastHarvestDelay + respawnMs
     };
-    return applyOfflineHarvestCargo(drone, record, amount);
+    const applied = applyOfflineHarvestCargo(drone, record, amount);
+    recordDroneWork(drone, "harvest_drone", applied, sessionEndedAt + lastHarvestDelay);
+    return applied;
   };
 
   let offlineCatchupDone = false;
@@ -848,15 +996,16 @@
         );
         const take = Math.min(remainingActions, capacity);
         if (!take) return;
-        applyOfflineRecordHarvest(
+        const applied = applyOfflineRecordHarvest(
           drone,
           record,
           take,
           elapsed,
           sessionEndedAt
         );
-        remainingActions -= take;
-        droneChanged = true;
+        remainingActions -= applied;
+        if (applied > 0) droneChanged = true;
+        if (drone.failure) remainingActions = 0;
       });
       if (droneChanged) {
         drone.lastActionAt = now;
@@ -911,14 +1060,14 @@
     ) return false;
     if (BF.canAccessCampInventory && !BF.canAccessCampInventory()) return false;
     if (BF.Research?.canAccessWorkbench?.(mapId) !== true) return false;
-    return Object.entries(recipe).every(([key, amount]) => (BF.availableInventory?.(key, { includeExpeditionKeys: key === "accumulator" ? ["accumulator"] : [] }) || 0) >= amount);
+    return Object.entries(recipe).every(([key, amount]) => (BF.availableInventory?.(key) || 0) >= amount);
   };
   const craftDrone = (type) => {
     if (!canCraft(type)) {
       announce("Assemblage impossible : ressources, Base ou proximité insuffisantes.");
       return false;
     }
-    Object.entries(RECIPES[type]).forEach(([key, amount]) => BF.consumeInventoryPool?.(key, amount, { includeExpeditionKeys: key === "accumulator" ? ["accumulator"] : [] }));
+    Object.entries(RECIPES[type]).forEach(([key, amount]) => BF.consumeInventoryPool?.(key, amount));
     let craftedRecord;
     if (type === "harvest_drone") {
       craftedRecord = {
@@ -932,7 +1081,10 @@
         cargo: {},
         cargoTotal: 0,
         craftedAt: Date.now(),
-        lastActionAt: 0
+        lastActionAt: 0,
+        workTotal: 0,
+        failureCount: 0,
+        failure: null
       };
       harvestFleet().push(craftedRecord);
       state.drones.harvest_drone = {
@@ -948,7 +1100,10 @@
         deployedMapId: null,
         craftedAt: Date.now(),
         lastActionAt: 0,
-        scannedZones: {}
+        scannedZones: {},
+        workTotal: 0,
+        failureCount: 0,
+        failure: null
       };
     }
     saveState();
@@ -1036,7 +1191,10 @@
     if (type === "harvest_drone") {
       record.root.userData.blueFoxHarvestDroneId = visualId;
     }
-    if (record.instance?.hitbox?.userData) record.instance.hitbox.userData.active = false;
+    if (record.instance?.hitbox?.userData) {
+      record.instance.hitbox.userData.active = Boolean(droneState.failure);
+    }
+    record.root.userData.blueFoxDroneFailed = Boolean(droneState.failure);
     sceneCache.delete(engine.currentMap.group);
     return record.root;
   };
@@ -1102,7 +1260,9 @@
         (Number(item.zoneId) || 0) === zoneId &&
         !known[item.instanceId]
     );
-    targets.forEach((item) => {
+    const allowed = workAllowanceBeforeFailure(drone, "scout_drone", targets.length);
+    const observedTargets = targets.slice(0, allowed);
+    observedTargets.forEach((item) => {
       const definition = BF.ObjectLibrary?.getById?.(item.objectId);
       if (!definition) return;
       emitDroneEvent(
@@ -1125,8 +1285,9 @@
         }
       );
     });
-    mapScans[zoneId] = { scannedAt: now, observed: targets.length };
+    mapScans[zoneId] = { scannedAt: now, observed: observedTargets.length };
     drone.lastActionAt = now;
+    recordDroneWork(drone, "scout_drone", observedTargets.length, now);
     saveState();
     return true;
   };
@@ -1137,7 +1298,7 @@
     const droneState = type === "harvest_drone"
       ? harvestById(droneId)
       : state.drones[type];
-    if (!droneState?.crafted) return false;
+    if (!droneState?.crafted || droneState.failure) return false;
     if (type === "harvest_drone" && !hasDeployedBeacon(mapId)) {
       announce(
         "Un Harvest ne peut être laissé en autonomie distante que sur une map équipée d'une balise BlueFox."
@@ -1197,6 +1358,10 @@
       ? harvestById(droneId)
       : state.drones[type];
     if (!droneState?.crafted) return false;
+    if (droneState.failure) {
+      announce("Le drone est en panne : BlueFox doit le rejoindre et le réparer sur place.");
+      return false;
+    }
     const previousMapId = droneState.deployedMapId || null;
     if (
       String(previousMapId || "") ===
@@ -1317,7 +1482,7 @@
         return false;
       }
     }
-    if ((BF.availableInventory?.("deployed_beacon", { includeExpeditionKeys: ["deployed_beacon"] }) || 0) < 1) {
+    if ((BF.availableInventory?.("deployed_beacon") || 0) < 1) {
       announce("Aucune balise transportable dans le Kit d’expédition.");
       return false;
     }
@@ -1335,7 +1500,7 @@
       spawnOnce: true,
       createdAt: Date.now()
     };
-    const removed = BF.consumeInventoryPool?.("deployed_beacon", 1, { includeExpeditionKeys: ["deployed_beacon"] }) || 0;
+    const removed = BF.consumeInventoryPool?.("deployed_beacon", 1) || 0;
     if (removed !== 1) return false;
     const spawned = BF.PersistentMicroScenes?.spawnRecord?.(
       engine.THREE,
@@ -1366,7 +1531,7 @@
   const deployBeacon = (options = {}) => {
     const engine = BF.currentEngine;
     const mapId = String(engine?.currentMapId || "");
-    if (!mapId || (BF.availableInventory?.("deployed_beacon", { includeExpeditionKeys: ["deployed_beacon"] }) || 0) < 1) return false;
+    if (!mapId || (BF.availableInventory?.("deployed_beacon") || 0) < 1) return false;
     if (hasDeployedBeacon(mapId)) return false;
     const source = options.source || "player";
     if (source === "autonomy") {
@@ -1385,6 +1550,72 @@
       label: "la balise",
       onInstall: (placement) => installBeaconAt(placement, { ...options, mapId })
     }) === true;
+  };
+
+  const repairDrone = (droneId) => {
+    const found = droneByAnyId(droneId);
+    if (!found?.drone?.failure) return false;
+    const { drone, type } = found;
+    const failure = drone.failure;
+    const mapId = String(BF.currentEngine?.currentMapId || "");
+    if (!mapId || mapId !== String(failure.mapId || drone.deployedMapId || "")) return false;
+    const player = BF.currentEngine?.character?.root?.position;
+    const anchor = failure.anchor || drone.deployedAnchor;
+    if (!player || !anchor || Math.hypot(Number(player.x) - Number(anchor.x), Number(player.z) - Number(anchor.z)) > DRONE_REPAIR_RADIUS) {
+      return false;
+    }
+    const requirements = Object.entries(failure.requirements || {})
+      .map(([key, amount]) => [key, Math.max(0, Number(amount) || 0)])
+      .filter(([, amount]) => amount > 0);
+    const inventory = BF.getProgressionState?.().inventory || {};
+    if (requirements.some(([key, amount]) => (Number(inventory[key]) || 0) < amount)) {
+      announce("BlueFox n’a pas sur lui toutes les ressources nécessaires pour réparer ce drone.");
+      return false;
+    }
+    for (const [key, amount] of requirements) {
+      if ((BF.consumeInventory?.(key, amount) || 0) !== amount) return false;
+    }
+    const repairedFailure = { ...failure, requirements: { ...failure.requirements } };
+    drone.failure = null;
+    drone.active = true;
+    drone.repairedAt = Date.now();
+    drone.lastActionAt = drone.repairedAt;
+    if (type === "harvest_drone") {
+      state.drones.harvest_drone ||= { crafted: true };
+      state.drones.harvest_drone.active = harvestFleet().some((entry) => entry.active);
+    }
+    syncFailureVisual(drone, type);
+    saveState();
+    emitDroneEvent(
+      BF.ObjectEvents?.types?.OBJECT_REPAIRED || "OBJECT_REPAIRED",
+      deployedDroneVisual(type, drone.id || type),
+      {
+        droneType: type,
+        droneId: drone.id || type,
+        failureId: repairedFailure.id,
+        failureIndex: repairedFailure.index,
+        mapId,
+        instanceId: repairedFailure.instanceId,
+        requirements: { ...repairedFailure.requirements },
+        state: "repaired"
+      }
+    );
+    announce(`${type === "scout_drone" ? "Le Scout" : `Le Harvest ${drone.id}`} est réparé et reprend son activité.`);
+    global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
+    return true;
+  };
+
+  const onDroneStudyEvent = (event) => {
+    const type = String(event?.type || "");
+    if (![
+      String(BF.ObjectEvents?.types?.OBJECT_INSPECTED || "OBJECT_INSPECTED"),
+      String(BF.ObjectEvents?.types?.OBJECT_ANALYZED || "OBJECT_ANALYZED"),
+      String(BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED")
+    ].includes(type)) return false;
+    const instanceId = String(event?.instanceId || event?.detail?.instanceId || "");
+    if (!instanceId) return false;
+    const failure = activeDroneFailures().find((entry) => String(entry.instanceId || "") === instanceId);
+    return failure ? repairDrone(failure.droneId) : false;
   };
 
   const snapshot = () => JSON.parse(JSON.stringify({
@@ -1413,7 +1644,10 @@
       ...drone,
       priorities: availablePriorities(drone.id)
     })),
-    canCraftHarvest: canCraft("harvest_drone")
+    canCraftHarvest: canCraft("harvest_drone"),
+    failures: activeDroneFailures(),
+    failureThresholds: DRONE_FAILURE_THRESHOLDS,
+    maxFailuresPerDrone: MAX_DRONE_FAILURES
   });
 
   const onMapTransitionCompleted = (event) => {
@@ -1429,6 +1663,7 @@
       recallDrone("scout_drone", "map-exit-without-beacon");
     }
   };
+  const unsubscribeDroneRepairEvents = BF.ObjectEvents?.subscribe?.(onDroneStudyEvent) || null;
   global.addEventListener?.("bluefox:map-transition-completed", onMapTransitionCompleted);
   global.addEventListener?.("beforeunload", () => saveState());
 
@@ -1468,6 +1703,10 @@
     setHarvestPriority,
     noteConsoleViewed,
     depositCargo: (droneId) => depositCargo(harvestById(droneId), "manual"),
+    repairDrone,
+    failures: activeDroneFailures,
+    failureThresholds: DRONE_FAILURE_THRESHOLDS,
+    repairRequirements: DRONE_REPAIR_REQUIREMENTS,
     hasDeployedBeacon,
     getPlanetMapMarkers,
     invalidate(scene) { if (scene) sceneCache.delete(scene); }
