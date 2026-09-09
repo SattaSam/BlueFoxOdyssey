@@ -352,6 +352,25 @@
       return quantity;
     }
 
+    grantCampStorage(key, amount = 1, detail = {}) {
+      const safeKey = cleanKey(key);
+      const quantity = Math.max(0, Number(amount) || 0);
+      if (!quantity) return 0;
+      this.increment(this.state.campStorage, safeKey, quantity);
+      this.increment(this.state.deposited, safeKey, quantity);
+      this.save();
+      this.publishChange("camp-storage-granted", {
+        inventoryKey: safeKey,
+        quantity,
+        source: detail.source || "system",
+        reason: detail.reason || null,
+        missionId: detail.missionId || null,
+        mapId: detail.mapId || null,
+        droneId: detail.droneId || null
+      });
+      return quantity;
+    }
+
     consumeInventory(key, amount = 1) {
       const safeKey = cleanKey(key);
       const requested = Math.max(0, Number(amount) || 0);
@@ -486,7 +505,7 @@
       if ([
         BF.ObjectEvents?.types.RESOURCE_COLLECTED,
         BF.ObjectEvents?.types.RESOURCE_EXTRACTED
-      ].includes(event.type)) {
+      ].includes(event.type) && event.detail?.inventoryCredit !== false) {
         this.addInventory(event.inventoryKey || event.detail?.inventoryKey || event.detail?.kind || event.family, quantity || 1);
       }
 
@@ -559,6 +578,7 @@
   BF.getHistoricalCollectionTotal = (criteria) =>
     registry.historicalCollectionTotal(criteria);
   BF.grantInventory = (key, amount, detail) => registry.grantInventory(key, amount, detail);
+  BF.grantCampStorage = (key, amount, detail) => registry.grantCampStorage(key, amount, detail);
   BF.consumeInventory = (key, amount) => registry.consumeInventory(key, amount);
   BF.availableInventory = (keys) => registry.availableInventory(keys);
   BF.consumeInventoryPool = (keys, amount) =>

@@ -2320,6 +2320,11 @@
       .bluefox-research-card small { overflow-wrap:anywhere; color:rgba(180,220,228,.7); font-size:9px; line-height:1.2; }
       .bluefox-research-card button { margin-top:auto; padding:6px 8px; border:1px solid rgba(96,224,255,.45); border-radius:999px; color:#eafcff; background:rgba(12,64,82,.82); font-size:10px; cursor:pointer; }
       .bluefox-research-card button:disabled { opacity:.42; cursor:not-allowed; filter:grayscale(.4); }
+      .bluefox-drone-console { grid-column:1/-1; margin-top:10px; padding:10px; border:1px solid rgba(171,110,255,.3); border-radius:12px; background:rgba(20,10,38,.62); }
+      .bluefox-drone-console h3 { margin:0 0 8px; font-size:12px; }
+      .bluefox-drone-slots { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+      .bluefox-drone-slot { padding:8px; border:1px solid rgba(180,150,255,.22); border-radius:9px; font-size:10px; }
+      .bluefox-drone-slot select,.bluefox-drone-slot button { width:100%; margin-top:6px; }
       @media (max-width:650px) {
         .bluefox-research-grid { gap:5px; }
         .bluefox-research-card { min-height:100px; padding:7px 6px; }
@@ -2424,6 +2429,117 @@
     panels.forEach(enhanceResearch);
   }
 
+  function renderDroneConsole(section) {
+    const runtime = global.BlueFox3D?.SpecialObjectRuntime;
+    const research = global.BlueFox3D?.Research;
+    let host = section.querySelector(".bluefox-drone-console");
+    if (research?.isUnlocked?.("harvest-drone-blueprint-v1") !== true) {
+      host?.remove();
+      return;
+    }
+    if (!runtime?.consoleState) return;
+    const state = runtime.consoleState();
+    if (!host) {
+      host = document.createElement("section");
+      host.className = "bluefox-drone-console";
+      section.appendChild(host);
+    }
+    host.replaceChildren();
+    const title = document.createElement("h3");
+    title.textContent = "RÉSEAU HARVEST · 4 EMPLACEMENTS MAX";
+    host.append(title);
+    const slots = document.createElement("div");
+    slots.className = "bluefox-drone-slots";
+    host.append(slots);
+
+    for (let index = 0; index < state.maxSlots; index += 1) {
+      const drone = state.harvestFleet[index] || null;
+      const card = document.createElement("article");
+      card.className = "bluefox-drone-slot";
+      const label = document.createElement("strong");
+      label.textContent = drone ? `Harvest ${index + 1}` : `Emplacement ${index + 1}`;
+      card.append(label);
+
+      if (!drone) {
+        const info = document.createElement("div");
+        info.textContent = "Libre";
+        card.append(info);
+        const craft = document.createElement("button");
+        craft.type = "button";
+        craft.textContent = "Assembler un Harvest";
+        craft.disabled = state.canCraftHarvest !== true;
+        craft.onclick = () => {
+          runtime.craftDrone?.("harvest_drone");
+          requestResearchRefresh();
+        };
+        card.append(craft);
+        slots.append(card);
+        continue;
+      }
+
+      const status = document.createElement("div");
+      status.textContent = drone.deployedMapId
+        ? `Map : ${drone.deployedMapId} · Zone : ${
+            drone.deployedZoneLabel ||
+            `Plateau ${(Number(drone.deployedZoneId) || 0) + 1}`
+          } · Cargo ${drone.cargoTotal || 0}/${state.cargoCapacity}`
+        : `Dans le réseau · Cargo ${drone.cargoTotal || 0}/${state.cargoCapacity}`;
+      card.append(status);
+
+      const select = document.createElement("select");
+      (drone.priorities || ["collect_all"]).forEach((key) => {
+        const option = document.createElement("option");
+        option.value = key;
+        option.textContent = key === "collect_all" ? "Collecter tout" : key;
+        option.selected = String(drone.priority || "collect_all") === key;
+        select.append(option);
+      });
+      select.disabled = !drone.deployedMapId;
+      select.onchange = () => {
+        runtime.setHarvestPriority?.(drone.id, select.value);
+        requestResearchRefresh();
+      };
+      card.append(select);
+
+      const confirmPriority = document.createElement("button");
+      confirmPriority.type = "button";
+      confirmPriority.textContent = "Confirmer la priorité";
+      confirmPriority.disabled = !drone.deployedMapId;
+      confirmPriority.onclick = () => {
+        runtime.setHarvestPriority?.(drone.id, select.value);
+        requestResearchRefresh();
+      };
+      card.append(confirmPriority);
+
+      const action = document.createElement("button");
+      action.type = "button";
+      if (drone.deployedMapId) {
+        action.textContent = "Rappeler";
+        action.onclick = () => {
+          runtime.recallDrone?.("harvest_drone", "research-console", drone.id);
+          requestResearchRefresh();
+        };
+      } else {
+        action.textContent = "Déployer sur cette map balisée";
+        action.onclick = () => {
+          runtime.deployDrone?.("harvest_drone", drone.id);
+          requestResearchRefresh();
+        };
+      }
+      card.append(action);
+      slots.append(card);
+    }
+    const drn04Active = (global.BlueFox3D?.getMissionState?.()?.missions || [])
+      .some((mission) =>
+        String(mission?.missionId || mission?.id || "") === "DRN-04" &&
+        String(mission?.lifecycleStatus || "") === "active"
+      );
+    if (drn04Active && host.dataset.drn04ViewNoted !== "true") {
+      host.dataset.drn04ViewNoted = "true";
+      runtime.noteConsoleViewed?.();
+    }
+  }
+
   function enhanceResearch(panel) {
     if (!isResearchPanel(panel)) return;
     const research = global.BlueFox3D?.Research;
@@ -2481,7 +2597,12 @@
       const button = document.createElement("button");
       button.type = "button";
 
-      if (entry.type === "research.blueprint") {
+      if (entry.type === "research.drone-blueprint") {
+        status.textContent = "Blueprint débloqué";
+        status.hidden = false;
+        button.textContent = "Débloqué";
+        button.disabled = true;
+      } else if (entry.type === "research.blueprint") {
         const state = research.constructionState?.(entry.constructionKind, mapId);
         status.hidden = true;
         button.textContent = entry.label || "Lancer le projet";
@@ -2511,6 +2632,7 @@
       card.append(title, description, status, button);
       grid.appendChild(card);
     });
+    renderDroneConsole(section);
 
   }
 

@@ -2325,6 +2325,74 @@
       };
     }
 
+    handleDroneMissionObjectEvent(rawEvent = {}) {
+      const type = String(rawEvent?.type || "");
+      const detail = rawEvent?.detail || {};
+      const source = String(detail.interactionSource || "");
+      const droneType = String(detail.droneType || "");
+      const remote = detail.remote === true;
+      let changed = false;
+
+      if (this.missionLifecycle("DRN-03").active) {
+        if (
+          type === String(BF.ObjectEvents?.types?.DRONE_ACTIVATED || "DRONE_ACTIVATED") &&
+          source === "drone" &&
+          droneType === "harvest_drone" &&
+          detail.state === "deployed" &&
+          detail.beaconLinked === true
+        ) {
+          changed = this.progressRuntimeValidationSlot("DRN-03", "deploy", 1) || changed;
+        }
+        if (
+          type === String(BF.ObjectEvents?.types?.DRONE_PRIORITY_CHANGED || "DRONE_PRIORITY_CHANGED") &&
+          source === "drone" &&
+          droneType === "harvest_drone"
+        ) {
+          changed = this.progressRuntimeValidationSlot("DRN-03", "priority", 1) || changed;
+        }
+        if (
+          type === String(BF.ObjectEvents?.types?.RESOURCE_COLLECTED || "RESOURCE_COLLECTED") &&
+          source === "drone" &&
+          droneType === "harvest_drone" &&
+          remote
+        ) {
+          changed = this.progressRuntimeValidationSlot(
+            "DRN-03",
+            "remoteCollect",
+            Math.max(1, Number(rawEvent.quantity) || 1)
+          ) || changed;
+        }
+      }
+
+      if (this.missionLifecycle("DRN-04").active) {
+        if (
+          type === String(BF.ObjectEvents?.types?.DRONE_CONSOLE_VIEWED || "DRONE_CONSOLE_VIEWED") &&
+          source === "drone"
+        ) {
+          changed = this.progressRuntimeValidationSlot("DRN-04", "console", 1) || changed;
+        }
+        if (
+          type === String(BF.ObjectEvents?.types?.DRONE_PRIORITY_CHANGED || "DRONE_PRIORITY_CHANGED") &&
+          source === "drone" &&
+          droneType === "harvest_drone"
+        ) {
+          changed = this.progressRuntimeValidationSlot("DRN-04", "priority", 1) || changed;
+        }
+        if (
+          type === String(BF.ObjectEvents?.types?.DRONE_CARGO_DEPOSITED || "DRONE_CARGO_DEPOSITED") &&
+          source === "drone" &&
+          droneType === "harvest_drone"
+        ) {
+          changed = this.progressRuntimeValidationSlot(
+            "DRN-04",
+            "deposit",
+            Math.max(1, Number(rawEvent.quantity) || 1)
+          ) || changed;
+        }
+      }
+      return changed;
+    }
+
     handleEnergyMissionObjectEvent(rawEvent = {}) {
       const type = String(rawEvent?.type || "");
       const detail = rawEvent?.detail || {};
@@ -2401,6 +2469,7 @@
 
     onObjectEvent(rawEvent) {
       this.handleEnergyMissionObjectEvent(rawEvent);
+      this.handleDroneMissionObjectEvent(rawEvent);
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
       this.recordObservation(rawEvent);

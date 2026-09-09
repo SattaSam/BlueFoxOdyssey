@@ -2462,6 +2462,112 @@
     })
   });
 
+  const DRN01 = Object.freeze({
+    id: "DRN-01",
+    title: "Comprendre le Scout",
+    description: "Démonter intellectuellement le Scout déjà opérationnel afin de formaliser son architecture reproductible.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "BAL-03", count: 1 }),
+    prerequisites: Object.freeze(["BAL-03", "ENE-13"]),
+    priority: 292,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "core", title: "Analyser l'architecture du Scout", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "blueprint", title: "Formaliser le Blueprint Scout", action: "research", target: 1, requires: Object.freeze(["core"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "drn01-scout-core", microSceneId: "MSC-CUSTOM-ETABLI-VIDE", fact: "drn01:scoutCore:v1", slot: "core", radius: 8 }),
+      Object.freeze({ id: "drn01-scout-blueprint", microSceneId: "MSC-CUSTOM-ETABLI-VIDE", fact: "drn01:scoutBlueprint:v1", slot: "blueprint", radius: 8 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.drone-blueprint",
+      id: "scout-drone-blueprint-v1",
+      category: "technology",
+      label: "Blueprint Scout",
+      description: "Architecture reproductible du drone éclaireur existant."
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le Scout fonctionne. Je veux maintenant comprendre ce qui, dans son noyau, rend son autonomie reproductible."]),
+      completed: Object.freeze(["Le Blueprint Scout est formalisé. Son architecture énergétique et son guidage ne sont plus une boîte noire."])
+    })
+  });
+
+  const DRN02 = Object.freeze({
+    id: "DRN-02",
+    title: "Du regard à la récolte",
+    description: "Transposer l'architecture du Scout vers un drone capable de manipuler des ressources et de gérer un cargo.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "DRN-01", count: 1 }),
+    prerequisites: Object.freeze(["DRN-01", "BAL-03"]),
+    priority: 291,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "manipulation", title: "Étudier une architecture de manipulation", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "cargo", title: "Concevoir le cargo et la logique de retour", action: "research", target: 1, requires: Object.freeze(["manipulation"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "drn02-manipulation", microSceneId: "MSC-CUSTOM-ETABLI-VIDE", fact: "drn02:manipulation:v1", slot: "manipulation", radius: 8 }),
+      Object.freeze({ id: "drn02-cargo", microSceneId: "MSC-CUSTOM-ETABLI-VIDE", fact: "drn02:cargo:v1", slot: "cargo", radius: 8 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.drone-blueprint",
+      id: "harvest-drone-blueprint-v1",
+      category: "technology",
+      label: "Blueprint Harvest",
+      description: "Architecture de drone récolteur avec cargo logique et pilotage par priorité."
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Voir ne suffit plus. Je peux adapter ce que j'ai appris du Scout à un châssis capable de saisir, trier et rapporter des ressources."]),
+      completed: Object.freeze(["Le Blueprint Harvest est prêt. Il ne reste qu'à tester une vraie récolte distante sur une map balisée."])
+    })
+  });
+
+  const DRN03 = Object.freeze({
+    id: "DRN-03",
+    title: "Une récolte qui reste là-bas",
+    description: "Déployer un Harvest sur une map balisée, lui donner une priorité puis confirmer une première collecte pendant l'absence de BlueFox.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "DRN-02", count: 1 }),
+    prerequisites: Object.freeze(["DRN-02", "BAL-03"]),
+    priority: 290,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "deploy", title: "Déployer un Harvest sur une map balisée", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "priority", title: "Choisir sa première priorité de collecte", action: "research", target: 1, requires: Object.freeze(["deploy"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "remoteCollect", title: "Confirmer une collecte distante pendant l'absence de BlueFox", action: "research", target: 1, requires: Object.freeze(["priority"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "drn03-remote-harvest", deploySlot: "deploy", prioritySlot: "priority", collectSlot: "remoteCollect" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La balise est en place. Je peux enfin vérifier qu'un Harvest reste utile lorsque je quitte réellement la zone."]),
+      completed: Object.freeze(["La récolte a continué sans moi. La balise ne sert plus seulement de repère : elle ancre un véritable réseau de travail distant."])
+    })
+  });
+
+  const DRN04 = Object.freeze({
+    id: "DRN-04",
+    title: "Régler le réseau",
+    description: "Piloter un Harvest depuis Recherche, modifier sa priorité et valider le dépôt logique de son cargo vers les stocks du camp ou de la base.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "DRN-03", count: 1 }),
+    prerequisites: Object.freeze(["DRN-03"]),
+    priority: 289,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "console", title: "Consulter l'état du drone dans Recherche", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "priority", title: "Modifier ou confirmer sa priorité", action: "research", target: 1, requires: Object.freeze(["console"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "deposit", title: "Valider un dépôt de cargo vers les stocks", action: "research", target: 1, requires: Object.freeze(["priority"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "drn04-network-console", consoleSlot: "console", prioritySlot: "priority", depositSlot: "deposit" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le réseau fonctionne. Il faut maintenant pouvoir le lire et le régler sans transformer chaque drone en nouvelle mission logistique."]),
+      completed: Object.freeze(["Le réseau est réglable depuis Recherche, et le cargo rejoint les stocks sans gonfler deux fois l'historique de collecte."])
+    })
+  });
+
   const FAU01 = Object.freeze({
     id: "FAU-01",
     title: "Approche prudente",
@@ -6458,6 +6564,10 @@
     BAL01,
     BAL02,
     BAL03,
+    DRN01,
+    DRN02,
+    DRN03,
+    DRN04,
     FAU01,
     FAU02,
     FAU03,
