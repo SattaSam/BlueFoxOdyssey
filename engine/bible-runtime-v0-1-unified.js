@@ -2263,7 +2263,29 @@
 
         const lifecycleState = this.missionLifecycle(mission.id);
         if (lifecycleState.completed || lifecycleState.active) continue;
-        if (!this.prerequisitesSatisfied(mission)) continue;
+
+        const prerequisitesReady = this.prerequisitesSatisfied(mission);
+        if (!prerequisitesReady) {
+          const triggerMissionId = String(mission.trigger?.missionId || "");
+          const triggeredPrerequisiteCompletion =
+            mission.trigger?.type === "progression.mission_completed" &&
+            triggerMissionId &&
+            asArray(mission.prerequisites).includes(triggerMissionId);
+          if (!triggeredPrerequisiteCompletion) continue;
+
+          const count = this.incrementTrigger(mission, event);
+          const required = Math.max(1, Number(mission.trigger?.count) || 1);
+          if (count < required || options.allowActivation === false) continue;
+
+          this.manager()?.startMission?.(mission.id, {
+            primary: mission.primaryOnActivation === true,
+            autoPrimaryEligible: mission.autoPrimaryEligible === true,
+            prerequisites: asArray(mission.prerequisites),
+            source: "bible-runtime-v0.1",
+            reason: `Déclencheur Bible V0.1 : ${event.type || "event"}`
+          });
+          continue;
+        }
 
         const count = this.incrementTrigger(mission, event);
         const required = Math.max(1, Number(mission.trigger?.count) || 1);
