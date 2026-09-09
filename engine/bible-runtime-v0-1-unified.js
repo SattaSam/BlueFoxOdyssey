@@ -1970,7 +1970,15 @@
           const keys = this.inventoryKeysForRequirement(requirement);
           const quantity = Math.max(0, Number(requirement.quantity) || 0);
           const transactionId = `${mission.id}:${context.id || context.fact}:inventory-consume:v1`;
-          const removed = BF.consumeInventoryPoolOnce?.(transactionId, keys, quantity) || 0;
+          const consumeOptions = requirement.inventorySource === "expedition"
+            ? { includeExpeditionKeys: keys }
+            : undefined;
+          const removed = BF.consumeInventoryPoolOnce?.(
+            transactionId,
+            keys,
+            quantity,
+            consumeOptions
+          ) || 0;
           if (removed !== quantity) {
             BF.currentEngine?.callbacks?.onStatus?.(requirement.missingMessage || "Ressource missionnelle manquante.");
             return;
@@ -2410,7 +2418,7 @@
       ) {
         if (detail.accumulatorConsumed !== true) {
           const transactionId = "ENE-13:scout-activation:accumulator:v1";
-          const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1) || 0;
+          const removed = BF.consumeInventoryPoolOnce?.(transactionId, ["accumulator"], 1, { includeExpeditionKeys: ["accumulator"] }) || 0;
           if (removed !== 1) {
             BF.currentEngine?.callbacks?.onStatus?.("Il me faut un accumulateur réel avant d’alimenter le drone éclaireur.");
             return false;
@@ -4558,9 +4566,13 @@
         const keys = this.inventoryKeysForRequirement(requirement);
         const quantity =
           Math.max(0, Number(requirement.quantity) || 0) * requested;
+        const inventoryOptions =
+          requirement?.inventorySource === "expedition"
+            ? { includeExpeditionKeys: keys }
+            : {};
         return Boolean(
           keys.length &&
-          BF.progression?.availableInventory?.(keys) >= quantity
+          BF.progression?.availableInventory?.(keys, inventoryOptions) >= quantity
         );
       });
     }
@@ -4577,7 +4589,12 @@
         const keys = this.inventoryKeysForRequirement(requirement);
         const quantity =
           Math.max(0, Number(requirement.quantity) || 0) * requested;
-        const removed = BF.consumeInventoryPool?.(keys, quantity) || 0;
+        const inventoryOptions =
+          requirement?.inventorySource === "expedition"
+            ? { includeExpeditionKeys: keys }
+            : {};
+        const removed =
+          BF.consumeInventoryPool?.(keys, quantity, inventoryOptions) || 0;
         if (removed !== quantity) return 0;
       }
 

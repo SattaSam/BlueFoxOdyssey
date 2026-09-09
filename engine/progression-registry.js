@@ -6,6 +6,8 @@
   const LEGACY_STORAGE_KEY = "bluefox_odyssey_save_v1";
   const VERSION = 1;
   const MAX_HISTORY = 500;
+  const AUTO_EXPEDITION_KEYS = new Set(["accumulator"]);
+  const LOCKED_EXPEDITION_KEYS = new Set(["deployed_beacon"]);
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
   const cleanKey = (value, fallback = "unknown") => {
@@ -25,6 +27,7 @@
       missions: {}
     },
     inventory: {},
+    expeditionAllocation: {},
     campStorage: {},
     deposited: {},
     consumed: {},
@@ -61,6 +64,17 @@
         ...(saved.counters || {})
       },
       inventory: { ...(saved.inventory || {}) },
+      expeditionAllocation: Object.prototype.hasOwnProperty.call(saved, "expeditionAllocation")
+        ? { ...(saved.expeditionAllocation || {}) }
+        : (() => {
+            const inventory = { ...(saved.inventory || {}) };
+            const allocation = {};
+            AUTO_EXPEDITION_KEYS.forEach((key) => {
+              const quantity = Math.max(0, Number(inventory[key]) || 0);
+              if (quantity > 0) allocation[key] = quantity;
+            });
+            return allocation;
+          })(),
       campStorage: { ...(saved.campStorage || {}) },
       deposited: { ...(saved.deposited || {}) },
       consumed: { ...(saved.consumed || {}) },
@@ -184,6 +198,152 @@
       const safeKey = cleanKey(key);
       bucket[safeKey] = (Number(bucket[safeKey]) || 0) + Math.max(0, Number(amount) || 0);
       return bucket[safeKey];
+    }
+
+    normalizeExpeditionAllocation() {
+      const allocation = this.state.expeditionAllocation || (this.state.expeditionAllocation = {});
+      Object.keys(allocation).forEach((key) => {
+        const inventory = Math.max(0, Number(this.state.inventory[key]) || 0);
+        const reserved = Math.min(inventory, Math.max(0, Number(allocation[key]) || 0));
+        if (reserved > 0) allocation[key] = reserved;
+        else delete allocation[key];
+      });
+      return allocation;
+    }
+
+    expeditionQuantity(key) {
+      const safeKey = cleanKey(key);
+      const inventory = Math.max(0, Number(this.state.inventory[safeKey]) || 0);
+      if (LOCKED_EXPEDITION_KEYS.has(safeKey)) return inventory;
+      return Math.min(
+        inventory,
+        Math.max(0, Number(this.state.expeditionAllocation?.[safeKey]) || 0)
+      );
+    }
+
+    unallocatedInventoryQuantity(key) {
+      const safeKey = cleanKey(key);
+      const inventory = Math.max(0, Number(this.state.inventory[safeKey]) || 0);
+      return Math.max(0, inventory - this.expeditionQuantity(safeKey));
+    }
+
+    allocateInventoryToExpedition(key, amount = 1) {
+      const safeKey = cleanKey(key);
+      if (LOCKED_EXPEDITION_KEYS.has(safeKey)) return 0;
+      const requested = Math.max(0, Number(amount) || 0);
+      const moved = Math.min(requested, this.unallocatedInventoryQuantity(safeKey));
+      if (!moved) return 0;
+      const allocation = this.state.expeditionAllocation || (this.state.expeditionAllocation = {});
+      allocation[safeKey] = this.expeditionQuantity(safeKey) + moved;
+      this.save();
+      this.publishChange("expedition-allocated", {
+        inventoryKey: safeKey,
+        quantity: moved
+      });
+      return moved;
+    }
+
+    releaseExpeditionAllocation(key, amount = 1) {
+      const safeKey = cleanKey(key);
+      if (LOCKED_EXPEDITION_KEYS.has(safeKey)) return 0;
+      const requested = Math.max(0, Number(amount) || 0);
+      const moved = Math.min(requested, this.expeditionQuantity(safeKey));
+      if (!moved) return 0;
+      const remaining = this.expeditionQuantity(safeKey) - moved;
+      if (remaining > 0) this.state.expeditionAllocation[safeKey] = remaining;
+      else delete this.state.expeditionAllocation[safeKey];
+      this.save();
+      this.publishChange("expedition-released", {
+        inventoryKey: safeKey,
+        quantity: moved
+      });
+      return moved;
+    }
+
+    transferCampToExpedition(key, amount = 1) {
+      const safeKey = cleanKey(key);
+      if (LOCKED_EXPEDITION_KEYS.has(safeKey)) return 0;
+      const requested = Math.max(0, Number(amount) || 0);
+      const stored = Math.max(0, Number(this.state.campStorage[safeKey]) || 0);
+      const capacity = BF.getInventoryCapacityState?.() || null;
+      const free = Number.isFinite(Number(capacity?.capacity)) && Number.isFinite(Number(capacity?.count))
+        ? Math.max(0, Number(capacity.capacity) - Number(capacity.count))
+        : Infinity;
+      const moved = Math.min(requested, stored, free);
+      if (!moved) return 0;
+      this.state.campStorage[safeKey] = stored - moved;
+      this.increment(this.state.inventory, safeKey, moved);
+      const allocation = this.state.expeditionAllocation || (this.state.expeditionAllocation = {});
+      allocation[safeKey] = this.expeditionQuantity(safeKey) + moved;
+      this.save();
+      this.publishChange("expedition-withdrawn", {
+        inventoryKey: safeKey,
+        quantity: moved
+      });
+      return moved;
+    }
+
+    transferExpeditionToCamp(key, amount = 1) {
+      const safeKey = cleanKey(key);
+      if (LOCKED_EXPEDITION_KEYS.has(safeKey)) return 0;
+      const requested = Math.max(0, Number(amount) || 0);
+      const moved = Math.min(requested, this.expeditionQuantity(safeKey));
+      if (!moved) return 0;
+      const remaining = this.expeditionQuantity(safeKey) - moved;
+      this.state.inventory[safeKey] = Math.max(0, Number(this.state.inventory[safeKey]) || 0) - moved;
+      if (remaining > 0) this.state.expeditionAllocation[safeKey] = remaining;
+      else delete this.state.expeditionAllocation[safeKey];
+      this.increment(this.state.campStorage, safeKey, moved);
+      this.increment(this.state.deposited, safeKey, moved);
+      this.save();
+      this.publishChange("expedition-deposited", {
+        inventoryKey: safeKey,
+        quantity: moved
+      });
+      return moved;
+    }
+
+    consumeExpeditionRequirementsOnce(transactionId, requirements = {}) {
+      const safeId = cleanKey(transactionId);
+      if (!safeId) return 0;
+      if (this.state.transactions[safeId]) {
+        return Number(this.state.transactions[safeId].quantity) || 0;
+      }
+      const entries = (Array.isArray(requirements)
+        ? requirements.map((entry) => [entry?.inventoryKey || entry?.key, entry?.quantity])
+        : Object.entries(requirements || {}))
+        .map(([key, amount]) => [cleanKey(key), Math.max(0, Number(amount) || 0)])
+        .filter(([, amount]) => amount > 0);
+      if (!entries.length) return 0;
+      if (entries.some(([key, amount]) => this.expeditionQuantity(key) < amount)) return 0;
+
+      let total = 0;
+      const removedByKey = {};
+      entries.forEach(([key, amount]) => {
+        const reservedBefore = this.expeditionQuantity(key);
+        this.state.inventory[key] = Math.max(0, Number(this.state.inventory[key]) || 0) - amount;
+        if (!LOCKED_EXPEDITION_KEYS.has(key)) {
+          const remaining = reservedBefore - amount;
+          if (remaining > 0) this.state.expeditionAllocation[key] = remaining;
+          else delete this.state.expeditionAllocation[key];
+        }
+        this.increment(this.state.consumed, key, amount);
+        removedByKey[key] = amount;
+        total += amount;
+      });
+      this.state.transactions[safeId] = {
+        id: safeId,
+        quantity: total,
+        requirements: { ...removedByKey },
+        at: Date.now()
+      };
+      this.save();
+      this.publishChange("expedition-consumed", {
+        transactionId: safeId,
+        quantity: total,
+        removedByKey
+      });
+      return total;
     }
 
     scopedBucket(scope, id) {
@@ -332,7 +492,14 @@
     }
 
     addInventory(key, amount = 1) {
-      return this.increment(this.state.inventory, cleanKey(key), amount);
+      const safeKey = cleanKey(key);
+      const quantity = Math.max(0, Number(amount) || 0);
+      const total = this.increment(this.state.inventory, safeKey, quantity);
+      if (AUTO_EXPEDITION_KEYS.has(safeKey) && quantity > 0) {
+        const allocation = this.state.expeditionAllocation || (this.state.expeditionAllocation = {});
+        allocation[safeKey] = this.expeditionQuantity(safeKey) + quantity;
+      }
+      return total;
     }
 
     grantInventory(key, amount = 1, detail = {}) {
@@ -340,6 +507,10 @@
       const quantity = Math.max(0, Number(amount) || 0);
       if (!quantity) return 0;
       this.increment(this.state.inventory, safeKey, quantity);
+      if (AUTO_EXPEDITION_KEYS.has(safeKey)) {
+        const allocation = this.state.expeditionAllocation || (this.state.expeditionAllocation = {});
+        allocation[safeKey] = this.expeditionQuantity(safeKey) + quantity;
+      }
       this.save();
       this.publishChange("inventory-granted", {
         inventoryKey: safeKey,
@@ -371,65 +542,103 @@
       return quantity;
     }
 
-    consumeInventory(key, amount = 1) {
+    expeditionConsumptionAllowed(key, options = {}) {
+      const safeKey = cleanKey(key);
+      if (options?.includeExpedition === true) return true;
+      const allowed = Array.isArray(options?.includeExpeditionKeys)
+        ? options.includeExpeditionKeys
+        : [];
+      return allowed.map(cleanKey).includes(safeKey);
+    }
+
+    consumableInventoryQuantity(key, options = {}) {
+      const safeKey = cleanKey(key);
+      if (this.expeditionConsumptionAllowed(safeKey, options)) {
+        return Math.max(0, Number(this.state.inventory[safeKey]) || 0);
+      }
+      return this.unallocatedInventoryQuantity(safeKey);
+    }
+
+    consumeInventory(key, amount = 1, options = {}) {
       const safeKey = cleanKey(key);
       const requested = Math.max(0, Number(amount) || 0);
-      const available = Number(this.state.inventory[safeKey]) || 0;
+      const available = this.consumableInventoryQuantity(safeKey, options);
       const removed = Math.min(available, requested);
-      this.state.inventory[safeKey] = available - removed;
+      if (!removed) return 0;
+      this.state.inventory[safeKey] =
+        Math.max(0, Number(this.state.inventory[safeKey]) || 0) - removed;
       this.increment(this.state.consumed, safeKey, removed);
+      this.normalizeExpeditionAllocation();
       this.save();
       this.publishChange("inventory-consumed", {
         inventoryKey: safeKey,
-        quantity: removed
+        quantity: removed,
+        expeditionIncluded: this.expeditionConsumptionAllowed(safeKey, options)
       });
       return removed;
     }
 
-    availableInventory(keys) {
+    availableInventory(keys, options = {}) {
       return [...new Set((Array.isArray(keys) ? keys : [keys]).map(cleanKey))]
         .reduce((total, key) => total +
-          (Number(this.state.inventory[key]) || 0) +
+          this.consumableInventoryQuantity(key, options) +
           (Number(this.state.campStorage[key]) || 0), 0);
     }
 
-    consumeInventoryPool(keys, amount = 1) {
+    consumeInventoryPool(keys, amount = 1, options = {}) {
       const safeKeys = [...new Set(
         (Array.isArray(keys) ? keys : [keys]).map(cleanKey)
       )];
       const requested = Math.max(0, Number(amount) || 0);
-      if (!requested || this.availableInventory(safeKeys) < requested) return 0;
+      if (!requested || this.availableInventory(safeKeys, options) < requested) return 0;
       let remaining = requested;
       const removedByKey = {};
-      [this.state.inventory, this.state.campStorage].forEach((bucket) => {
-        safeKeys.forEach((key) => {
-          if (!remaining) return;
-          const available = Math.max(0, Number(bucket[key]) || 0);
-          const removed = Math.min(available, remaining);
-          bucket[key] = available - removed;
-          remaining -= removed;
-          removedByKey[key] = (removedByKey[key] || 0) + removed;
-        });
+
+      safeKeys.forEach((key) => {
+        if (!remaining) return;
+        const available = this.consumableInventoryQuantity(key, options);
+        const removed = Math.min(available, remaining);
+        if (!removed) return;
+        this.state.inventory[key] =
+          Math.max(0, Number(this.state.inventory[key]) || 0) - removed;
+        remaining -= removed;
+        removedByKey[key] = (removedByKey[key] || 0) + removed;
       });
+
+      safeKeys.forEach((key) => {
+        if (!remaining) return;
+        const available = Math.max(0, Number(this.state.campStorage[key]) || 0);
+        const removed = Math.min(available, remaining);
+        if (!removed) return;
+        this.state.campStorage[key] = available - removed;
+        remaining -= removed;
+        removedByKey[key] = (removedByKey[key] || 0) + removed;
+      });
+
+      if (remaining) return 0;
       Object.entries(removedByKey).forEach(([key, removed]) =>
         this.increment(this.state.consumed, key, removed)
       );
+      this.normalizeExpeditionAllocation();
       this.save();
       this.publishChange("inventory-pool-consumed", {
         inventoryKeys: safeKeys,
         quantity: requested,
-        removedByKey
+        removedByKey,
+        includeExpeditionKeys: Array.isArray(options?.includeExpeditionKeys)
+          ? [...options.includeExpeditionKeys]
+          : []
       });
       return requested;
     }
 
-    consumeInventoryPoolOnce(transactionId, keys, amount = 1) {
+    consumeInventoryPoolOnce(transactionId, keys, amount = 1, options = {}) {
       const safeId = cleanKey(transactionId);
       if (!safeId) return 0;
       if (this.state.transactions[safeId]) {
         return Number(this.state.transactions[safeId].quantity) || 0;
       }
-      const removed = this.consumeInventoryPool(keys, amount);
+      const removed = this.consumeInventoryPool(keys, amount, options);
       if (removed !== Math.max(0, Number(amount) || 0)) return 0;
       this.state.transactions[safeId] = {
         id: safeId,
@@ -444,8 +653,8 @@
     depositInventory(key, amount = 1) {
       const safeKey = cleanKey(key);
       const requested = Math.max(0, Number(amount) || 0);
-      const available = Number(this.state.inventory[safeKey]) || 0;
-      const moved = Math.min(available, requested);
+      const available = Math.max(0, Number(this.state.inventory[safeKey]) || 0);
+      const moved = Math.min(this.unallocatedInventoryQuantity(safeKey), requested);
       this.state.inventory[safeKey] = available - moved;
       this.increment(this.state.campStorage, safeKey, moved);
       this.increment(this.state.deposited, safeKey, moved);
@@ -579,12 +788,25 @@
     registry.historicalCollectionTotal(criteria);
   BF.grantInventory = (key, amount, detail) => registry.grantInventory(key, amount, detail);
   BF.grantCampStorage = (key, amount, detail) => registry.grantCampStorage(key, amount, detail);
-  BF.consumeInventory = (key, amount) => registry.consumeInventory(key, amount);
-  BF.availableInventory = (keys) => registry.availableInventory(keys);
-  BF.consumeInventoryPool = (keys, amount) =>
-    registry.consumeInventoryPool(keys, amount);
-  BF.consumeInventoryPoolOnce = (transactionId, keys, amount) =>
-    registry.consumeInventoryPoolOnce(transactionId, keys, amount);
+  BF.consumeInventory = (key, amount, options) =>
+    registry.consumeInventory(key, amount, options);
+  BF.availableInventory = (keys, options) => registry.availableInventory(keys, options);
+  BF.consumeInventoryPool = (keys, amount, options) =>
+    registry.consumeInventoryPool(keys, amount, options);
+  BF.consumeInventoryPoolOnce = (transactionId, keys, amount, options) =>
+    registry.consumeInventoryPoolOnce(transactionId, keys, amount, options);
+  BF.getExpeditionQuantity = (key) => registry.expeditionQuantity(key);
+  BF.getUnallocatedInventoryQuantity = (key) => registry.unallocatedInventoryQuantity(key);
+  BF.allocateInventoryToExpedition = (key, amount) =>
+    registry.allocateInventoryToExpedition(key, amount);
+  BF.releaseExpeditionAllocation = (key, amount) =>
+    registry.releaseExpeditionAllocation(key, amount);
+  BF.transferCampToExpedition = (key, amount) =>
+    registry.transferCampToExpedition(key, amount);
+  BF.transferExpeditionToCamp = (key, amount) =>
+    registry.transferExpeditionToCamp(key, amount);
+  BF.consumeExpeditionRequirementsOnce = (transactionId, requirements) =>
+    registry.consumeExpeditionRequirementsOnce(transactionId, requirements);
   BF.depositInventory = (key, amount) => registry.depositInventory(key, amount);
   BF.withdrawInventory = (key, amount) => registry.withdrawInventory(key, amount);
   BF.depositAllInventory = () => registry.depositAllInventory();

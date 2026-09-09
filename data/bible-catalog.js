@@ -2217,7 +2217,8 @@
         inventoryConsume: Object.freeze({
           inventoryKey: "accumulator",
           quantity: 1,
-          missingMessage: "Il me faut un accumulateur réel dans mon inventaire avant d’alimenter cette machine."
+          inventorySource: "expedition",
+          missingMessage: "Il me faut un accumulateur réel dans mon Kit d’expédition avant d’alimenter cette machine."
         })
       })
     ]),
@@ -2392,7 +2393,7 @@
       requiresWorkbench: true,
       requirements: Object.freeze([
         Object.freeze({ inventoryKey: "core", quantity: 1 }),
-        Object.freeze({ inventoryKey: "accumulator", quantity: 1 }),
+        Object.freeze({ inventoryKey: "accumulator", quantity: 1, inventorySource: "expedition" }),
         Object.freeze({ inventoryKey: "parts", quantity: 6 }),
         Object.freeze({ inventoryKey: "wood", quantity: 8 }),
         Object.freeze({ inventoryKey: "stellar_iridium", quantity: 4 })

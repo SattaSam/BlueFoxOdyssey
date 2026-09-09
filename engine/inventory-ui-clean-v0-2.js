@@ -2,13 +2,16 @@
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
-  const VERSION = "inventory-kit-clean-v0.2";
+  const VERSION = "inventory-kit-clean-v0.3";
   const LEGACY_STORAGE_KEY = "bluefox_odyssey_save_v1";
   const DEFAULT_SITE_INTERACTION_RADIUS = 12;
   const EXPEDITION_KIT_OPEN_KEY = "bluefox_expedition_kit_open_v1";
   const PERSONAL_BAG_OPEN_KEY = "bluefox_personal_bag_open_v1";
   const CAMP_STORAGE_OPEN_KEY = "bluefox_camp_storage_open_v1";
-  const EXPEDITION_INVENTORY_KEYS = new Set(["accumulator", "deployed_beacon"]);
+  const LOCKED_KIT_INVENTORY_KEYS = new Set([
+    "deployed_beacon",
+    "survival_bag"
+  ]);
 
   const FALLBACKS = Object.freeze({
     crystal: { label: "Cristaux", icon: "◆" },
@@ -193,33 +196,212 @@
     return distanceToCurrentSite() <= radius;
   };
 
-  const transfer = (key, direction, amount = 1) => {
-    if (!canAccessCampInventory()) return 0;
-    return direction === "camp"
-      ? BF.depositInventory?.(key, amount) || 0
-      : BF.withdrawInventory?.(key, amount) || 0;
+  const expeditionQuantity = (key) => Math.max(
+    0,
+    Number(BF.getExpeditionQuantity?.(key)) || 0
+  );
+
+  const bagQuantity = (key) => Math.max(
+    0,
+    Number(BF.getUnallocatedInventoryQuantity?.(key)) || 0
+  );
+
+  const isExpeditionTransferableKey = (key) => {
+    const safeKey = String(key || "");
+    if (!safeKey || LOCKED_KIT_INVENTORY_KEYS.has(safeKey)) return false;
+    if (safeKey === "accumulator") return true;
+    const definition = BF.ObjectLibrary?.list?.().find(
+      (item) => item.resource?.inventoryKey === safeKey
+    );
+    if (!definition) return true;
+    const category = String(definition.category || "").toLowerCase();
+    const type = String(definition.type || "").toLowerCase();
+    const tags = new Set([
+      ...(definition.spawn?.tags || []),
+      ...(definition.spawnProfile?.tags || []),
+      ...(definition.situation?.tags || [])
+    ].map((tag) => String(tag).toLowerCase()));
+    if (
+      category === "equipment" ||
+      tags.has("equipment") ||
+      tags.has("tool") ||
+      tags.has("drone") ||
+      tags.has("beacon") ||
+      /drone|beacon|tool/.test(type)
+    ) return false;
+    return true;
   };
 
-  const createInventoryGrid = (entries, bucket, target) => {
+  const freeBagCapacity = () => {
+    const state = BF.getInventoryCapacityState?.() || {};
+    if (!Number.isFinite(Number(state.capacity))) return Infinity;
+    return Math.max(
+      0,
+      Number(state.capacity) - Math.max(0, Number(state.count) || 0)
+    );
+  };
+
+  const sourceQuantity = (source, key) => {
+    if (source === "bag") return bagQuantity(key);
+    if (source === "kit") return expeditionQuantity(key);
+    if (source === "camp") {
+      return Math.max(
+        0,
+        Number(BF.getProgressionState?.().campStorage?.[key]) || 0
+      );
+    }
+    return 0;
+  };
+
+  const transferMax = (source, destination, key) => {
+    if (!source || !destination || source === destination) return 0;
+    if ((source === "camp" || destination === "camp") && !canAccessCampInventory()) {
+      return 0;
+    }
+    if (
+      (source === "kit" || destination === "kit") &&
+      !isExpeditionTransferableKey(key)
+    ) return 0;
+    let available = sourceQuantity(source, key);
+    if (source === "camp" && (destination === "bag" || destination === "kit")) {
+      available = Math.min(available, freeBagCapacity());
+    }
+    return Math.max(0, Math.floor(available));
+  };
+
+  const performTransfer = (source, destination, key, quantity) => {
+    const amount = Math.max(0, Math.floor(Number(quantity) || 0));
+    const maximum = transferMax(source, destination, key);
+    if (!amount || amount > maximum) return 0;
+    if (source === "bag" && destination === "camp") {
+      return BF.depositInventory?.(key, amount) || 0;
+    }
+    if (source === "camp" && destination === "bag") {
+      return BF.withdrawInventory?.(key, amount) || 0;
+    }
+    if (source === "bag" && destination === "kit") {
+      return BF.allocateInventoryToExpedition?.(key, amount) || 0;
+    }
+    if (source === "kit" && destination === "bag") {
+      return BF.releaseExpeditionAllocation?.(key, amount) || 0;
+    }
+    if (source === "camp" && destination === "kit") {
+      return BF.transferCampToExpedition?.(key, amount) || 0;
+    }
+    if (source === "kit" && destination === "camp") {
+      return BF.transferExpeditionToCamp?.(key, amount) || 0;
+    }
+    return 0;
+  };
+
+  const transferLabel = (bucket) => ({
+    bag: "Sac personnel",
+    kit: "Kit d’expédition",
+    camp: "Stockage Camp/Base"
+  }[bucket] || bucket);
+
+  const openQuantityTransfer = (source, destination, key) => {
+    const maximum = transferMax(source, destination, key);
+    if (maximum <= 0) return false;
+    const drawer = inventoryDrawer();
+    if (!drawer) return false;
+    drawer.querySelector(".inventory-transfer-quantity")?.remove();
+
+    const meta = catalogEntry(key);
+    const panel = document.createElement("div");
+    panel.className = "inventory-transfer-quantity";
+    panel.dataset.inventoryKey = key;
+    panel.dataset.source = source;
+    panel.dataset.destination = destination;
+
+    const title = document.createElement("strong");
+    title.textContent = `${meta.label} · ${transferLabel(source)} → ${transferLabel(destination)}`;
+
+    const controls = document.createElement("div");
+    controls.className = "inventory-transfer-quantity-controls";
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.textContent = "−";
+    minus.setAttribute("aria-label", "Réduire la quantité");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.max = String(maximum);
+    input.step = "1";
+    input.value = "1";
+    input.inputMode = "numeric";
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.textContent = "+";
+    plus.setAttribute("aria-label", "Augmenter la quantité");
+
+    const clamp = (value) => Math.max(
+      1,
+      Math.min(maximum, Math.floor(Number(value) || 1))
+    );
+    const setValue = (value) => {
+      input.value = String(clamp(value));
+    };
+    minus.addEventListener("click", () => setValue(Number(input.value) - 1));
+    plus.addEventListener("click", () => setValue(Number(input.value) + 1));
+    input.addEventListener("change", () => setValue(input.value));
+    input.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      setValue(Number(input.value) + (event.deltaY < 0 ? 1 : -1));
+    }, { passive: false });
+    controls.append(minus, input, plus);
+
+    const actions = document.createElement("div");
+    actions.className = "inventory-transfer-quantity-actions";
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.textContent = "Transférer";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Annuler";
+    confirm.addEventListener("click", () => {
+      const moved = performTransfer(source, destination, key, clamp(input.value));
+      if (moved > 0) {
+        panel.remove();
+        scheduleRender();
+      }
+    });
+    cancel.addEventListener("click", () => panel.remove());
+    actions.append(confirm, cancel);
+    panel.append(title, controls, actions);
+    drawer.appendChild(panel);
+    input.focus?.();
+    input.select?.();
+    return true;
+  };
+
+  const dragPayload = (event) => ({
+    key: event.dataTransfer?.getData("text/bluefox-inventory") || "",
+    source: event.dataTransfer?.getData("text/bluefox-inventory-source") || ""
+  });
+
+  const installDropTarget = (node, destination, enabled = true) => {
+    if (!enabled) return node;
+    node.addEventListener("dragover", (event) => {
+      const payload = dragPayload(event);
+      if (transferMax(payload.source, destination, payload.key) > 0) {
+        event.preventDefault();
+      }
+    });
+    node.addEventListener("drop", (event) => {
+      const payload = dragPayload(event);
+      if (transferMax(payload.source, destination, payload.key) <= 0) return;
+      event.preventDefault();
+      openQuantityTransfer(payload.source, destination, payload.key);
+    });
+    return node;
+  };
+
+  const createInventoryGrid = (entries, bucket, enabled = true) => {
     const grid = document.createElement("div");
     grid.className = "inventory-grid inventory-transfer-grid";
     grid.dataset.inventoryBucket = bucket;
-
-    if (target) {
-      grid.addEventListener("dragover", (event) => event.preventDefault());
-      grid.addEventListener("drop", (event) => {
-        event.preventDefault();
-        const key =
-          event.dataTransfer?.getData("text/bluefox-inventory");
-        if (key) {
-          transfer(
-            key,
-            target,
-            event.shiftKey ? Number.MAX_SAFE_INTEGER : 1
-          );
-        }
-      });
-    }
+    installDropTarget(grid, bucket, enabled);
 
     const visibleEntries = (entries || []).filter(
       (entry) => Math.max(0, Number(entry?.amount) || 0) > 0
@@ -228,13 +410,12 @@
     visibleEntries.forEach((entry) => {
       const article = document.createElement("article");
       article.dataset.inventoryKey = entry.key;
-      article.draggable = Boolean(target) && entry.amount > 0;
+      article.dataset.inventorySource = bucket;
+      article.draggable = Boolean(enabled) && entry.amount > 0;
       if (article.draggable) {
         article.addEventListener("dragstart", (event) => {
-          event.dataTransfer?.setData(
-            "text/bluefox-inventory",
-            entry.key
-          );
+          event.dataTransfer?.setData("text/bluefox-inventory", entry.key);
+          event.dataTransfer?.setData("text/bluefox-inventory-source", bucket);
         });
       }
 
@@ -251,9 +432,10 @@
     if (!visibleEntries.length) {
       const empty = document.createElement("p");
       empty.className = "inventory-empty-state";
-      empty.textContent =
-        bucket === "deposited"
-          ? "Aucun objet stocké dans ce camp."
+      empty.textContent = bucket === "camp"
+        ? "Aucun objet stocké dans ce camp."
+        : bucket === "kit"
+          ? "Aucune ressource missionnelle réservée."
           : "Le sac est vide.";
       grid.appendChild(empty);
     }
@@ -268,18 +450,15 @@
       !canAccessCampInventory() ||
       global.localStorage.getItem("bluefox_auto_deposit_v1") !== "true"
     ) return false;
-
-    const depositable = inventoryEntries("inventory").filter(
-      (entry) => !EXPEDITION_INVENTORY_KEYS.has(entry.key)
-    );
-    if (!depositable.length) return false;
-
+    const total = Object.values(BF.getProgressionState?.().inventory || {})
+      .reduce((sum, amount) => sum + Math.max(0, Number(amount) || 0), 0);
+    const reserved = Object.keys(BF.getProgressionState?.().inventory || {})
+      .reduce((sum, key) => sum + expeditionQuantity(key), 0);
+    if (total <= reserved) return false;
     autoDepositRunning = true;
-    depositable.forEach((entry) => {
-      BF.depositInventory?.(entry.key, entry.amount);
-    });
+    const moved = BF.depositAllInventory?.() || 0;
     autoDepositRunning = false;
-    return true;
+    return moved > 0;
   };
 
   // Conservation de la compatibilité ancienne sauvegarde :
@@ -502,7 +681,7 @@
     summary.textContent = title;
     details.append(
       summary,
-      createInventoryGrid(entries, bucket, target)
+      createInventoryGrid(entries, bucket, Boolean(target))
     );
     return details;
   };
@@ -534,14 +713,26 @@
     Number(BF.getProgressionState?.().inventory?.[key]) || 0
   );
 
+  const expeditionResourceEntries = () => {
+    const allocation = BF.getProgressionState?.().expeditionAllocation || {};
+    return Object.keys(allocation)
+      .map((key) => ({
+        ...catalogEntry(key),
+        amount: expeditionQuantity(key)
+      }))
+      .filter((entry) =>
+        entry.amount > 0 && isExpeditionTransferableKey(entry.key)
+      );
+  };
+
   const scoutMissionActive = () =>
     BF.currentEngine?.missionManager?.memory?.state?.missionLifecycle?.["ENE-13"]?.status === "active";
 
   const createExpeditionKit = () => {
     const occupied = [];
     const rations = rationCount();
-    const accumulatorCount = expeditionInventoryCount("accumulator");
     const beaconCount = expeditionInventoryCount("deployed_beacon");
+    const resources = expeditionResourceEntries();
     const special = BF.SpecialObjectRuntime?.snapshot?.() || {};
     const scout = special.drones?.scout_drone || null;
 
@@ -551,18 +742,9 @@
         label: "Rations",
         icon: "◈",
         count: rations,
+        locked: true,
         title: `Consommer une ration · ${rations}/50`,
         action: consumeRation
-      });
-    }
-
-    if (accumulatorCount > 0) {
-      occupied.push({
-        id: "accumulator",
-        label: "Accumulateurs",
-        icon: "▣",
-        count: accumulatorCount,
-        title: "Réserve d’énergie transportable"
       });
     }
 
@@ -572,6 +754,7 @@
         label: "Balise BlueFox",
         icon: "◆",
         count: beaconCount,
+        locked: true,
         title: "Implanter une balise sur la map courante",
         action: () => BF.SpecialObjectRuntime?.deployBeacon?.({
           source: "player",
@@ -590,6 +773,7 @@
         label: "Drone éclaireur",
         icon: "◇",
         count: 1,
+        locked: true,
         status: deployedMapId ? `déployé · ${mapLabel}` : "dans le Kit",
         title: deployedMapId
           ? `Rappeler le drone éclaireur depuis ${mapLabel}`
@@ -604,15 +788,12 @@
         label: "Assembler le Scout",
         icon: "◇",
         count: 1,
+        locked: true,
         status: "prototype",
         title: "Assembler le premier drone éclaireur avec les ressources requises",
         action: () => BF.SpecialObjectRuntime?.craftDrone?.("scout_drone")
       });
     }
-
-    // Aucun slot vide n'est rendu : chaque entrée correspond à un objet réel
-    // transporté, un drone possédé ou l'assemblage missionnel actif du premier Scout.
-    if (!occupied.length) return null;
 
     const details = document.createElement("details");
     details.className = "expedition-kit-section";
@@ -630,12 +811,39 @@
 
     const grid = document.createElement("div");
     grid.className = "expedition-kit-grid inventory-transfer-grid";
+    installDropTarget(grid, "kit", true);
+
+    resources.forEach((entry) => {
+      const article = document.createElement("article");
+      article.className = "expedition-kit-slot expedition-kit-resource";
+      article.dataset.expeditionItem = entry.key;
+      article.dataset.inventoryKey = entry.key;
+      article.dataset.inventorySource = "kit";
+      article.draggable = true;
+      article.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/bluefox-inventory", entry.key);
+        event.dataTransfer?.setData("text/bluefox-inventory-source", "kit");
+      });
+      const icon = document.createElement("span");
+      icon.className = "expedition-kit-icon";
+      icon.textContent = entry.icon;
+      const label = document.createElement("span");
+      label.className = "expedition-kit-label";
+      label.textContent = entry.label;
+      const amount = document.createElement("span");
+      amount.className = "expedition-kit-count";
+      amount.textContent = `×${entry.amount}`;
+      article.append(icon, label, amount);
+      grid.appendChild(article);
+    });
 
     occupied.forEach((item) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "expedition-kit-slot";
       button.dataset.expeditionItem = item.id;
+      button.dataset.expeditionLocked = item.locked ? "true" : "false";
+      button.draggable = false;
       button.title = item.title || `Utiliser ${item.label}`;
       button.disabled = typeof item.action !== "function";
 
@@ -660,6 +868,13 @@
       grid.appendChild(button);
     });
 
+    if (!resources.length && !occupied.length) {
+      const empty = document.createElement("p");
+      empty.className = "inventory-empty-state";
+      empty.textContent = "Glissez ici les ressources à réserver pour l’expédition.";
+      grid.appendChild(empty);
+    }
+
     details.append(summary, grid);
     return details;
   };
@@ -678,10 +893,14 @@
     const campAccessible = canAccessCampInventory();
     if (campAccessible) autoDeposit();
 
-    const personal = inventoryEntries("inventory").filter(
-      (entry) => !EXPEDITION_INVENTORY_KEYS.has(entry.key)
-    );
+    const personal = inventoryEntries("inventory")
+      .map((entry) => ({
+        ...entry,
+        amount: bagQuantity(entry.key)
+      }))
+      .filter((entry) => entry.amount > 0);
     const stored = inventoryEntries("campStorage");
+    const expeditionResources = expeditionResourceEntries();
     const rations = rationCount();
 
     const signature = JSON.stringify({
@@ -700,7 +919,7 @@
       rations,
       expeditionSpecial: BF.SpecialObjectRuntime?.snapshot?.() || null,
       deployedBeaconCount: expeditionInventoryCount("deployed_beacon"),
-      accumulatorCount: expeditionInventoryCount("accumulator"),
+      expeditionResources: expeditionResources.map(({ key, amount }) => [key, amount]),
       autoDeposit:
         global.localStorage.getItem(
           "bluefox_auto_deposit_v1"
@@ -716,8 +935,8 @@
     const personalSection = createSection(
       "Sac personnel de BlueFox",
       personal,
-      "inventory",
-      campAccessible ? "camp" : "",
+      "bag",
+      "enabled",
       PERSONAL_BAG_OPEN_KEY,
       true
     );
@@ -726,10 +945,9 @@
       personalSection
         .querySelectorAll("article")
         .forEach((article) => {
-          article.draggable = false;
           article.title = campExists
-            ? "Le sac reste consultable ; rapprochez-vous du camp pour déposer son contenu."
-            : "Le sac reste consultable ; établissez un camp pour déposer son contenu.";
+            ? "Glissez vers le Kit ; rapprochez-vous du camp pour déposer au stockage."
+            : "Glissez vers le Kit ; établissez un camp pour accéder au stockage.";
         });
     }
 
@@ -772,8 +990,8 @@
       const campSection = createSection(
         "Stockage partagé des camps",
         stored,
-        "deposited",
-        campAccessible ? "bag" : "",
+        "camp",
+        campAccessible ? "enabled" : "",
         CAMP_STORAGE_OPEN_KEY,
         false
       );
@@ -877,6 +1095,7 @@
     campAccessible: canAccessCampInventory(),
     campRoot: campSceneRoot()?.name || null,
     rations: rationCount(),
+    expeditionAllocation: { ...(BF.getProgressionState?.().expeditionAllocation || {}) },
     legacyGridsRemaining:
       inventoryDrawer()
         ?.querySelectorAll(

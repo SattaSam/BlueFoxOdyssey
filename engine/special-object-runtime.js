@@ -911,14 +911,14 @@
     ) return false;
     if (BF.canAccessCampInventory && !BF.canAccessCampInventory()) return false;
     if (BF.Research?.canAccessWorkbench?.(mapId) !== true) return false;
-    return Object.entries(recipe).every(([key, amount]) => (BF.availableInventory?.(key) || 0) >= amount);
+    return Object.entries(recipe).every(([key, amount]) => (BF.availableInventory?.(key, { includeExpeditionKeys: key === "accumulator" ? ["accumulator"] : [] }) || 0) >= amount);
   };
   const craftDrone = (type) => {
     if (!canCraft(type)) {
       announce("Assemblage impossible : ressources, Base ou proximité insuffisantes.");
       return false;
     }
-    Object.entries(RECIPES[type]).forEach(([key, amount]) => BF.consumeInventoryPool?.(key, amount));
+    Object.entries(RECIPES[type]).forEach(([key, amount]) => BF.consumeInventoryPool?.(key, amount, { includeExpeditionKeys: key === "accumulator" ? ["accumulator"] : [] }));
     let craftedRecord;
     if (type === "harvest_drone") {
       craftedRecord = {
@@ -1317,7 +1317,7 @@
         return false;
       }
     }
-    if ((BF.availableInventory?.("deployed_beacon") || 0) < 1) {
+    if ((BF.availableInventory?.("deployed_beacon", { includeExpeditionKeys: ["deployed_beacon"] }) || 0) < 1) {
       announce("Aucune balise transportable dans le Kit d’expédition.");
       return false;
     }
@@ -1335,7 +1335,7 @@
       spawnOnce: true,
       createdAt: Date.now()
     };
-    const removed = BF.consumeInventoryPool?.("deployed_beacon", 1) || 0;
+    const removed = BF.consumeInventoryPool?.("deployed_beacon", 1, { includeExpeditionKeys: ["deployed_beacon"] }) || 0;
     if (removed !== 1) return false;
     const spawned = BF.PersistentMicroScenes?.spawnRecord?.(
       engine.THREE,
@@ -1366,7 +1366,7 @@
   const deployBeacon = (options = {}) => {
     const engine = BF.currentEngine;
     const mapId = String(engine?.currentMapId || "");
-    if (!mapId || (BF.availableInventory?.("deployed_beacon") || 0) < 1) return false;
+    if (!mapId || (BF.availableInventory?.("deployed_beacon", { includeExpeditionKeys: ["deployed_beacon"] }) || 0) < 1) return false;
     if (hasDeployedBeacon(mapId)) return false;
     const source = options.source || "player";
     if (source === "autonomy") {
