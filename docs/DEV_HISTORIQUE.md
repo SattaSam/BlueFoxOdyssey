@@ -1,239 +1,179 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
-## Sessions du 3 au 8 septembre 2026 — industrialisation massive puis passerelle Civilisation / Engineering / Workbench
+## Sessions du 8 au 11 septembre 2026 — ENE, balise/drones, stabilité, Journal et ARCH-01→29
 
 ### Base finale de référence
-- HEAD moteur : `1f20ba014686f5f6eadac78a22b89077bca8e380`
-- Parent : `3705d40399437058fcc62a9bc99f2ee96defc75e` — Missions FAUNA R2
-- Commit final : `/!\ GAME CIVilisation ENINERING + Etabli+feu +fichiers sensibles /!\ GROS LOT`
-- Contrôle post-commit : 7 fichiers attendus, aucun parasite, blobs conformes au candidat livré.
+- HEAD validé pour ARCH-R4 : `296c048c0846198bf6326924ea4d3a9483907f68`
+- Parent : `017d646f6e861840b22a63a0a39e69aa231d5b7c` — `ARCH 13-18`
+- Commit : `/!\ ARCH R4 19-29     /!\ INDEX.HTML`
+- Le correctif ARCH-R4 technique correspond au candidat livré.
+- Le même commit contient une modification utilisateur séparée du DOCX Bible, non traitée comme modification technique ARCH-R4.
 
-### Industrialisation réalisée depuis la référence du 2 septembre
-Lots successifs à préserver :
+### ENE-11→14
+Commit structurant : `14304c3b00e423df6ba5165b8efc1b91e27eccbf` — `ENE 11-14`.
+
+Acquis :
+- ENE-11 : prototype d’accumulateur à l’établi, consommation réelle, recette série ;
+- ENE-12 : machine abandonnée, approche puis consommation d’un accumulateur ;
+- ENE-13 : Scout existant, accumulateur et balayage current-map ;
+- ENE-14 : mesures multi-map, calibration Giant Tree, synthèse Recherche.
+
+### Balise et drones
+Commits structurants :
+- `4a13bfd4873d27d2e88c9909f6df8531b8ad1c19` — `R2 drone/balise`
+- `a9c8e6cbcc8e4ebce33b91fb2a103755c4c53008` — `R3 Drones`
+- `49aaf067dcf719fd9f2cd1b9cc6d53e00c980f8e` — `drone repair`
+- `f88c222b81220bf1bc19691e3f4df4e76f4daad0` — `Drone repair Fix`
+
+Acquis durables :
+- BAL-01→03 ;
+- balise déployée portée par le runtime d’objets spéciaux ;
+- Kit étendu aux objets transportables concernés sans en devenir propriétaire ;
+- DRN-01→04 : Blueprints Scout/Harvest, Harvest distant, priorité, cargo et console Recherche ;
+- observation Scout vers historique `OBJECT_SEEN`, sans fan-out missionnel ordinaire implicite.
+
+### Missions GAME complémentaires
+Commit `b0479c367e43c3d3e21c8cbfd259b4cd9ebcd82d` — `Game missions+5`.
+
+Ajouts :
+- `GAME-collection_samples`
+- `GAME-collection_variety`
+- `GAME-travel_biomes`
+- `GAME-travel_short`
+- `GAME-travel_long`
+
+Le runtime a été ajusté pour les activations composites : un trigger ponctuel acquis avant un prérequis lifecycle peut être conservé, tandis que les compteurs multi-événements ne doivent pas être crédités prématurément.
+
+### Stabilité missionnelle R-STAB
+Commit `5d83253520e6d4bc07a988214a4d1d2b45eb7589` — `Stabilité - mission runable`.
+
+Décisions validées :
+- active/primary ≠ forcément runnable localement ;
+- `requiredMapFact` hors-map ne doit pas produire de fausse action ;
+- généralisation de `missionTransitionIntent` aux contraintes géographiques missionnelles ;
+- secondaire locale perdable : départ différé possible ;
+- secondaire terminée/non-runnable : reprise de la transition primaire ;
+- transition connue sans route exécutable : pas d’exclusivité stérile ;
+- completion gate géographique peut fournir une cible de transition ;
+- retry idle réveillable causalement ;
+- pas de polling ajouté.
+
+### Journal lazy/persistant
+Commit `3000d85dc2a0ea595ddecd1f087d97b621880efe` — `Journal persistant`.
+
+Décisions :
+- consolidation uniquement à l’ouverture du Journal ;
+- aucune consolidation répétée par scan/mutation DOM ;
+- briques persistantes ;
+- branche inchangée stable ;
+- enrichissement seulement lors d’évolutions significatives ;
+- aucun polling.
+
+### ARCH-R1 — ARCH-01→06
+Commit `0c15b6c36ef1b657f278505d22d6b5e7a3dbcecf`.
+
+Première passe archéologique ; contextes MSC, observations distinctes et SAME-INSTANCE lorsque requis.
+
+### ARCH-R2 — ARCH-07→12
+Commit `a79f8ad5129bcc285cd31e8f1c0f51a5ef7cba05`.
+
+Sites, ruines, strates, carrière et habitat, majoritairement data-only.
+
+### ARCH-R3 — ARCH-13→18
+Commit `017d646f6e861840b22a63a0a39e69aa231d5b7c`.
+
+Ajout moteur unique et chirurgical :
+- filtre `cuoTypes` OR dans ObjectM0 ;
+- `cuoType` historique préservé ;
+- autres filtres cumulatifs préservés ;
+- ARCH-16 : 18 observations post-activation sur `arch`, `stele`, `tech_relic`, avec au moins une occurrence de chaque catégorie.
+
+### ARCH-R4 — ARCH-19→29
+Commit `296c048c0846198bf6326924ea4d3a9483907f68`.
+
+Arbitrages principaux :
+- ARCH-19 : machine abandonnée = arme narrative, observation simple ;
+- ARCH-20 : nouveau voyage autonome vers la MSC relique pour fermer la runnabilité géographique ;
+- ARCH-24 : 15 acquisitions de composants/Core ;
+- ARCH-25 : deux nouvelles maps, puis 50 % de la seconde ;
+- ARCH-27 : deux objets distincts dans la même MSC foyer ;
+- ARCH-29 : cinq unités d’habitation réellement garanties sur trois nouvelles maps.
+
+ARCH-29 :
+- les quatre premières unités sont quatre MSC composites distinctes ;
+- chaque composite fusionne des briques de ruines existantes dans une **seule identité MSC** ;
+- une composition = un objectif ;
+- la cinquième unité est `MSC-CUSTOM-HABITAT-RUINE` seule, volontairement gardée pour la fin ;
+- aucune généralisation moteur de regroupement de MSC.
+
+### Continuité
+- ARCH-01→29 est intégré.
+- prochaine continuité ARCH : audit à partir d’ARCH-30.
+- ENE-15 doit être réévalué : ARCH-17 est désormais disponible, mais les autres prérequis doivent être prouvés au HEAD.
+
+---
+
+## Historique durable antérieur
+
+### 3 au 8 septembre 2026 — industrialisation massive / Civilisation / Engineering / Workbench
 - FLO et réordonnancement de chaîne ;
 - GEO-01→07 ;
 - COL puis ENV ;
 - LOC ;
-- SUR et passes de correction de régression 2A/2B/2C ;
-- GAME R1 et R2 ;
-- FAUNA R1/R2 ;
+- SUR et passes anti-régression ;
+- GAME R1/R2 ;
+- FAUNA ;
 - ENE-01→10 ;
-- lot final GAME Civilisation / Engineering / Workbench.
+- GAME Civilisation / Engineering / Workbench.
+- `ProgressionRegistry.grantInventory()` permet un crédit physique sans faux `RESOURCE_COLLECTED`.
+- GAME-base reflète le stock physique courant pour les slots stock-backed.
+- GAME-fire répétable : 8 bois.
+- WORKBENCH sur Crystal : placement joueur, anchor/rotation persistés.
 
-### GAME R1 / R2
-R1 :
-- GAME-flora ;
-- GAME-research_initial ;
-- GAME-research_hypothesis ;
-- GAME-special_investigator ;
-- GAME-special_archivist.
-Archiviste : 5 familles différentes observées historiquement.
+### 2 septembre 2026 — Shelter / Base renforcée
+- Camp `MSC-CUSTOM-CAMP`.
+- Refuge `MSC-CUSTOM-CAMP-BASE`.
+- Base renforcée `MSC-CUSTOM-CAMP-BASE-REINFORCED`.
+- Base : 500 fibres + 500 ressources minéral/cristal + 100 études rocheuses.
+- spawn avant consommation ; effets idempotents.
+- au succès Base, retrait du Refuge autonome précédent, Camp conservé.
+- pas de migration automatique de sauvegarde.
 
-R2 :
-- GAME-energy ;
-- GAME-engineering_1 ;
-- GAME-engineering_2.
-Aucun axe Engineering parallèle n'a été créé : l'ingénierie reste dans Recherche/BibleRuntime.
+### 30 août 2026 — UI / CPU / Survival
+- Recherche fenêtrée.
+- correction superposition Recherche/Inventaire et écran noir.
+- Kit : position ouverte/fermée persistée.
+- RuntimeBudget reste l’unique système de throttling.
+- Survival conserve rest / food / safety séparés.
 
-### FAUNA
-- FAU-01→12 industrialisées.
-- Runtime FAUNA R2 préservé.
-- FAU-09/10 disposent de comportements runtime dédiés déjà validés.
-- Le lot final Civilisation/Engineering ne modifie pas le runtime FAUNA.
-
-### ENE-01→10
-- ENE-01→10 intégrées.
-- ENE-08 utilise le retour dynamique vers la map mémorisée du Giant Tree.
-- Aucun faux état/bridge énergétique parallèle.
-- ENE-11→14 volontairement différées jusqu'à présence réelle d'un établi.
-
-### Lot Civilisation / réserve
-- GAME-civilization_1→5 intégré.
-- Départ après Refuge + 10 stèles observées historiquement.
-- Trois nouvelles maps successives avec une nouvelle stèle garantie sur chacune.
-- Troisième map : `MSC-CUSTOM-RESERVE-ABANDONEE`.
-- Réserve persistante : 350 `fiber` + 175 `azure_ferrite` + 175 `magnetic_ore`.
-- Prélèvement limité à la capacité réelle du sac ; reliquat conservé pour les visites suivantes.
-- Crédit via `ProgressionRegistry.grantInventory()`, sans faux `RESOURCE_COLLECTED` et donc sans gonfler les compteurs COL historiques.
-
-### GAME-base
-- Sémantique corrigée : les objectifs fibres/minéraux représentent le stock physique courant.
-- Réconciliation seulement sur événements d'inventaire pertinents ; pas de polling.
-- Les slots stock-backed peuvent redescendre si le stock est dépensé avant construction.
-- Les 100 études rocheuses restent historiques.
-- Finalisation/consommation réelles et idempotentes conservées.
-
-### Engineering / feu / établi
-- GAME-engineering_3→6 intégré.
-- GAME-fire générique répétable ; 8 bois par occurrence.
-- GAME-fire ne provoque pas seule un retour au camp.
-- MissionManager reçoit uniquement la primitive générique `rearmRepeatableMission()`.
-- Blueprint Établi débloqué via Recherche.
-- Construction uniquement sur Crystal après Base.
-- Coût : 20 `magnetic_ore` + 20 `azure_ferrite` + 20 `resonant_basalt` + 20 `stellar_iridium` + 25 `fiber` + 10 `parts` + 20 `wood`.
-- `MSC-CUSTOM-ETABLI-VIDE` implantée par placement joueur.
-- `ui-enhancements.js` généralise le consommateur historique de placement à CAMP / REFUGE / WORKBENCH.
-- Anchor et rotation réels du workbench sont persistés pour les futures missions de retour à l'établi.
-
-### Demandes/suggestions utilisateur encore ouvertes identifiées
-1. **ENE-11→14** : prochaine passe missionnelle ; l'établi nécessaire existe désormais.
-2. **Console drone joueur** : à construire dans Recherche en réutilisant le runtime scout/harvest existant.
-3. **Kit d'expédition générique** : accumulateur puis futurs objets fabriqués transportables/activables, par exemple une balise.
-4. **Journal évolutif** : calcul uniquement à l'ouverture ; briques persistantes/stables ; enrichissement seulement des branches ayant réellement évolué de façon majeure.
-5. **ENE-15** : différé jusqu'à industrialisation réelle de ses prérequis documentaires.
-6. **CPU/cadence, autorité missionnelle, cohérence Survival et IMI** : restent à revalider/clôturer au HEAD courant.
-7. **Scouting drone inter-map** : idée future séparée ; ne pas l'introduire implicitement avec ENE-13.
-8. **Console drone** : doit préserver le mode autonome et ne donner priorité à l'ordre joueur que lorsqu'il existe réellement.
-9. **Objets activables depuis le Kit** : balise et futurs objets possibles uniquement si leur propriétaire expose une action d'activation canonique.
-
-### Discipline de reprise
-- ne pas reconstruire le dépôt complet : BASE partielle exacte limitée au périmètre et à ses consommateurs ;
-- ne pas redéfinir ENE-11→14 : repartir de la stratégie déjà validée puis vérifier sa compatibilité au HEAD ;
-- aucun scouting drone inter-map implicite dans ENE-13 ;
-- aucun second runtime drone, inventaire Kit, moteur craft ou propriétaire Journal parallèle.
-
----
-
-## Session du 2 septembre 2026 — Shelter / Base renforcée — validation runtime et commit
-
-### Base finale
-- HEAD moteur validé : `8b34d8912667f02140c0c2999b1dfa3f37a8e9ee`
-- Commit : `spawn base fix`
-- Parent : `4e4c5e47ac5f717aa6c319b6e3b223f2397e23cf`
-- Aucun nouveau recovery checkpoint créé.
-
-### Objet du chantier
-Finaliser la chaîne `Camp → Refuge → Base renforcée` sans nouveau propriétaire, sans bridge et sans interaction BlueFox finale fictive.
-
-### Corrections validées
-- `GAME-shelter` et `GAME-base` restent portées par les propriétaires existants.
-- Base renforcée : 500 fibres + 500 ressources du pool minéral/cristal + 100 études rocheuses.
-- Progression historique distinguée du stock physique disponible au moment de construire.
-- Stock insuffisant : mission active + réévaluation sur événements d'inventaire pertinents, sans polling ajouté.
-- Spawn réussi avant consommation ; consommation unique/idempotente.
-- Preset canonique propriétaire lorsqu'il existe ; `autonomousPlacement()` reste le fallback des constructions sans preset.
-- Faux positif du gate Base corrigé : finalisation exige le site réellement établi par la mission.
-- Position Base renforcée sur crystal : `x=-2.7567, y=0.25, z=4.768`.
-- Après succès réel de la Base renforcée, le Refuge autonome est retiré visuellement, colliders retirés et `sites.refuge` supprimé ; Camp conservé.
-
-### Validation
-- batterie dédiée Shelter/Base : PASS ;
-- stock insuffisant, reprise événementielle, idempotence, faux gate, fallback sans preset, suppression Refuge et reload couverts ;
-- spawn final validé en jeu ;
-- commit vérifié contre le cumulatif livré.
-
-### Décisions durables
-- pas de migration automatique de sauvegarde ;
-- pas d'action finale fictive quand effet automatique réel ;
-- changement de stade : retrait du précédent uniquement après succès du nouveau ;
-- TODO courante = `ROADMAP_TODO.md`.
-
----
-
-## Session du 30 août 2026 — Passe 4 validée / diagnostic CPU et Survival différé
-
-### Passe 4 — validation runtime
-- Recherche reste fenêtrée.
-- Recherche et Inventaire ne provoquent plus d’écran noir dans les cycles testés.
-- Cause crash React : bridges UI retiraient des nœuds que React considérait encore comme siens.
-- Correction : masquer sans retirer.
-- Kit d’expédition : dernière position ouverte/fermée persistée.
-- message de proximité : `Camp hors de portée.`
-
-### Diagnostic différé — CPU / cadence décisionnelle
-Symptômes historiques :
-- consommation CPU perçue en hausse ;
-- temps trop long entre actions sur map dense ;
-- état prolongé « observation du terrain / choix de la prochaine action » ;
-- actions locales aléatoires possibles malgré plusieurs missions actives.
-
-À revalider au HEAD courant avant correction.
-
-### Survival — cohérence énergie / repos / alimentation
-État historique :
-- `energy = 0,55 × rest + 0,32 × food + 0,13 × safety`;
-- décisions repos/alimentation utilisent aussi rest et food.
-Demande persistante :
-- cohérence de la barre Énergie ;
-- pas de jauge/moteur parallèle ;
-- `survival-ai-bridge.js` reste propriétaire.
-
----
-
-## Session du 31 août → 1 septembre 2026 — Trigger/cible missionnelle SUR-03 — clôture en FAIL moteur
-
-### Décision durable
-IMI conserve trois relations explicites :
+### 31 août → 1 septembre 2026 — IMI
+Relations durables :
 - `REVEAL-ONLY`
 - `SAME-DEFINITION`
 - `SAME-INSTANCE`
 
-### Échec historique
-Les migrations automatiques de vieux `bibleTarget` ont échoué en jeu et ont été rejetées.
+Cycle de preuve à préserver :
+`chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction → progression`.
 
-### Contrat de reprise durable
-Le cycle complet doit rester testé :
-`chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction → progression`
+### 28 août 2026 — propriétaires
+- MissionManager possède le choix missionnel.
+- BAC ne le remplace pas.
+- BibleRuntime n’écrit pas le lifecycle.
+- WorldEngine porte la directive joueur.
+- PathPlanner ne force pas une cible directe sans chemin.
+- sauvegarde après flush des mémoires différées.
 
-Fausses pistes interdites :
-- réarmement artificiel planner/BAC sans preuve ;
-- timer/bridge parallèle ;
-- migration runtime de sauvegarde sans preuve complète.
-
----
-
-## Session du 28 août 2026 — Recovery checkpoint / clarification des propriétaires
-
-### Décisions structurantes durables
-- MissionManager propriétaire de `chooseRunnableMissionAction()`.
-- BAC ne remplace pas ce choix.
-- BibleRuntime n'écrit pas le lifecycle.
-- Bible-map-prescription ne devient pas second exécuteur du retour connu.
-- WorldEngine porte la directive joueur persistante.
-- PathPlanner ne force pas une cible directe en absence de chemin.
-- CharacterController émet un échec de navigation.
-- save-ui-bridge flush les mémoires différées.
-- une réévaluation causale révèle au maximum une mission.
-
----
-
-## Session du 23 août 2026 — Double interaction missionnelle / unicité nœud × instance
-
-### Décision durable
-- 0..N études missionnelles réellement dues peuvent précéder la collecte ;
-- observer/inspecter/analyser sont des nuances d’une même action physique lorsque CUO le prévoit ;
-- acquisition reprend sur la même instance ;
-- `MissionNode.distinctValues` porte unicité nœud × instance ;
+### 23 août 2026 — interaction multi-étapes
+- 0..N études dues avant acquisition ;
+- acquisition sur la même instance ;
 - fan-out conservé ;
-- annulation nettoie la transaction.
+- unicité nœud × instance.
 
-Validation historique en jeu : T06 et GAME-shelter / plantStudy.
-
----
-
-## Session du 19 août 2026 — P01→P04, narration Bible et sécurisation du cumulatif
-
-- P01→P04 intégrées et validées en jeu.
-- GAME-shelter actif en parallèle après P03.
-- CUO/ObjectM0 étendu génériquement.
-- narration Bible vers bulles/journal.
-- règle renforcée : tout patch partagé doit partir du HEAD et préserver les comportements validés.
-
----
-
-## Session du 17 août 2026 — CPU / sauvegarde / population
-
-- `special-object-runtime.js` raccordé au RuntimeBudget existant.
-- retrait du pré-flush artificiel de progression.
-- MissionMemory conserve dirty/flush.
-- incident de troncature `save-ui-bridge.js` : interdiction de reconstruire un fichier depuis un extrait.
-- protections population/MSC conservées.
-
----
-
-## Session du 15 août 2026 — Audit Bible / CUO / moteur
-
-- Bible principale : corpus massif destiné à l’industrialisation.
-- narration souveraine ; technique traduit sans réécrire.
-- MSC : rôles `triggerContext`, `objectiveSubject`, `scenarioSupport`.
-- décision : limiter les patrons, mutualiser par paramètres, développer les raccords seulement sur besoin réel.
+### Discipline durable
+- HEAD courant seul référentiel technique ;
+- BASE partielle exacte ;
+- pas de reconstruction du dépôt complet ;
+- pas de bridge/propriétaire parallèle ;
+- `map-registry.js` protégé ;
+- comparaison HEAD/CANDIDAT avant livraison ;
+- PASS gameplay uniquement après preuve correspondante.
