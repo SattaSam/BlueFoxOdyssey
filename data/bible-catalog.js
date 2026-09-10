@@ -7722,6 +7722,369 @@
     })
   });
 
+
+  // ARCH-R4 — Reliques, savoirs et premiers indices de peuples actuels (ARCH-19 → ARCH-29)
+  const ARCH19 = Object.freeze({
+    id: "ARCH-19",
+    title: "Les instruments du conflit",
+    description: "Découvrir la machine abandonnée et l'observer comme indice matériel d'un ancien usage conflictuel, sans généraliser cette conclusion à toute la civilisation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-18", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-18"]),
+    priority: 262,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 62,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-MACHINE-ABANDONNEE", persistent: true, spawnOnce: true, contextRole: "archConflictInstrument" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre un nouveau secteur de vestiges", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "weapon", title: "Observer la machine abandonnée", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "ancient_machine_wreck", microSceneId: "MSC-CUSTOM-MACHINE-ABANDONNEE" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une arme prouve un conflit, pas la nature entière d'un peuple. Je veux regarder cette machine avant d'en tirer davantage." ]),
+      completed: Object.freeze(["La machine abandonnée constitue un indice crédible d'un usage conflictuel ancien, sans suffire à définir toute cette société."])
+    })
+  });
+
+  const ARCH20 = Object.freeze({
+    id: "ARCH-20",
+    title: "La relique scientifique",
+    description: "Rejoindre un nouveau secteur scientifique, puis étudier une relique et l’un de ses composants pour reconstituer narrativement une fonction de mesure ou d’expérimentation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-19", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-19"]),
+    priority: 261,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random", biome: "random",
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP", persistent: true, spawnOnce: true, contextRole: "archScientificRelic" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre un nouveau secteur susceptible d’abriter l’instrument", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "relic", title: "Observer l’instrument ancien", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP" }) }),
+      Object.freeze({ slot: "component", title: "Analyser un composant de l’instrument", action: "analyze", target: 1, requires: Object.freeze(["relic"]), params: Object.freeze({ cuoTypes: Object.freeze(["logic_prism", "pulse_core"]), microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cet appareil ne transforme rien. Il semble conçu pour mesurer, comparer ou expérimenter." ]),
+      completed: Object.freeze(["La relique et son composant soutiennent l’hypothèse d’un instrument scientifique ancien."])
+    })
+  });
+
+  const ARCH21 = Object.freeze({
+    id: "ARCH-21",
+    title: "Archives cristallines",
+    description: "Découvrir un support cristallin associé aux ruines puis réaliser deux lectures complémentaires du même cristal sans l'endommager.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-20", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-20"]),
+    priority: 260,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random", biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-RUINE-MODULAIRE4", persistent: true, spawnOnce: true, contextRole: "archArchiveRuin" }),
+        Object.freeze({ id: "MSC-CRYSTAL-GROVE-001", persistent: true, spawnOnce: true, contextRole: "archCrystalArchive" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre un nouveau secteur d'archives", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "surface", title: "Observer le cristal porteur de motifs", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "crystal", microSceneId: "MSC-CRYSTAL-GROVE-001", distinctBy: "instanceId" }) }),
+      Object.freeze({ slot: "analysis", title: "Compléter l'analyse du même support", action: "analyze", target: 1, requires: Object.freeze(["surface"]), params: Object.freeze({ cuoType: "crystal", microSceneId: "MSC-CRYSTAL-GROVE-001", relation: Object.freeze({ fromSlot: "surface", sameBy: Object.freeze(["instanceId"]) }) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les motifs internes varient comme une écriture. Ce cristal pourrait être une archive." ]),
+      completed: Object.freeze(["Deux lectures complémentaires du même support rendent plausible l'existence d'une archive cristalline."])
+    })
+  });
+
+  const ARCH22 = Object.freeze({
+    id: "ARCH-22",
+    title: "Carte du ciel ancien",
+    description: "Après deux nouvelles maps, retrouver un observatoire et comparer trois repères physiques à une carte céleste reconstruite narrativement.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", count: 2, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ARCH-21"]),
+    bindActivationMap: true,
+    priority: 259,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 90,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-ASTROLOGY", persistent: true, spawnOnce: true, contextRole: "archAncientSkyMap" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "context", title: "Retrouver la structure astronomique", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-ASTROLOGY", requiredMapFact: "bibleActivation:ARCH-22", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "markers", title: "Observer trois repères célestes distincts", action: "observe", target: 3, requires: Object.freeze(["context"]), params: Object.freeze({ cuoType: "arch", microSceneId: "MSC-CUSTOM-ASTROLOGY", distinctBy: "instanceId", requiredMapFact: "bibleActivation:ARCH-22", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Certaines étoiles ne sont plus à la même place. Cette carte peut aussi dater ses auteurs." ]),
+      completed: Object.freeze(["Trois repères concordants suffisent à comparer narrativement cette carte au ciel actuel."])
+    })
+  });
+
+  const ARCH23 = Object.freeze({
+    id: "ARCH-23",
+    title: "La balise oubliée",
+    description: "Après deux nouvelles maps au sud, découvrir une ancienne balise et étudier son relais pour comprendre narrativement la direction de son signal.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "south", count: 2, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ARCH-22"]),
+    bindActivationMap: true,
+    priority: 258,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 92,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-TECH-RELAY-001", persistent: true, spawnOnce: true, contextRole: "archAncientRelay" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "beacon", title: "Observer la balise ancienne", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ cuoType: "survey_beacon", microSceneId: "MSC-TECH-RELAY-001", requiredMapFact: "bibleActivation:ARCH-23", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "signal", title: "Analyser un composant du relais", action: "analyze", target: 1, requires: Object.freeze(["beacon"]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block", "pulse_core", "memory_capsule"]), microSceneId: "MSC-TECH-RELAY-001", requiredMapFact: "bibleActivation:ARCH-23", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Elle ne diffusait pas au hasard. Quelqu'un devait écouter ce signal." ]),
+      completed: Object.freeze(["La balise et son relais permettent de proposer une direction de communication sans simuler une fréquence dédiée."])
+    })
+  });
+
+  const ARCH24 = Object.freeze({
+    id: "ARCH-24",
+    title: "Bibliothèque brisée",
+    description: "Réunir quinze composants ou noyaux issus de technologies anciennes afin d'assembler narrativement plusieurs fragments de savoir compatibles.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-23", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-23"]),
+    priority: 257,
+    passivePriorityAxis: "collection",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "firstFragment", title: "Récupérer un premier fragment technologique", action: "collect", target: 1, requires: Object.freeze([]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block", "pulse_core", "memory_capsule", "logic_prism"]) }) }),
+      Object.freeze({ slot: "fragments", title: "Récupérer quatorze fragments supplémentaires", action: "collect", target: 14, requires: Object.freeze(["firstFragment"]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block", "pulse_core", "memory_capsule", "logic_prism"]) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Aucun fragment ne suffit, mais ensemble ils peuvent décrire une société complexe." ]),
+      progress: Object.freeze([Object.freeze({ slot: "fragments", atCount: 4, text: "Quatre fragments donnent déjà un premier ensemble compatible ; il faut poursuivre pour consolider la lecture." })]),
+      completed: Object.freeze(["Quinze composants et noyaux récupérés forment une base suffisante pour reconstruire narrativement une bibliothèque fragmentaire."])
+    })
+  });
+
+  const ARCH25 = Object.freeze({
+    id: "ARCH-25",
+    title: "Des traces trop récentes",
+    description: "Découvrir deux nouvelles maps après la bibliothèque brisée puis explorer 50 % de la seconde afin d'y reconnaître narrativement des traces récentes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", count: 2, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ARCH-24"]),
+    bindActivationMap: true,
+    priority: 256,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 86,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "firstSweep", title: "Commencer le relevé de la deuxième nouvelle map", action: "explore-zone", target: 25, requires: Object.freeze([]), params: Object.freeze({ metric: "surfacePercent", threshold: 25, scope: "map", requiredMapFact: "bibleActivation:ARCH-25", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "coverage", title: "Explorer 50 % de la deuxième nouvelle map", action: "explore-zone", target: 50, requires: Object.freeze(["firstSweep"]), params: Object.freeze({ metric: "surfacePercent", threshold: 50, scope: "map", requiredMapFact: "bibleActivation:ARCH-25", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Deux nouveaux territoires permettront de vérifier si certaines marques sont trop récentes pour appartenir aux anciens." ]),
+      completed: Object.freeze(["La moitié de cette deuxième map est maintenant couverte. Certaines traces semblent trop récentes pour être animales, météorologiques ou antiques."])
+    })
+  });
+
+  const ARCH26 = Object.freeze({
+    id: "ARCH-26",
+    title: "Le feu encore tiède",
+    description: "Découvrir un foyer récent et observer son feu afin d'étayer narrativement l'idée d'un abandon très récent.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-25", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-25"]),
+    priority: 255,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 90,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-FOYER-ANCIEN", persistent: true, spawnOnce: true, contextRole: "archRecentFire" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Chercher un foyer récent sur une nouvelle map", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "fire", title: "Observer le foyer encore identifiable", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "base_fire", microSceneId: "MSC-CUSTOM-FOYER-ANCIEN" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La chaleur résiduelle peut lever le doute : je veux vérifier ce foyer sans perturber d'éventuels occupants." ]),
+      completed: Object.freeze(["Le foyer constitue une preuve physique suffisamment récente pour rendre une présence intelligente actuelle plausible."])
+    })
+  });
+
+  const ARCH27 = Object.freeze({
+    id: "ARCH-27",
+    title: "Outils contemporains",
+    description: "Revenir sur le même foyer et observer deux objets distincts de sa micro-scène afin de comparer narrativement des gestes récents aux techniques anciennes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-26", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-26"]),
+    bindActivationMap: true,
+    priority: 254,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "firstObject", title: "Observer un premier objet autour du foyer", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-FOYER-ANCIEN", requiredMapFact: "bibleActivation:ARCH-27", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "secondObject", title: "Observer un second objet distinct autour du foyer", action: "observe", target: 1, requires: Object.freeze(["firstObject"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-FOYER-ANCIEN", requiredMapFact: "bibleActivation:ARCH-27", requiredMapField: "mapId", relation: Object.freeze({ fromSlot: "firstObject", differentBy: Object.freeze(["instanceId"]) }) }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La technique a changé, mais certains gestes peuvent encore rappeler ceux des bâtisseurs anciens." ]),
+      completed: Object.freeze(["Deux objets distincts du même foyer suffisent à proposer narrativement un lien entre gestes récents et héritage technique ancien."])
+    })
+  });
+
+  const ARCH28 = Object.freeze({
+    id: "ARCH-28",
+    title: "Habitat occupé",
+    description: "Découvrir un habitat entretenu et observer deux signes distincts d'occupation active sans entrer dans la structure.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-27", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-27"]),
+    priority: 253,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HABITAT-RUINE", persistent: true, spawnOnce: true, contextRole: "archOccupiedHabitat" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Chercher un habitat entretenu sur une nouvelle map", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "signs", title: "Observer deux signes distincts d'occupation", action: "observe", target: 2, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoTypes: Object.freeze(["base_fire", "wall", "toile", "wood_plane"]), microSceneId: "MSC-CUSTOM-HABITAT-RUINE", distinctBy: "instanceId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette structure semble réparée, approvisionnée et utilisée. Je vais rester à distance et chercher seulement des signes matériels." ]),
+      completed: Object.freeze(["Deux signes distincts concordent : cet habitat peut être considéré comme occupé sans avoir eu besoin d'y entrer."])
+    })
+  });
+
+  const ARCH29 = Object.freeze({
+    id: "ARCH-29",
+    title: "Compter sans déranger",
+    description: "Parcourir trois nouvelles maps et cartographier cinq unités d’habitation distinctes : quatre vestiges composés de ruines variées, puis un habitat complet.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-28", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-28"]),
+    priority: 252,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "travel1", title: "Explorer une première nouvelle map et chercher des vestiges d’habitation", action: "travel", target: 1, requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({
+          1: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([
+            Object.freeze({ id: "MSC-CUSTOM-HABITAT-VESTIGE-01", persistent: true, spawnOnce: true, contextRole: "archPopulationHabitatVestigeA" }),
+            Object.freeze({ id: "MSC-CUSTOM-HABITAT-VESTIGE-02", persistent: true, spawnOnce: true, contextRole: "archPopulationHabitatVestigeB" })
+          ]) })
+        }) })
+      }),
+      Object.freeze({ slot: "habitat1", title: "Découvrir un premier vestige d’habitation", action: "observe", target: 1, requires: Object.freeze(["travel1"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-VESTIGE-01", distinctBy: "microSceneInstance" }) }),
+      Object.freeze({ slot: "habitat2", title: "Découvrir un second vestige d’habitation", action: "observe", target: 1, requires: Object.freeze(["travel1"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-VESTIGE-02", distinctBy: "microSceneInstance" }) }),
+      Object.freeze({
+        slot: "travel2", title: "Explorer une deuxième nouvelle map et poursuivre le relevé", action: "travel", target: 1, requires: Object.freeze(["habitat1", "habitat2"]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({
+          1: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([
+            Object.freeze({ id: "MSC-CUSTOM-HABITAT-VESTIGE-03", persistent: true, spawnOnce: true, contextRole: "archPopulationHabitatVestigeC" }),
+            Object.freeze({ id: "MSC-CUSTOM-HABITAT-VESTIGE-04", persistent: true, spawnOnce: true, contextRole: "archPopulationHabitatVestigeD" })
+          ]) })
+        }) })
+      }),
+      Object.freeze({ slot: "habitat3", title: "Découvrir un troisième vestige d’habitation", action: "observe", target: 1, requires: Object.freeze(["travel2"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-VESTIGE-03", distinctBy: "microSceneInstance" }) }),
+      Object.freeze({ slot: "habitat4", title: "Découvrir un quatrième vestige d’habitation", action: "observe", target: 1, requires: Object.freeze(["travel2"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-VESTIGE-04", distinctBy: "microSceneInstance" }) }),
+      Object.freeze({
+        slot: "travel3", title: "Explorer une troisième nouvelle map et chercher la dernière unité d’habitation", action: "travel", target: 1, requires: Object.freeze(["habitat3", "habitat4"]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({
+          1: Object.freeze({ size: "random", biome: "random", requiredMicroScenes: Object.freeze([
+            Object.freeze({ id: "MSC-CUSTOM-HABITAT-RUINE", persistent: true, spawnOnce: true, contextRole: "archPopulationHabitatComplete" })
+          ]) })
+        }) })
+      }),
+      Object.freeze({ slot: "habitat5", title: "Découvrir la dernière unité d’habitation", action: "observe", target: 1, requires: Object.freeze(["travel3"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-RUINE", distinctBy: "microSceneInstance" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je peux estimer leur nombre sans les exposer à ma présence, en comptant les habitats plutôt que les individus." ]),
+      completed: Object.freeze(["Cinq unités d’habitation réparties sur trois nouvelles maps donnent une première base pour estimer prudemment la taille de cette population."])
+    })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -7889,6 +8252,17 @@
     ARCH16,
     ARCH17,
     ARCH18,
+    ARCH19,
+    ARCH20,
+    ARCH21,
+    ARCH22,
+    ARCH23,
+    ARCH24,
+    ARCH25,
+    ARCH26,
+    ARCH27,
+    ARCH28,
+    ARCH29,
     BAL01,
     BAL02,
     BAL03,
