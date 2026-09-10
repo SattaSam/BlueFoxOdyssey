@@ -296,6 +296,9 @@
       if (params[key] != null && lower(params[key]) !== lower(actual)) return false;
     }
 
+    const cuoTypes = asArray(params.cuoTypes).map(lower).filter(Boolean);
+    if (cuoTypes.length && !cuoTypes.includes(lower(metadata.cuoType))) return false;
+
     const tagsAny = asArray(params.tagsAny).map(lower).filter(Boolean);
     if (tagsAny.length && !tagsAny.some((tag) => tags.has(tag))) return false;
     const tagsAll = asArray(params.tagsAll).map(lower).filter(Boolean);

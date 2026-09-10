@@ -7367,6 +7367,361 @@
     })
   });
 
+
+  // ARCH-R3 — Organisation sociale, astronomie et premières reliques (ARCH-13 → ARCH-18)
+  const ARCH13 = Object.freeze({
+    id: "ARCH-13",
+    title: "La place commune",
+    description: "Revenir sur le sanctuaire régional et observer trois accès distincts pour étayer l'hypothèse d'un espace collectif.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-12", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-12"]),
+    priority: 268,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "context",
+        title: "Retrouver la place ancienne",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          microSceneId: "MSC-CUSTOM-SANCTUAIRE-RING",
+          requiredMapFact: "bibleActivation:ARCH-08",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "accesses",
+        title: "Observer trois accès distincts autour de la place",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({
+          cuoType: "arch",
+          microSceneId: "MSC-CUSTOM-SANCTUAIRE-RING",
+          distinctBy: "instanceId",
+          requiredMapFact: "bibleActivation:ARCH-08",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La circulation converge vers ce centre. Je veux vérifier si plusieurs accès dessinent réellement un espace commun."]),
+      completed: Object.freeze(["Trois accès distincts convergent vers le même espace. L'organisation collective devient une lecture crédible de ce lieu."])
+    })
+  });
+
+  const ARCH14 = Object.freeze({
+    id: "ARCH-14",
+    title: "Ateliers anciens",
+    description: "Découvrir un ancien atelier puis observer trois éléments techniques distincts pour reconnaître une activité spécialisée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-13", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-13"]),
+    priority: 267,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-ETABLI", persistent: true, spawnOnce: true, contextRole: "archAncientWorkshop" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "travel",
+        title: "Chercher un ancien secteur de production sur une nouvelle map",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "context",
+        title: "Découvrir l'ancien atelier",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["travel"]),
+        params: Object.freeze({ microSceneId: "MSC-CUSTOM-ETABLI" })
+      }),
+      Object.freeze({
+        slot: "relay",
+        title: "Observer un bloc relais de l'atelier",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({ cuoType: "relay_block", microSceneId: "MSC-CUSTOM-ETABLI" })
+      }),
+      Object.freeze({
+        slot: "core",
+        title: "Observer un noyau pulsé de l'atelier",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({ cuoType: "pulse_core", microSceneId: "MSC-CUSTOM-ETABLI" })
+      }),
+      Object.freeze({
+        slot: "machine",
+        title: "Observer une ancienne machine de l'atelier",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({ cuoType: "ancient_machine_wreck", microSceneId: "MSC-CUSTOM-ETABLI" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les déchets et les outils sont trop cohérents pour être fortuits. Ce secteur semble avoir été consacré à une activité précise."]),
+      completed: Object.freeze(["Trois éléments techniques convergent. Je peux maintenant parler d'un atelier spécialisé sans inventer une chaîne de production complète."])
+    })
+  });
+
+  const ARCH15 = Object.freeze({
+    id: "ARCH-15",
+    title: "Regarder les étoiles",
+    description: "Découvrir un observatoire à l'est puis observer deux éléments distincts de sa composition avant d'interpréter son orientation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "east", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ARCH-14"]),
+    bindActivationMap: true,
+    priority: 266,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-ASTROLOGY", persistent: true, spawnOnce: true, contextRole: "archAncientObservatory" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "context",
+        title: "Découvrir la structure orientée vers le ciel",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ microSceneId: "MSC-CUSTOM-ASTROLOGY", requiredMapFact: "bibleActivation:ARCH-15", requiredMapField: "mapId" })
+      }),
+      Object.freeze({
+        slot: "axis",
+        title: "Observer une arche de l'observatoire",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({ cuoType: "arch", microSceneId: "MSC-CUSTOM-ASTROLOGY", requiredMapFact: "bibleActivation:ARCH-15", requiredMapField: "mapId" })
+      }),
+      Object.freeze({
+        slot: "marker",
+        title: "Observer un second repère de l'observatoire",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-ASTROLOGY", requiredMapFact: "bibleActivation:ARCH-15", requiredMapField: "mapId" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette ouverture ne vise pas simplement l'horizon. Sa géométrie semble suivre un repère céleste."]),
+      completed: Object.freeze(["Les deux repères observés suffisent pour conclure que les anciens orientaient cette structure en fonction du ciel."])
+    })
+  });
+
+  const ARCH16 = Object.freeze({
+    id: "ARCH-16",
+    title: "Chronologie des bâtisseurs",
+    description: "Observer des arches, des stèles et des reliques puis accumuler dix-huit observations nouvelles de ces trois familles pour construire une première chronologie régionale.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-15", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-15"]),
+    priority: 265,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "arches",
+        title: "Observer au moins une arche ancienne",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "arch" })
+      }),
+      Object.freeze({
+        slot: "steles",
+        title: "Observer au moins une stèle élaborée",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "stele" })
+      }),
+      Object.freeze({
+        slot: "relics",
+        title: "Observer au moins une relique technologique",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "tech_relic" })
+      }),
+      Object.freeze({
+        slot: "evidence18",
+        title: "Observer dix-huit objets archéologiques depuis l'activation de la mission",
+        action: "observe",
+        target: 18,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["arch", "stele", "tech_relic"]),
+          distinctBy: "instanceId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les traces du temps ne racontent pas toutes la même étape. Les arches semblent plus anciennes, les stèles plus élaborées, et les reliques relèvent déjà d'une ingénierie avancée."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "arches", atCount: 1, text: "Ces arches portent davantage les traces du temps. Elles pourraient appartenir à une phase plus ancienne." }),
+        Object.freeze({ slot: "steles", atCount: 1, text: "La fabrication de ces stèles paraît plus élaborée. La technique s'est clairement raffinée." }),
+        Object.freeze({ slot: "relics", atCount: 1, text: "Cette relique suppose une ingénierie nettement plus avancée que les premières structures de pierre." })
+      ]),
+      completed: Object.freeze(["Dix-huit observations nouvelles, réparties entre arches, stèles et reliques, suffisent à établir une première chronologie régionale des bâtisseurs."])
+    })
+  });
+
+  const ARCH17 = Object.freeze({
+    id: "ARCH-17",
+    title: "La relique énergétique",
+    description: "Découvrir une relique encore active dans son contexte cérémoniel puis l'observer et l'analyser sans transformer la surcharge en mécanique dédiée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-16", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-16"]),
+    priority: 264,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 88,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP", persistent: true, spawnOnce: true, contextRole: "archActiveRelic" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "travel",
+        title: "Rejoindre une nouvelle map susceptible d'abriter la relique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "context",
+        title: "Découvrir le contexte de la relique active",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["travel"]),
+        params: Object.freeze({ microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP" })
+      }),
+      Object.freeze({
+        slot: "relicObserve",
+        title: "Observer la relique énergétique",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["context"]),
+        params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP" })
+      }),
+      Object.freeze({
+        slot: "relicAnalyze",
+        title: "Analyser l'activité résiduelle de la relique",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["relicObserve"]),
+        params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette relique n'est pas totalement éteinte. Elle échange encore de l'énergie avec son environnement." ]),
+      completed: Object.freeze(["La relique est encore active. Son analyse confirme une technologie énergétique ancienne sans qu'aucun système artificiel de surcharge soit nécessaire."])
+    })
+  });
+
+  const ARCH18 = Object.freeze({
+    id: "ARCH-18",
+    title: "Objet de mémoire",
+    description: "Dans le même contexte cérémoniel, observer la relique puis comparer ses symboles à deux stèles distinctes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-17", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-17"]),
+    bindActivationMap: true,
+    priority: 263,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "relic",
+        title: "Observer la relique dans son contexte cérémoniel",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP", requiredMapFact: "bibleActivation:ARCH-18", requiredMapField: "mapId" })
+      }),
+      Object.freeze({
+        slot: "steles",
+        title: "Comparer la relique à deux stèles distinctes",
+        action: "observe",
+        target: 2,
+        requires: Object.freeze(["relic"]),
+        params: Object.freeze({ cuoType: "stele", microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP", distinctBy: "instanceId", requiredMapFact: "bibleActivation:ARCH-18", requiredMapField: "mapId" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cet objet n'était pas seulement utile. Sa place et ses symboles donnent l'impression qu'il portait une mémoire collective."]),
+      completed: Object.freeze(["La relique et les deux stèles partagent assez de signes pour soutenir une lecture cérémonielle ou commémorative."])
+    })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -7528,6 +7883,12 @@
     ARCH10,
     ARCH11,
     ARCH12,
+    ARCH13,
+    ARCH14,
+    ARCH15,
+    ARCH16,
+    ARCH17,
+    ARCH18,
     BAL01,
     BAL02,
     BAL03,
