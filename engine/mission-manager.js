@@ -59,6 +59,7 @@
       this.currentAction = null;
       this.lastPlanAt = 0;
       this.retryAfter = 0;
+      this.idleRetryUntil = 0;
       this.enabled = true;
       if (!this.hasActivePrimaryMission()) {
         this.primaryMissionId = "";
@@ -178,6 +179,9 @@
       this.syncMissionSelection();
       if (makePrimary && this.primaryMissionId === missionId) {
         this.retryAfter = performance.now() + 1200;
+        this.idleRetryUntil = 0;
+      } else {
+        this.wakeIdleRetry();
       }
       this.memory.saveTree(this.trees.get(missionId));
       this.publish();
@@ -373,6 +377,17 @@
       }
     }
 
+    wakeIdleRetry(now = performance.now()) {
+      if (
+        !this.idleRetryUntil ||
+        this.retryAfter !== this.idleRetryUntil ||
+        now >= this.retryAfter
+      ) return false;
+      this.retryAfter = now;
+      this.idleRetryUntil = 0;
+      return true;
+    }
+
     primaryEventDrivenTravel() {
       if (!this.primaryMissionId) return null;
       const tree = this.trees.get(this.primaryMissionId);
@@ -385,6 +400,124 @@
       );
       if (!node) return null;
       return { missionId: this.primaryMissionId, mission: this.definition(this.primaryMissionId), node };
+    }
+
+    primaryMissionTransition(context = this.bridge.context()) {
+      const explicitTravel = this.primaryEventDrivenTravel();
+      if (explicitTravel) return explicitTravel;
+      if (!this.primaryMissionId) return null;
+
+      const missionId = this.primaryMissionId;
+      const mission = this.definition(missionId) || {};
+      const tree = this.trees.get(missionId);
+      const lifecycle = this.memory.state.missionLifecycle?.[missionId];
+      const currentMapId = String(this.engine?.currentMapId || context?.mapId || "");
+      if (!tree || lifecycle?.status !== "active" || !currentMapId) return null;
+
+      // Si une vraie action locale reste possible, la mission ne doit pas
+      // provoquer un départ simplement parce qu'une autre feuille est distante.
+      if (!tree.root.isComplete && this.planner.nextAction(tree, context)) return null;
+
+      if (tree.root.isComplete) {
+        const gate = BF.bibleRuntime?.completionGateState?.(missionId) || null;
+        const targetMapId = String(gate?.targetMapId || "");
+        if (gate?.managed === true && gate.canFinalize !== true && targetMapId && targetMapId !== currentMapId) {
+          return {
+            missionId,
+            mission,
+            source: "completion-gate",
+            node: {
+              id: `${missionId}:completion-gate`,
+              type: Missions.ActionType.TRAVEL,
+              params: { eventDriven: true, toMapId: targetMapId, transitionSource: "completion-gate" }
+            }
+          };
+        }
+        return null;
+      }
+
+      const remote = tree.availableLeaves()
+        .filter((node) => !node.isComplete)
+        .map((node) => ({
+          node,
+          state: this.planner.requiredMapState?.(node, context) || null
+        }))
+        .filter(({ state }) =>
+          state?.constrained === true &&
+          state.targetMapId &&
+          state.targetMapId !== currentMapId
+        );
+      const targetMapIds = [...new Set(remote.map(({ state }) => String(state.targetMapId)))];
+      if (targetMapIds.length === 1) {
+        const targetMapId = targetMapIds[0];
+        const sourceNode = remote[0].node;
+        return {
+          missionId,
+          mission,
+          source: "required-map",
+          node: {
+            id: sourceNode.id,
+            type: Missions.ActionType.TRAVEL,
+            params: {
+              eventDriven: true,
+              toMapId: targetMapId,
+              transitionSource: "required-map",
+              sourceNodeId: sourceNode.id
+            }
+          }
+        };
+      }
+
+      const factKey = String(mission.targetMapFact || "").trim();
+      if (factKey) {
+        const fact = this.memory.getFact?.(factKey, null);
+        const field = String(mission.targetMapField || "mapId").trim();
+        const targetMapId = String(fact?.[field] || fact?.mapId || "");
+        if (targetMapId && targetMapId !== currentMapId) {
+          return {
+            missionId,
+            mission,
+            source: "mission-target-map",
+            node: {
+              id: `${missionId}:target-map`,
+              type: Missions.ActionType.TRAVEL,
+              params: { eventDriven: true, toMapId: targetMapId, transitionSource: "mission-target-map" }
+            }
+          };
+        }
+      }
+      return null;
+    }
+
+    missionTransitionTargetMapId(travel) {
+      if (!travel?.node) return "";
+      const injectedFactTarget = travel.node.params?.targetMapResolvedFromFact === true;
+      const staticTargetMapId = injectedFactTarget
+        ? ""
+        : String(travel.node.params?.toMapId || "");
+      if (staticTargetMapId) return staticTargetMapId;
+      const factKey = String(travel.node.params?.targetMapFact || "").trim();
+      if (!factKey) return "";
+      return this.travelTargetMapFromFact(travel);
+    }
+
+    missionTransitionExecutable(travel) {
+      if (!travel) return false;
+      if (this.isAutonomousUnknownTravel(travel)) {
+        return Boolean(this.missionUnknownTravelPlan(travel));
+      }
+      const targetMapId = this.missionTransitionTargetMapId(travel);
+      if (!targetMapId) return false;
+      const currentMapId = String(this.engine?.currentMapId || "");
+      if (!currentMapId) return false;
+      if (currentMapId === targetMapId) {
+        return Boolean(
+          this.travelMissionDefinition(travel)?.navigation?.autonomousKnownReturn === true &&
+          typeof this.engine?.returnToBase === "function"
+        );
+      }
+      const route = this.engine?.findKnownRoute?.(currentMapId, targetMapId);
+      return Array.isArray(route) && route.length >= 2;
     }
 
 
@@ -530,8 +663,31 @@
     }
 
     ensureMissionTransitionIntent(context = null) {
-      const travel = this.primaryEventDrivenTravel();
-      if (!travel) return null;
+      const decisionContext = context || this.bridge.context();
+      const travel = this.primaryMissionTransition(decisionContext);
+      if (!travel) {
+        const key = this.missionReturnIntentKey(this.primaryMissionId);
+        const previous = this.memory.getFact?.(key, null);
+        const genericSources = new Set([
+          "required-map",
+          "mission-target-map",
+          "completion-gate"
+        ]);
+        if (previous?.active === true && genericSources.has(String(previous.transitionSource || ""))) {
+          const currentMapId = String(this.engine?.currentMapId || decisionContext?.mapId || "");
+          const targetMapId = String(previous.targetMapId || previous.mapId || "");
+          if (!targetMapId || targetMapId === currentMapId) {
+            this.memory.setFact?.(key, {
+              ...previous,
+              active: false,
+              completedAt: Date.now(),
+              updatedAt: Date.now()
+            });
+            this.memory.save?.();
+          }
+        }
+        return null;
+      }
 
       const mission = this.travelMissionDefinition(travel);
       const targetMapFactDeclared = Boolean(
@@ -612,6 +768,7 @@
         targetMapId: targetMapId || null,
         frontierMapId: frontierMapId || null,
         direction,
+        transitionSource: travel.source || travel.node?.params?.transitionSource || "explicit-travel",
         evaluatedMapId: currentMapId,
         eligibleLocalMissionIds: [],
         deferMissionId: null,
@@ -623,7 +780,6 @@
       this.memory.setFact?.(key, intent);
       this.memory.save?.();
 
-      const decisionContext = context || this.bridge.context();
       const eligibleLocalMissionIds =
         this.transitionLocalCandidates(travel.missionId, decisionContext);
       const pendingDecision = {
@@ -698,7 +854,7 @@
     }
 
     resumeMissionTransitionIntent(context = this.bridge.context()) {
-      const travel = this.primaryEventDrivenTravel();
+      const travel = this.primaryMissionTransition(context);
       if (!travel) return false;
 
       const intent = this.ensureMissionTransitionIntent(context);
@@ -821,7 +977,7 @@
     }
 
     travelAllowsSecondaryMission(missionId, context) {
-      const travel = this.primaryEventDrivenTravel();
+      const travel = this.primaryMissionTransition(context);
       if (!travel || missionId === travel.missionId) return true;
 
       const intent = this.memory.getFact?.(
@@ -1054,7 +1210,11 @@
     }
 
     hasPrimaryMissionAuthority() {
-      return this.hasActivePrimaryMission();
+      const transition = this.primaryMissionTransition(this.bridge.context());
+      if (transition && this.missionTransitionExecutable(transition)) return true;
+      if (!this.hasActivePrimaryMission()) return false;
+      if (this.delegatedRuntimeAction(this.primaryMissionId)) return true;
+      return this.hasRunnablePrimaryMission();
     }
 
     primaryActionAssessment() {
@@ -1085,6 +1245,7 @@
     }
 
     reevaluatePendingActivations() {
+      this.wakeIdleRetry();
       const ready = Object.values(this.memory.state.pendingActivations || {})
         .filter((request) =>
           request.prerequisites.every((id) =>
@@ -1300,6 +1461,7 @@
           });
           this.currentAction = null;
           this.retryAfter = now + 650;
+          this.idleRetryUntil = 0;
           this.engine.callbacks?.onAction?.(
             `Mission : action interrompue, nouvelle tentative pour « ${orphan.title} ».`
           );
@@ -1315,12 +1477,14 @@
       this.lastPlanAt = now;
       if (this.resumeMissionTransitionIntent()) {
         this.retryAfter = now + 1200;
+        this.idleRetryUntil = 0;
         return true;
       }
 
       const selected = this.chooseRunnableMissionAction(this.bridge.context());
       if (!selected?.action) {
         this.retryAfter = now + 5000;
+        this.idleRetryUntil = this.retryAfter;
         return false;
       }
 
@@ -1332,6 +1496,7 @@
       const tree = this.trees.get(selected.missionId);
       if (!tree || !this.bridge.execute(action, now)) {
         this.retryAfter = now + 4000;
+        this.idleRetryUntil = 0;
         return false;
       }
 
@@ -1377,6 +1542,7 @@
       this.memory.remember("action-completed", completedAction);
       this.currentAction = null;
       this.retryAfter = performance.now() + 650;
+      this.idleRetryUntil = 0;
       this.memory.saveTree(actionTree);
       if (passive) {
         this.progressPassiveMissions(type, detail, {
@@ -1472,6 +1638,7 @@
       });
       this.currentAction = null;
       this.retryAfter = performance.now() + 1800;
+      this.idleRetryUntil = 0;
       this.publish();
     }
 

@@ -32,10 +32,40 @@
       return tree;
     }
 
+    requiredMapState(node, context = {}) {
+      const factKey = String(node?.params?.requiredMapFact || "").trim();
+      if (!factKey) {
+        return { constrained: false, runnable: true, targetMapId: "" };
+      }
+      const fact = this.memory?.getFact?.(factKey, null);
+      const field = String(node?.params?.requiredMapField || "mapId").trim();
+      const targetMapId = String(fact?.[field] || fact?.mapId || "");
+      const currentMapId = String(context?.mapId || context?.currentMapId || "");
+      return {
+        constrained: true,
+        runnable: Boolean(targetMapId && currentMapId && targetMapId === currentMapId),
+        targetMapId,
+        currentMapId,
+        factKey,
+        field,
+        reason: !targetMapId
+          ? "required-map-unresolved"
+          : targetMapId !== currentMapId
+            ? "required-map-mismatch"
+            : "required-map-current"
+      };
+    }
+
     score(node, context) {
       // Une étape événementielle décrit une condition de progression ; elle
       // ne doit jamais être proposée comme action exécutable au bridge.
       if (node?.params?.eventDriven === true) return -100;
+
+      // Une feuille liée à une autre map reste active dans son lifecycle, mais
+      // elle n'est pas exécutable localement. MissionManager peut alors produire
+      // l'intention de transition canonique au lieu de lancer une fausse action.
+      const mapState = this.requiredMapState(node, context);
+      if (mapState.constrained && !mapState.runnable) return -100;
 
       let score = 100;
       const type = Missions.normalizeActionType(node.type);

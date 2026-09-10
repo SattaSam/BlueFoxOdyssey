@@ -2532,6 +2532,45 @@
       }
     }
 
+    rememberDeferredTriggerContext(mission, event = {}) {
+      const manager = this.manager();
+      const memory = manager?.memory;
+      if (!mission?.id || !memory) return false;
+
+      memory.setFact?.(`bibleDeferredTrigger:${mission.id}`, {
+        type: event.type || null,
+        mapId: event.mapId || null,
+        fromMapId: event.fromMapId || null,
+        toMapId: event.toMapId || event.mapId || null,
+        instanceId: event.instanceId || null,
+        objectId: event.objectId || null,
+        cuoType: event.cuoType || null,
+        subject: event.subject || null,
+        acquiredAt: Date.now()
+      });
+
+      if (mission.bindActivationMap === true && event.mapId) {
+        memory.setFact?.(`bibleActivation:${mission.id}`, {
+          mapId: String(event.mapId),
+          fromMapId: event.fromMapId || null,
+          toMapId: event.toMapId || event.mapId,
+          activatedAt: Date.now()
+        });
+      }
+      if (mission.triggerOnly === true) {
+        memory.setFact?.(`bibleTarget:${mission.id}`, null);
+      } else if (mission.targetBinding) {
+        memory.setFact?.(`bibleTarget:${mission.id}`, {
+          binding: mission.targetBinding,
+          instanceId: event.instanceId || null,
+          objectId: event.objectId || null,
+          cuoType: event.cuoType || null
+        });
+      }
+      memory.save?.();
+      return true;
+    }
+
     consumeTriggerEvent(event, options = {}) {
       const candidates = [];
 
@@ -2556,23 +2595,40 @@
 
         const prerequisitesReady = this.prerequisitesSatisfied(mission);
         if (!prerequisitesReady) {
-          const triggerMissionId = String(mission.trigger?.missionId || "");
-          const triggeredPrerequisiteCompletion =
-            mission.trigger?.type === "progression.mission_completed" &&
-            triggerMissionId &&
-            asArray(mission.prerequisites).includes(triggerMissionId);
-          if (!triggeredPrerequisiteCompletion) continue;
+          const missionPrerequisites = asArray(mission.prerequisites);
+          const missingMissionPrerequisites = missionPrerequisites.filter((missionId) =>
+            !this.missionLifecycle(missionId).completed
+          );
+
+          // Les pendingActivations de MissionManager portent les dépendances de
+          // lifecycle. Un requiredFact manquant, sans prérequis missionnel manquant,
+          // reste donc simplement en attente de son prochain événement causal.
+          if (!missingMissionPrerequisites.length) continue;
+
+          const required = Math.max(1, Number(mission.trigger?.count) || 1);
+          const completedTriggerMissionId = event.type === "progression.mission_completed"
+            ? String(event.missionId || "")
+            : "";
+          const triggerCompletesPrerequisite = Boolean(
+            completedTriggerMissionId && missionPrerequisites.includes(completedTriggerMissionId)
+          );
+
+          // R-STAB : conserver un déclencheur ponctuel réellement acquis sans
+          // changer la sémantique historique des compteurs multi-événements.
+          // Les triggers count > 1 (ex. GAME-collection_samples) commencent
+          // toujours après leurs prérequis ; aucun backfill prématuré.
+          if (required > 1 && !triggerCompletesPrerequisite) continue;
 
           const count = this.incrementTrigger(mission, event);
-          const required = Math.max(1, Number(mission.trigger?.count) || 1);
           if (count < required || options.allowActivation === false) continue;
 
+          this.rememberDeferredTriggerContext(mission, event);
           this.manager()?.startMission?.(mission.id, {
             primary: mission.primaryOnActivation === true,
             autoPrimaryEligible: mission.autoPrimaryEligible === true,
-            prerequisites: asArray(mission.prerequisites),
+            prerequisites: missionPrerequisites,
             source: "bible-runtime-v0.1",
-            reason: `Déclencheur Bible V0.1 : ${event.type || "event"}`
+            reason: `Déclencheur Bible V0.1 acquis avant prérequis : ${event.type || "event"}`
           });
           continue;
         }
@@ -3298,7 +3354,7 @@
           : standaloneConsumes && !this.inventoryEffectsReady(mission)
             ? "Les ressources missionnelles requises doivent encore être réunies."
             : "Une validation dans le monde est encore requise.";
-      return { managed: true, canFinalize, message };
+      return { managed: true, canFinalize, message, targetMapId: targetMapId || null };
     }
 
     resolveSpawnOrigin(effect) {
