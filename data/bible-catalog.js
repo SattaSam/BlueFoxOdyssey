@@ -3430,6 +3430,141 @@
     })
   });
 
+  const FAU01A = Object.freeze({
+    id: "FAU-01A",
+    title: "Approche par espèce",
+    description: "Réussir une nouvelle approche prudente de cette espèce à moins de cinq mètres sans provoquer de fuite.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze(["FAU-11"]),
+    repeatable: true,
+    faunaSpeciesTemplate: true,
+    priority: 311,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    souvenir: true,
+    memoryValence: "positive",
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Approcher cette espèce sans fuite",
+        target: 1,
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "cautious_approach", "no_flee"]),
+          maxDistance: 5,
+          catalogManaged: true
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette espèce réagit à ma façon d'approcher. Je vais confirmer qu'une arrivée prudente suffit à éviter la fuite."]),
+      completed: Object.freeze(["Cette espèce tolère une approche prudente. Je peux maintenant rester près d'elle sans forcer le contact."])
+    })
+  });
+
+  const FAU03A = Object.freeze({
+    id: "FAU-03A",
+    title: "Présence calme par espèce",
+    description: "Maintenir une présence calme auprès de cette espèce après une approche réussie.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze([]),
+    repeatable: true,
+    faunaSpeciesTemplate: true,
+    priority: 310,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    souvenir: true,
+    memoryValence: "positive",
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Rester calmement près de cette espèce",
+        target: 1,
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "calm_nearby"])
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["L'approche a été acceptée. Je vais vérifier que ma présence reste tolérée dans la durée."]),
+      completed: Object.freeze(["La présence calme est acceptée. Je peux comparer maintenant plusieurs individus de la même espèce."])
+    })
+  });
+
+  const FAU05A = Object.freeze({
+    id: "FAU-05A",
+    title: "Tolérance du groupe par espèce",
+    description: "Observer calmement trois individus distincts de cette espèce sans provoquer leur fuite.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze([]),
+    repeatable: true,
+    faunaSpeciesTemplate: true,
+    priority: 309,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    souvenir: true,
+    memoryValence: "positive",
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Observer trois individus distincts sans fuite",
+        target: 3,
+        params: Object.freeze({
+          subject: "fauna",
+          tagsAll: Object.freeze(["fauna_behavior", "calm_nearby"]),
+          distinctBy: "instanceId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Un individu ne suffit pas à caractériser l'espèce. Je vais vérifier cette tolérance sur trois individus distincts."]),
+      completed: Object.freeze(["Trois individus distincts ont accepté une présence calme. Il reste à tenter un contact supplémentaire sans les brusquer."])
+    })
+  });
+
+  const FAU11A = Object.freeze({
+    id: "FAU-11A",
+    title: "Relation avec l'espèce",
+    description: "Réussir une présence calme auprès d'un individu supplémentaire de cette espèce ; une fuite rend la relation hostile jusqu'à une nouvelle tentative réussie.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze([]),
+    repeatable: true,
+    faunaSpeciesTemplate: true,
+    priority: 308,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    souvenir: true,
+    memoryValence: "positive",
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Rester calmement près d'un individu supplémentaire",
+        target: 1,
+        params: Object.freeze({
+          subject: "fauna",
+          catalogManaged: true
+        })
+      })
+    }),
+    runtimeValidation: Object.freeze({
+      type: "fauna-species-terminal",
+      slot: "study"
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je vais tenter une présence supplémentaire. Si je brusque cette espèce au point de la faire fuir, elle me considérera comme une menace."]),
+      completed: Object.freeze(["La présence supplémentaire a réussi sans fuite. Cette espèce me tolère désormais comme une présence familière."])
+    })
+  });
+
   const T04 = Object.freeze({
     id: "T04",
     title: "Comprendre qu’un projet peut progresser en parallèle",
@@ -6633,6 +6768,10 @@
     FAU10,
     FAU11,
     FAU12,
+    FAU01A,
+    FAU03A,
+    FAU05A,
+    FAU11A,
     T04,
     T05,
     T06,

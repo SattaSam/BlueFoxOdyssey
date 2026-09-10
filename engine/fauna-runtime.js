@@ -25,10 +25,18 @@
     fleeSeconds: 2.6,
     fleeOffset: 2.4
   });
-  const FAUNA_TYPES = new Set([
-    "fun_creature", "small_creature", "brouteur", "sauteur",
-    "patte_creature", "nocturnal_animal"
-  ]);
+  // Le CUO/ObjectLibrary reste la vérité canonique des espèces FAUNA.
+  // Le fallback ne sert qu'aux runtimes minimaux/anciens mocks sans list().
+  const catalogFaunaTypes = BF.ObjectLibrary?.list
+    ? BF.ObjectLibrary.list({ category: "fauna" })
+        .map((definition) => String(definition?.type || ""))
+        .filter(Boolean)
+    : [
+        "fun_creature", "small_creature", "brouteur", "sauteur",
+        "patte_creature", "nocturnal_animal"
+      ];
+  const FAUNA_TYPES = new Set(catalogFaunaTypes);
+  const REPUTATION_STATES = Object.freeze(["neutral", "wary", "hostile", "friendly"]);
   const SPECIAL_OWNED = new Set(["nocturnal_animal"]);
   const PARENTAL_SCENE_ID = "MSC-CUSTOM-FUNA-PARENTAL";
   const registry = new Set();
@@ -125,6 +133,7 @@
       closureSpeed: 0,
       cautiousStopSince: 0,
       cautiousQualified: false,
+      approachDisposition: null,
       acceptedProximity: false,
       acceptedSince: 0,
       calmEmitted: false,
@@ -391,6 +400,50 @@
   const missionMemory = () =>
     BF.currentEngine?.missionManager?.memory || null;
 
+  const isFaunaType = (type) => FAUNA_TYPES.has(String(type || ""));
+  const reputationKey = (type) => `fauna:reputation:${String(type || "")}`;
+  const getReputation = (type) => {
+    const normalized = String(type || "");
+    if (!isFaunaType(normalized)) return null;
+    const stored = String(missionMemory()?.getFact?.(reputationKey(normalized), "neutral") || "neutral");
+    return REPUTATION_STATES.includes(stored) ? stored : "neutral";
+  };
+  const setReputation = (type, reputation) => {
+    const normalizedType = String(type || "");
+    const normalizedReputation = String(reputation || "");
+    const memory = missionMemory();
+    if (!memory || !isFaunaType(normalizedType) || !REPUTATION_STATES.includes(normalizedReputation)) return false;
+    memory.setFact?.(reputationKey(normalizedType), normalizedReputation);
+    memory.save?.();
+    return true;
+  };
+
+  const traitProfile = () => BF.getPlayerTraitProfile?.() || Object.freeze({
+    curieux: 50, prudent: 50, empathique: 50, indifferent: 50,
+    respectueux: 50, destructeur: 50
+  });
+
+  const prepareApproachDisposition = (state) => {
+    if (state.approachDisposition) return state.approachDisposition;
+    const traits = traitProfile();
+    const prudence = (Number(traits.prudent || 0) - Number(traits.curieux || 0)) / 100;
+    const empathy = (Number(traits.empathique || 0) - Number(traits.indifferent || 0)) / 100;
+    const respect = (Number(traits.respectueux || 0) - Number(traits.destructeur || 0)) / 100;
+    const affinity = clamp(prudence * 0.35 + empathy * 0.30 + respect * 0.35, -1, 1);
+    const speciesPenalty = state.type === "nocturnal_animal" ? 0.35 : 0;
+    const uncertainty = (Math.random() - 0.5) * 0.5;
+    state.approachDisposition = Object.freeze({
+      affinity,
+      speciesPenalty,
+      requiredPauseSeconds: clamp(
+        APPROACH.cautiousStopSeconds - affinity * 0.55 + speciesPenalty + uncertainty,
+        0.65,
+        2.2
+      )
+    });
+    return state.approachDisposition;
+  };
+
   const instanceIdOf = (root) =>
     String(
       root?.userData?.instanceId ||
@@ -640,6 +693,7 @@
     if (distance >= APPROACH.resetDistance) {
       state.cautiousStopSince = 0;
       state.cautiousQualified = false;
+      state.approachDisposition = null;
       state.acceptedProximity = false;
       state.acceptedSince = 0;
       state.calmEmitted = false;
@@ -648,17 +702,20 @@
       return { threat: false };
     }
 
+    const disposition = prepareApproachDisposition(state);
     const speed = playerSpeed();
     const nearlyStill = speed != null ? speed <= 0.12 : Math.abs(state.closureSpeed) <= 0.12;
     const inCautiousBand = distance >= APPROACH.cautiousStopMin && distance <= APPROACH.cautiousStopMax;
     if (inCautiousBand && nearlyStill) {
       state.cautiousStopSince ||= elapsed;
-      if (elapsed - state.cautiousStopSince >= APPROACH.cautiousStopSeconds) {
+      if (elapsed - state.cautiousStopSince >= disposition.requiredPauseSeconds) {
         state.cautiousQualified = true;
         if (!state.cautiousEmitted) {
           state.cautiousEmitted = emitBehavior(state, "cautious_approach", {
             distance,
-            durationSeconds: APPROACH.cautiousStopSeconds,
+            durationSeconds: disposition.requiredPauseSeconds,
+            approachAffinity: disposition.affinity,
+            speciesPenalty: disposition.speciesPenalty,
             tags: ["fauna_behavior", "cautious_approach", "no_flee"]
           });
         }
@@ -894,6 +951,10 @@
     register,
     unregister,
     restore,
+    faunaTypes() { return Object.freeze([...FAUNA_TYPES]); },
+    isFaunaType,
+    getReputation,
+    setReputation,
     getState(root) {
       const state = states.get(root);
       return state ? Object.freeze({
@@ -902,6 +963,8 @@
         enabled: state.enabled,
         closureSpeed: state.closureSpeed,
         cautiousQualified: state.cautiousQualified,
+        approachDisposition: state.approachDisposition,
+        reputation: getReputation(state.type),
         acceptedProximity: state.acceptedProximity,
         acceptedSince: state.acceptedSince,
         lastDistance: state.lastDistance,

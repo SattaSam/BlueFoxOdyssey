@@ -4,6 +4,13 @@
 const BF = global.BlueFox3D = global.BlueFox3D || {};
 const KEY = "bluefox_odyssey_save_v1";
 const BUDGET = 225;
+const TRAIT_STORAGE_KEY = "bluefox_player_traits_v1";
+const DEFAULT_TRAIT_PAIRS = Object.freeze({
+  "curieux|prudent": 72,
+  "courageux|craintif": 58,
+  "empathique|indifferent": 71,
+  "respectueux|destructeur": 88
+});
 
 const AUTONOMY_MODE_KEY = "bluefox_autonomy_mode_v1";
 const AUTONOMY_UNLOCK_KEY = "bluefox_autonomy_unlock_v1";
@@ -67,6 +74,40 @@ const split = (value) =>
     .split(/\s+[—–-]\s+/)
     .map((item) => item.trim())
     .filter(Boolean);
+
+function readTraitPairs() {
+  let saved = {};
+  try {
+    const parsed = JSON.parse(global.localStorage.getItem(TRAIT_STORAGE_KEY) || "null");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) saved = parsed;
+  } catch {}
+  return Object.fromEntries(
+    Object.entries(DEFAULT_TRAIT_PAIRS).map(([key, fallback]) => [
+      key,
+      Object.prototype.hasOwnProperty.call(saved, key) ? clamp(saved[key]) : fallback
+    ])
+  );
+}
+
+function writeTraitPair(left, right, leftValue) {
+  const key = `${norm(left)}|${norm(right)}`;
+  if (!Object.prototype.hasOwnProperty.call(DEFAULT_TRAIT_PAIRS, key)) return false;
+  const next = readTraitPairs();
+  next[key] = clamp(leftValue);
+  global.localStorage.setItem(TRAIT_STORAGE_KEY, JSON.stringify(next));
+  return true;
+}
+
+function readTraitProfile() {
+  const pairs = readTraitPairs();
+  const profile = {};
+  Object.entries(pairs).forEach(([key, left]) => {
+    const [leftName, rightName] = key.split("|");
+    profile[leftName] = left;
+    profile[rightName] = 100 - left;
+  });
+  return Object.freeze(profile);
+}
 
 /* -------------------------------------------------------------------------- */
 /* Priorités / traits BAC existants — comportement conservé                   */
@@ -627,13 +668,24 @@ function enhance() {
 
     if (!row.classList.contains("trait-row")) return;
 
+    const input = row.querySelector('input[type="range"]');
+    const rawNames = split(row.querySelector("span")?.textContent || "");
+    if (input && rawNames.length === 2 && input.dataset.bluefoxTraitRestored !== "1") {
+      const key = `${norm(rawNames[0])}|${norm(rawNames[1])}`;
+      if (global.localStorage.getItem(TRAIT_STORAGE_KEY)) {
+        const stored = readTraitPairs();
+        if (Object.prototype.hasOwnProperty.call(stored, key)) input.value = String(stored[key]);
+      }
+      input.dataset.bluefoxTraitRestored = "1";
+    }
+
     updateTrait(row);
     tooltips(row);
 
-    const input = row.querySelector('input[type="range"]');
     if (input && input.dataset.bluefoxBalanceConnected !== "final") {
       input.dataset.bluefoxBalanceConnected = "final";
       const run = () => {
+        writeTraitPair(row.dataset.traitLeft, row.dataset.traitRight, input.value);
         updateTrait(row);
         tooltips(row);
       };
@@ -696,6 +748,7 @@ global.addEventListener("DOMContentLoaded", () => {
 }, { once: true });
 global.addEventListener("bluefox:autonomy-mode", refreshAutonomyUI);
 
+BF.getPlayerTraitProfile = readTraitProfile;
 BF.refreshSettingsUI = enhance;
 
 let gateAttempts = 0;

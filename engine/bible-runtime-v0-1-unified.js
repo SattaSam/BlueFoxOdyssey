@@ -32,6 +32,7 @@
       this.dynamicMissions = new Map();
       this.activePlacement = null;
       this.restoreConstructionInstances();
+      this.restoreFaunaMissionInstances();
 
       // Migration de structure uniquement : l'ancien runtime utilisait une
       // seconde vérité "revealed/completed" qui pouvait empêcher une mission
@@ -90,6 +91,7 @@
         activationInventoryCredits: {},
         constructionInstances: {},
         localMissionInstances: {},
+        faunaMissionInstances: {},
       };
     }
 
@@ -110,6 +112,7 @@
           activationInventoryCredits: { ...(saved?.activationInventoryCredits || {}) },
           constructionInstances: { ...(saved?.constructionInstances || {}) },
           localMissionInstances: { ...(saved?.localMissionInstances || {}) },
+          faunaMissionInstances: { ...(saved?.faunaMissionInstances || {}) },
         };
       } catch {
         return this.defaultState();
@@ -581,6 +584,291 @@
       return Boolean(Missions.getDefinition?.(mission.id));
     }
 
+    faunaSpeciesTemplate(baseId) {
+      const mission = this.catalog.find((entry) =>
+        entry?.id === baseId && entry?.faunaSpeciesTemplate === true
+      );
+      return mission || null;
+    }
+
+    faunaSpeciesMissionId(baseId, cuoType) {
+      return `${String(baseId || "")}@${String(cuoType || "").trim().toLowerCase()}`;
+    }
+
+    faunaSpeciesDefinition(cuoType) {
+      const normalized = String(cuoType || "").trim().toLowerCase();
+      if (!normalized) return null;
+      const definition = BF.ObjectLibrary?.get?.(normalized) || null;
+      return definition?.category === "fauna" ? definition : null;
+    }
+
+    buildFaunaSpeciesMission(baseId, cuoType, options = {}) {
+      const template = this.faunaSpeciesTemplate(baseId);
+      const definition = this.faunaSpeciesDefinition(cuoType);
+      if (!template || !definition) return null;
+      const normalized = String(definition.type || cuoType).toLowerCase();
+      const id = this.faunaSpeciesMissionId(baseId, normalized);
+      const previousByStage = {
+        "FAU-01A": "FAU-11",
+        "FAU-03A": this.faunaSpeciesMissionId("FAU-01A", normalized),
+        "FAU-05A": this.faunaSpeciesMissionId("FAU-03A", normalized),
+        "FAU-11A": options.bootstrap === true
+          ? "FAU-11"
+          : this.faunaSpeciesMissionId("FAU-05A", normalized)
+      };
+      const previous = previousByStage[baseId];
+      const sequence = asArray(clone(template.sequence)).map((step) => ({
+        ...step,
+        params: {
+          ...(step.params || {}),
+          cuoType: normalized
+        }
+      }));
+      const slots = Object.fromEntries(
+        Object.entries(clone(template.slots || {})).map(([slot, value]) => [
+          slot,
+          {
+            ...(value || {}),
+            params: {
+              ...(value?.params || {}),
+              cuoType: normalized
+            }
+          }
+        ])
+      );
+      return {
+        ...clone(template),
+        id,
+        baseMissionId: baseId,
+        faunaSpeciesTemplate: false,
+        faunaSpeciesMission: true,
+        faunaSpeciesCuoType: normalized,
+        faunaSpeciesBootstrap: options.bootstrap === true,
+        trigger: { type: "manual", count: 1 },
+        prerequisites: previous ? [previous] : [],
+        primaryOnActivation: false,
+        autoPrimaryEligible: false,
+        title: `${template.title} — ${definition.label || normalized}`,
+        sequence,
+        slots
+      };
+    }
+
+    restoreFaunaMissionInstances() {
+      Object.values(this.state?.faunaMissionInstances || {}).forEach((record) => {
+        const mission = this.buildFaunaSpeciesMission(
+          record?.baseMissionId,
+          record?.cuoType,
+          { bootstrap: record?.bootstrap === true }
+        );
+        if (!mission) return;
+        this.dynamicMissions.set(mission.id, mission);
+        this.byId.set(mission.id, mission);
+      });
+    }
+
+    ensureFaunaSpeciesMission(baseId, cuoType, options = {}) {
+      const id = this.faunaSpeciesMissionId(baseId, cuoType);
+      let mission = this.dynamicMissions.get(id) || null;
+      if (!mission) {
+        mission = this.buildFaunaSpeciesMission(baseId, cuoType, options);
+        if (!mission || !this.registerDynamicMission(mission)) return null;
+        this.state.faunaMissionInstances[id] = {
+          missionId: id,
+          baseMissionId: baseId,
+          cuoType: mission.faunaSpeciesCuoType,
+          bootstrap: options.bootstrap === true,
+          createdAt: Date.now()
+        };
+        this.saveState();
+      } else if (!Missions.getDefinition?.(id)) {
+        if (!this.registerDynamicMission(mission)) return null;
+      }
+      return mission;
+    }
+
+    startFaunaSpeciesMission(baseId, cuoType, options = {}) {
+      const mission = this.ensureFaunaSpeciesMission(baseId, cuoType, options);
+      const manager = this.manager();
+      if (!mission || !manager) return false;
+      const lifecycle = this.missionLifecycle(mission.id);
+      if (lifecycle.active || lifecycle.completed) return false;
+      return manager.startMission(mission.id, {
+        primary: false,
+        autoPrimaryEligible: false,
+        prerequisites: asArray(mission.prerequisites),
+        source: "fauna-species",
+        reason: options.reason || `Relation avec l'espèce ${mission.faunaSpeciesCuoType}.`
+      }) === true;
+    }
+
+    rearmFaunaSpeciesChain(cuoType) {
+      const manager = this.manager();
+      if (!manager) return false;
+      let changed = false;
+      ["FAU-01A", "FAU-03A", "FAU-05A"].forEach((baseId) => {
+        const missionId = this.faunaSpeciesMissionId(baseId, cuoType);
+        if (!this.state.faunaMissionInstances?.[missionId]) return;
+        if (!this.missionLifecycle(missionId).completed) return;
+        changed = manager.rearmRepeatableMission?.(missionId, {
+          source: "fauna-species",
+          reason: "Nouvelle tentative relationnelle avec cette espèce."
+        }) === true || changed;
+      });
+      return changed;
+    }
+
+    faunaBehaviorEvent(rawEvent = {}) {
+      const expected = String(BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED");
+      if (String(rawEvent?.type || "") !== expected) return null;
+      const detail = rawEvent?.detail || {};
+      const tags = new Set([
+        ...asArray(rawEvent?.tags),
+        ...asArray(detail.tags)
+      ].map(lower));
+      const cuoType = lower(detail.cuoType);
+      if (!tags.has("fauna_behavior") || !this.faunaSpeciesDefinition(cuoType)) return null;
+      return {
+        rawEvent,
+        detail,
+        tags,
+        cuoType,
+        instanceId: String(rawEvent?.instanceId || detail.instanceId || ""),
+        distance: Number(detail.distance),
+        state: lower(detail.state || rawEvent?.state)
+      };
+    }
+
+    faunaMissionEvidenceInstanceIds(missionId) {
+      const tree = this.manager()?.trees?.get?.(missionId);
+      if (!tree?.root) return new Set();
+      const result = new Set();
+      tree.root.walk?.((node) => {
+        asArray(node.distinctValues).forEach((value) => {
+          const text = String(value || "").trim();
+          if (text) result.add(text);
+        });
+        asArray(node.historyValues).forEach((value) => {
+          try {
+            const parsed = JSON.parse(value);
+            const instanceId = String(parsed?.instanceId || "").trim();
+            if (instanceId) result.add(instanceId);
+          } catch {}
+        });
+      });
+      return result;
+    }
+
+    faunaTerminalPriorInstanceIds(cuoType, mission) {
+      const groupMissionId = this.faunaSpeciesMissionId("FAU-05A", cuoType);
+      if (this.missionLifecycle(groupMissionId).completed) {
+        return this.faunaMissionEvidenceInstanceIds(groupMissionId);
+      }
+      if (mission?.faunaSpeciesBootstrap === true) {
+        return this.faunaMissionEvidenceInstanceIds("FAU-11");
+      }
+      return this.faunaMissionEvidenceInstanceIds(groupMissionId);
+    }
+
+    handleFaunaSpeciesObjectEvent(rawEvent = {}) {
+      const event = this.faunaBehaviorEvent(rawEvent);
+      const manager = this.manager();
+      if (!event || !manager || !this.missionLifecycle("FAU-11").completed) return false;
+      const { cuoType, instanceId, distance, tags, state } = event;
+      const cautious = tags.has("cautious_approach") && tags.has("no_flee") &&
+        Number.isFinite(distance) && distance < 5;
+      const calm = tags.has("calm_nearby");
+      const reputation = BF.FaunaRuntime?.getReputation?.(cuoType);
+      if (reputation === "friendly") return false;
+
+      const terminalId = this.faunaSpeciesMissionId("FAU-11A", cuoType);
+      const terminalMission = this.dynamicMissions.get(terminalId) || null;
+      const terminalLifecycle = terminalMission ? this.missionLifecycle(terminalId) : null;
+
+      if (terminalMission && terminalLifecycle?.active && (state === "flee" || tags.has("flee"))) {
+        BF.FaunaRuntime?.setReputation?.(cuoType, "hostile");
+        if (terminalMission.faunaSpeciesBootstrap === true && cuoType === "brouteur") {
+          manager.memory?.setFact?.("fauna:relationshipLoopUnlocked", true);
+          manager.memory?.save?.();
+        }
+        return manager.failMission?.(
+          terminalId,
+          `Cette espèce a fui une approche de BlueFox.`
+        ) === true;
+      }
+
+      if (terminalMission && terminalLifecycle?.active && calm) {
+        const previous = this.faunaTerminalPriorInstanceIds(cuoType, terminalMission);
+        if (!instanceId || previous.has(instanceId)) return false;
+        return this.progressRuntimeValidationSlot(
+          terminalId,
+          terminalMission.runtimeValidation?.slot || "study",
+          1
+        );
+      }
+
+      if (!cautious) return false;
+
+      const loopUnlocked = manager.memory?.getFact?.("fauna:relationshipLoopUnlocked", false) === true;
+      if (!loopUnlocked) return false;
+
+      const firstId = this.faunaSpeciesMissionId("FAU-01A", cuoType);
+      const firstRecord = this.state.faunaMissionInstances?.[firstId] || null;
+      const failedTerminal = terminalMission && terminalLifecycle?.status === "failed";
+      const hasAnyChainRecord = ["FAU-01A", "FAU-03A", "FAU-05A", "FAU-11A"]
+        .some((baseId) => Boolean(this.state.faunaMissionInstances?.[
+          this.faunaSpeciesMissionId(baseId, cuoType)
+        ]));
+
+      if (hasAnyChainRecord && !failedTerminal && firstRecord) return false;
+
+      if (failedTerminal) this.rearmFaunaSpeciesChain(cuoType);
+      const started = this.startFaunaSpeciesMission("FAU-01A", cuoType, {
+        reason: failedTerminal
+          ? "Nouvelle approche prudente après un échec relationnel."
+          : "Approche prudente réussie à moins de cinq mètres."
+      });
+      if (!started) return false;
+      return this.progressRuntimeValidationSlot(firstId, "study", 1);
+    }
+
+    reconcileFaunaSpeciesMissions() {
+      const manager = this.manager();
+      if (!manager || !this.missionLifecycle("FAU-11").completed) return false;
+      let changed = false;
+      const bootstrapId = this.faunaSpeciesMissionId("FAU-11A", "brouteur");
+      if (!this.state.faunaMissionInstances?.[bootstrapId]) {
+        changed = this.startFaunaSpeciesMission("FAU-11A", "brouteur", {
+          bootstrap: true,
+          reason: "FAU-11 terminée : relation approfondie avec le Brouteur."
+        }) || changed;
+      }
+
+      const records = Object.values(this.state.faunaMissionInstances || {});
+      records.forEach((record) => {
+        const missionId = String(record?.missionId || "");
+        const cuoType = lower(record?.cuoType);
+        if (!missionId || !cuoType) return;
+        const lifecycle = this.missionLifecycle(missionId);
+        if (!lifecycle.completed) return;
+        if (record.baseMissionId === "FAU-01A") {
+          changed = this.startFaunaSpeciesMission("FAU-03A", cuoType) || changed;
+        } else if (record.baseMissionId === "FAU-03A") {
+          changed = this.startFaunaSpeciesMission("FAU-05A", cuoType) || changed;
+        } else if (record.baseMissionId === "FAU-05A") {
+          changed = this.startFaunaSpeciesMission("FAU-11A", cuoType) || changed;
+        } else if (record.baseMissionId === "FAU-11A") {
+          const friendly = BF.FaunaRuntime?.setReputation?.(cuoType, "friendly") === true;
+          if (record.bootstrap === true && cuoType === "brouteur") {
+            manager.memory?.setFact?.("fauna:relationshipLoopUnlocked", true);
+            manager.memory?.save?.();
+          }
+          changed = friendly || changed;
+        }
+      });
+      return changed;
+    }
+
     siteBucket(mapId) {
       const memory = this.manager()?.memory;
       const raw = memory?.state?.siteProgression?.[mapId] || null;
@@ -792,6 +1080,7 @@
           targetMapId: mission.targetMapId || null,
           narrativeOnly:
             mission.narrativeOnly === true || mission.pattern === "NARRATIVE_ONLY",
+          repeatable: mission.repeatable === true,
           priority: Number(mission.priority) || 0,
           passivePriorityAxis:
             mission.passivePriorityAxis ||
@@ -901,6 +1190,7 @@
         targetMapId: mission.targetMapId || null,
         narrativeOnly:
           mission.narrativeOnly === true || mission.pattern === "NARRATIVE_ONLY",
+        repeatable: mission.repeatable === true,
         priority: Number(mission.priority) || 0,
         passivePriorityAxis:
           mission.passivePriorityAxis ||
@@ -2559,6 +2849,7 @@
     onObjectEvent(rawEvent) {
       this.handleEnergyMissionObjectEvent(rawEvent);
       this.handleDroneMissionObjectEvent(rawEvent);
+      this.handleFaunaSpeciesObjectEvent(rawEvent);
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
       this.recordObservation(rawEvent);
@@ -4779,6 +5070,7 @@
       this.restoreLocalExplorationSession();
       this.restoreLocalMissionDefinitions(state);
       this.reconcileLocalSiteProgression();
+      this.reconcileFaunaSpeciesMissions();
       for (const mission of this.missionsForState(state)) {
         const entry = this.findMissionEntry(state, mission.id);
         if (entry) this.emitProgressNarrative(mission, entry);
