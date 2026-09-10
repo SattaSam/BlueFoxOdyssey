@@ -6949,6 +6949,424 @@
     })
   });
 
+
+  // ARCH-R2 — Site, carte régionale et chronologie ancienne (ARCH-07 → ARCH-12)
+  // Les preuves restent physiques et déclaratives ; les déductions archéologiques
+  // (relation entre sites, âges relatifs, provenance, fonction domestique) restent narratives.
+  const ARCH07 = Object.freeze({
+    id: "ARCH-07",
+    title: "Le premier site",
+    description: "Confirmer un véritable site archéologique en étudiant cinq éléments distincts de la ruine sur une même map puis en explorant 60 % de cette map.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-06"]),
+    bindActivationMap: true,
+    priority: 274,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 72,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-RUINE-MODULAIRE1",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archFirstSite"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "siteElements",
+        title: "Observer cinq éléments distincts du site",
+        action: "observe",
+        target: 5,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          microSceneId: "MSC-CUSTOM-RUINE-MODULAIRE1",
+          distinctBy: "instanceId",
+          requiredMapFact: "bibleActivation:ARCH-07",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "siteCoverage",
+        title: "Explorer 60 % de la map du site",
+        action: "explore-zone",
+        target: 60,
+        requires: Object.freeze(["siteElements"]),
+        params: Object.freeze({
+          metric: "surfacePercent",
+          threshold: 60,
+          scope: "map",
+          requiredMapFact: "bibleActivation:ARCH-07",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Les indices convergent ici. Je peux enfin vérifier s’il s’agit d’un véritable site plutôt que de traces dispersées."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "siteCoverage",
+          at: 0.6,
+          text: "Les éléments observés cessent d’être isolés. À cette échelle de la map, leur organisation commence à former un ensemble cohérent."
+        })
+      ]),
+      completed: Object.freeze([
+        "Premier site archéologique confirmé. L’hypothèse d’une civilisation ancienne devient difficile à écarter."
+      ])
+    })
+  });
+
+  const ARCH08 = Object.freeze({
+    id: "ARCH-08",
+    title: "Carte des vestiges",
+    description: "Confirmer trois sites archéologiques distincts sur un nouveau territoire à l’est afin d’établir une première lecture régionale.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "east",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-07"]),
+    bindActivationMap: true,
+    priority: 273,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-RUINE-MODULAIRE1",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archRegionalSite"
+        }),
+        Object.freeze({
+          id: "MSC-CUSTOM-RUINE-MODULAIRE2",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archRegionalSite"
+        }),
+        Object.freeze({
+          id: "MSC-CUSTOM-SANCTUAIRE-RING",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archRegionalSite"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Confirmer trois sites archéologiques distincts",
+        target: 3,
+        params: Object.freeze({
+          anyMicroScene: true,
+          contextRole: "archRegionalSite",
+          distinctBy: "microSceneId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Les vestiges ne sont pas isolés. Leur répartition pourrait déjà dessiner une histoire régionale."
+      ]),
+      completed: Object.freeze([
+        "Trois sites distincts sont maintenant confirmés. Leurs formes, leurs voies et leurs matériaux peuvent être rapprochés sans inventer une métrique supplémentaire."
+      ])
+    })
+  });
+
+  const ARCH09 = Object.freeze({
+    id: "ARCH-09",
+    title: "Deux âges de pierre",
+    description: "Observer trois arches puis trois stèles distinctes afin de disposer de deux ensembles techniques comparables.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "ARCH-08",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["ARCH-08"]),
+    priority: 272,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "arches",
+        title: "Observer trois arches distinctes",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "arch",
+          microSceneId: "MSC-CUSTOM-SANCTUAIRE-RING",
+          distinctBy: "instanceId",
+          requiredMapFact: "bibleActivation:ARCH-08",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "steles",
+        title: "Observer trois stèles distinctes",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["arches"]),
+        params: Object.freeze({
+          cuoType: "stele",
+          microSceneId: "MSC-CUSTOM-SANCTUAIRE-RING",
+          distinctBy: "instanceId",
+          requiredMapFact: "bibleActivation:ARCH-08",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je veux comparer deux familles de formes anciennes plutôt que prétendre lire leur âge directement dans la pierre."
+      ]),
+      completed: Object.freeze([
+        "Les deux ensembles présentent des choix techniques assez différents pour distinguer narrativement deux phases de construction."
+      ])
+    })
+  });
+
+  const ARCH10 = Object.freeze({
+    id: "ARCH-10",
+    title: "Strates d’occupation",
+    description: "Observer un élément réel de la ruine modulaire afin d’appuyer une lecture narrative de ses niveaux d’occupation.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "ARCH-09",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["ARCH-09"]),
+    priority: 271,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Observer un élément de la ruine à plusieurs niveaux",
+        target: 1,
+        params: Object.freeze({
+          cuoType: "debris",
+          microSceneId: "MSC-CUSTOM-RUINE-MODULAIRE2",
+          distinctBy: "instanceId",
+          requiredMapFact: "bibleActivation:ARCH-08",
+          requiredMapField: "mapId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Une structure en recouvre une autre. Je vais observer directement un élément de cette ruine avant d’en tirer une chronologie."
+      ]),
+      completed: Object.freeze([
+        "L’organisation visible de la ruine permet maintenant de proposer une première chronologie relative sans créer de système de stratigraphie artificiel."
+      ])
+    })
+  });
+
+  const ARCH11 = Object.freeze({
+    id: "ARCH-11",
+    title: "La carrière et la cité",
+    description: "Rejoindre une nouvelle map, reconnaître une ancienne carrière puis prélever un minerai réel pour étayer la comparaison avec les constructions.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "ARCH-10",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["ARCH-10"]),
+    priority: 270,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    navigation: Object.freeze({
+      autonomousUnknownTravel: true,
+      singleUnknownTransition: true
+    }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-CARRIERE",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archAncientQuarry"
+        })
+      ]),
+      requiredObjects: Object.freeze([
+        Object.freeze({
+          type: "magnetic_ore",
+          count: 1,
+          contextRole: "archQuarrySample"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "travel",
+        title: "Rejoindre une nouvelle map susceptible d’abriter la carrière",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "quarry",
+        title: "Observer un élément rocheux de l’ancienne carrière",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["travel"]),
+        params: Object.freeze({
+          cuoType: "strong_rock",
+          microSceneId: "MSC-CUSTOM-CARRIERE"
+        })
+      }),
+      Object.freeze({
+        slot: "sample",
+        title: "Prélever un minerai pour comparaison",
+        action: "collect",
+        target: 1,
+        requires: Object.freeze(["quarry"]),
+        params: Object.freeze({
+          cuoType: "magnetic_ore"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Si ces constructions ont mobilisé autant de pierre, une carrière ancienne devrait encore conserver des traces exploitables."
+      ]),
+      completed: Object.freeze([
+        "La carrière et l’échantillon prélevé donnent une base physique suffisante pour relier narrativement l’extraction ancienne aux grands chantiers."
+      ])
+    })
+  });
+
+  const ARCH12 = Object.freeze({
+    id: "ARCH-12",
+    title: "Habiter la planète",
+    description: "Découvrir un habitat en ruine, observer l’un de ses éléments puis récupérer un composant réellement présent sur place.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-11"]),
+    bindActivationMap: true,
+    priority: 269,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-HABITAT-RUINE",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archCivilHabitat"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "habitatElement",
+        title: "Observer un élément de l’habitat en ruine",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "stele",
+          microSceneId: "MSC-CUSTOM-HABITAT-RUINE",
+          requiredMapFact: "bibleActivation:ARCH-12",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "habitatComponent",
+        title: "Récupérer un composant présent dans l’habitat",
+        action: "collect",
+        target: 1,
+        requires: Object.freeze(["habitatElement"]),
+        params: Object.freeze({
+          cuoType: "relay_block",
+          microSceneId: "MSC-CUSTOM-HABITAT-RUINE",
+          requiredMapFact: "bibleActivation:ARCH-12",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ici, les traces sont modestes et répétées. Je veux vérifier qu’il s’agit bien d’un lieu de vie plutôt que d’un monument."
+      ]),
+      completed: Object.freeze([
+        "L’élément observé et le composant récupéré suffisent à reconnaître narrativement un premier habitat civil."
+      ])
+    })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -7104,6 +7522,12 @@
     ARCH04,
     ARCH05,
     ARCH06,
+    ARCH07,
+    ARCH08,
+    ARCH09,
+    ARCH10,
+    ARCH11,
+    ARCH12,
     BAL01,
     BAL02,
     BAL03,
