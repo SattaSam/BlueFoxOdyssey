@@ -1257,13 +1257,18 @@
     return sentences.join(" ");
   }
 
-  const consolidatedJournalPanels = new WeakSet();
+  let journalConsolidationPending = false;
+
+  function requestJournalConsolidation() {
+    journalConsolidationPending = true;
+    scheduleScan();
+  }
 
   function consolidateJournalNarrativeAtOpen(panel, emotion) {
-    if (!panel || consolidatedJournalPanels.has(panel)) return;
-    consolidatedJournalPanels.add(panel);
+    if (!panel || !journalConsolidationPending) return false;
     const BF = global.BlueFox3D;
-    BF?.consolidateJournalNarrative?.({
+    if (typeof BF?.consolidateJournalNarrative !== "function") return false;
+    BF.consolidateJournalNarrative({
       themes: buildJournalEvolutionThemes(),
       mood: {
         key: String(emotion?.key || "indisponible"),
@@ -1273,6 +1278,8 @@
           : "Je n’arrive pas encore à mettre un mot précis sur mon humeur."
       }
     });
+    journalConsolidationPending = false;
+    return true;
   }
 
   function renderJournalNarrativeNotes(report) {
@@ -2383,6 +2390,7 @@
       ""
     ).trim().toLocaleLowerCase("fr");
     closeCompetingInventoryResearchPanel(target);
+    if (target.includes("journal")) requestJournalConsolidation();
   }, true);
 
   function normalizeResearchPanelWindow(panel) {
