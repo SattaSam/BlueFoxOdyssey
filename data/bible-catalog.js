@@ -6599,6 +6599,356 @@
 
 
 
+  // ARCH-R1 — Premières traces (ARCH-01 → ARCH-06)
+  // Contrat gameplay : une MSC réellement découverte porte la preuve contextuelle.
+  // Les formulations documentaires d'observation/analyse ne sont pas transformées
+  // en clics supplémentaires lorsque la découverte de la scène suffit.
+  const ARCH01 = Object.freeze({
+    id: "ARCH-01",
+    title: "Les premières traces",
+    description: "Découvrir une première structure dont la régularité rend plausible une intervention intelligente ancienne.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "north",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze([]),
+    priority: 280,
+    passivePriorityAxis: "collection",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-RUINE-MODULAIRE1",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archFirstTrace"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Découvrir la première trace travaillée",
+        target: 1,
+        params: Object.freeze({
+          microSceneId: "MSC-CUSTOM-RUINE-MODULAIRE1",
+          distinctBy: "microSceneInstance"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ces arêtes sont trop régulières. Quelqu’un a voulu donner une forme à cette pierre."
+      ]),
+      completed: Object.freeze([
+        "Ces formes suffisent pour considérer qu’une intervention intelligente ancienne est plausible."
+      ])
+    })
+  });
+
+  const ARCH02 = Object.freeze({
+    id: "ARCH-02",
+    title: "Alignements impossibles",
+    description: "Découvrir un second ensemble structuré dont l’organisation ne peut plus être traitée comme une simple coïncidence.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "north",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-01"]),
+    priority: 279,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.45,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-SANCTUAIRE-RING",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archImpossibleAlignment"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Découvrir l’alignement ancien",
+        target: 1,
+        params: Object.freeze({
+          microSceneId: "MSC-CUSTOM-SANCTUAIRE-RING",
+          distinctBy: "microSceneInstance"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Trois alignements semblables ne peuvent plus être traités comme une coïncidence."
+      ]),
+      completed: Object.freeze([
+        "La répétition de ces formes révèle désormais une organisation intentionnelle."
+      ])
+    })
+  });
+
+  const ARCH03 = Object.freeze({
+    id: "ARCH-03",
+    title: "Les pierres gravées",
+    description: "Observer deux stèles distinctes afin de confirmer la répétition d’un premier système symbolique ancien.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-02"]),
+    priority: 278,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-WORKED-STONE-BLOCK",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archEngravedStone"
+        })
+      ]),
+      requiredObjects: Object.freeze([
+        Object.freeze({
+          type: "stele",
+          count: 2,
+          contextRole: "archEngravedSteles"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Observer deux stèles distinctes",
+        target: 2,
+        params: Object.freeze({
+          cuoType: "stele",
+          distinctBy: "instanceId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ces marques se répètent. Une seule stèle pourrait être un hasard ; deux supports distincts permettront de vérifier qu’il s’agit bien d’un système."
+      ]),
+      completed: Object.freeze([
+        "Les mêmes signes apparaissent sur deux stèles distinctes. Un premier vocabulaire graphique ancien peut maintenant être distingué du décor."
+      ])
+    })
+  });
+
+  const ARCH04 = Object.freeze({
+    id: "ARCH-04",
+    title: "Fragments travaillés",
+    description: "Étudier un composant commun dans une ruine puis prélever exactement cette même instance.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-03"]),
+    priority: 277,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-COMPOSANT-RUIN",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archWorkedFragments"
+        })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "observeComponent",
+        title: "Observer un composant commun de la ruine",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "relay_block",
+          microSceneId: "MSC-CUSTOM-COMPOSANT-RUIN"
+        })
+      }),
+      Object.freeze({
+        slot: "collectComponent",
+        title: "Prélever ce même composant",
+        action: "collect",
+        target: 1,
+        requires: Object.freeze(["observeComponent"]),
+        params: Object.freeze({
+          cuoType: "relay_block",
+          microSceneId: "MSC-CUSTOM-COMPOSANT-RUIN",
+          relation: Object.freeze({
+            fromSlot: "observeComponent",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La matière a été découpée, assemblée et réutilisée. Je vais d’abord enregistrer précisément un composant avant de le prélever."
+      ]),
+      completed: Object.freeze([
+        "J’ai prélevé exactement le composant que j’avais étudié. Son contexte et son origine restent donc reliés."
+      ])
+    })
+  });
+
+  const ARCH05 = Object.freeze({
+    id: "ARCH-05",
+    title: "Architecture oubliée",
+    description: "Découvrir une ruine structurée permettant de reconnaître un mur ou une fondation ancienne sous le relief.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-04"]),
+    priority: 276,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-CUSTOM-RUINE-MODULAIRE4",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archForgottenArchitecture"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Découvrir la structure effondrée",
+        target: 1,
+        params: Object.freeze({
+          microSceneId: "MSC-CUSTOM-RUINE-MODULAIRE4",
+          distinctBy: "microSceneInstance"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Ce relief n’est pas une simple crête. Il suit l’angle d’une construction effondrée."
+      ]),
+      completed: Object.freeze([
+        "Cette structure suffit pour reconnaître ici un premier ensemble architectural ancien."
+      ])
+    })
+  });
+
+  const ARCH06 = Object.freeze({
+    id: "ARCH-06",
+    title: "Une voie sous la poussière",
+    description: "Découvrir vers l’ouest un ancien passage reliant les vestiges et reconnaître le début d’un réseau de déplacement.",
+    pattern: "CONTEXT_MSC",
+    trigger: Object.freeze({
+      type: "exploration.map_discovered",
+      direction: "west",
+      count: 1,
+      uniqueOnly: true
+    }),
+    prerequisites: Object.freeze(["ARCH-05"]),
+    priority: 275,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    narrativeAxis: "ARCHEOLOGUE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "ARCHEOLOGUE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({
+          id: "MSC-ANCIENT-GATEWAY-001",
+          persistent: true,
+          spawnOnce: true,
+          contextRole: "archAncientRoute"
+        })
+      ])
+    }),
+    slots: Object.freeze({
+      context: Object.freeze({
+        title: "Découvrir le passage ancien",
+        target: 1,
+        params: Object.freeze({
+          microSceneId: "MSC-ANCIENT-GATEWAY-001",
+          distinctBy: "microSceneInstance"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Le sol est compacté selon une direction constante. Cette voie reliait des lieux importants."
+      ]),
+      completed: Object.freeze([
+        "Le réseau de déplacement ancien commence à apparaître entre les vestiges."
+      ])
+    })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -6748,6 +7098,12 @@
     ENE12,
     ENE13,
     ENE14,
+    ARCH01,
+    ARCH02,
+    ARCH03,
+    ARCH04,
+    ARCH05,
+    ARCH06,
     BAL01,
     BAL02,
     BAL03,
