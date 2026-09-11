@@ -21,9 +21,15 @@
   if (typeof baseBuildMap !== "function" || baseBuildMap.customMapRegistryWrapped) return;
   const wrappedBuildMap = function buildMapWithCustomScenes(THREE, definition, assets, renderer) {
     const built = baseBuildMap(THREE, definition, assets, renderer);
-    if (!Array.isArray(definition.customMicroScenes) || !definition.customMicroScenes.length) return built;
+    const customMicroScenes = Array.isArray(definition.customMicroScenes)
+      ? definition.customMicroScenes
+      : [];
+    const customObjects = Array.isArray(definition.customObjects)
+      ? definition.customObjects
+      : [];
+    if (!customMicroScenes.length && !customObjects.length) return built;
     const spawner = new BF.ObjectSpawner({ THREE, scene: built.group, palette: definition.palette });
-    definition.customMicroScenes.forEach((placement, index) => {
+    customMicroScenes.forEach((placement, index) => {
       const root = new THREE.Group();
       const position = placement.position || [0, 0, 0];
       const rotation = placement.rotation || [0, 0, 0];
@@ -41,6 +47,36 @@
           const position = transformRoot.localToWorld(collider.offset.clone());
           built.colliders.push({ position, radius: collider.radius, owner: record.root });
         });
+      });
+    });
+    customObjects.forEach((placement, index) => {
+      if (!placement?.type) return;
+      const position = placement.position || [0, 0, 0];
+      const record = spawner.spawn(placement.type, {
+        position: { x: Number(position[0]) || 0, y: Number(position[1]) || 0, z: Number(position[2]) || 0 },
+        rotation: Number(placement.rotation) || 0,
+        variant: Number(placement.variant) || 0,
+        force: true,
+        scene: built.group,
+        source: `custom-map:${definition.id}`,
+        instanceId: placement.instanceId || `custom-map:${definition.id}:object:${index}`
+      });
+      if (!record) return;
+      const metadata = {
+        ...(placement.userData || {}),
+        customMapObject: true,
+        customMapObjectIndex: index,
+        cityMapId: definition.id
+      };
+      if (record.root?.userData) Object.assign(record.root.userData, metadata);
+      if (record.instance?.hitbox?.userData) Object.assign(record.instance.hitbox.userData, metadata);
+      if (record.instance?.hitbox) built.interactables.push(record.instance.hitbox);
+      (record.instance?.colliders || []).forEach((collider) => {
+        const transformRoot = record.objectRoot || record.root;
+        if (!transformRoot || !collider?.offset?.clone) return;
+        transformRoot.updateWorldMatrix(true, false);
+        const worldPosition = transformRoot.localToWorld(collider.offset.clone());
+        built.colliders.push({ position: worldPosition, radius: collider.radius, owner: record.root });
       });
     });
     return built;

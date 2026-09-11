@@ -7,7 +7,7 @@
     return;
   }
 
-  const VERSION = "P2.2.2-r3-npc-r2";
+  const VERSION = "P2.2.2-r4-npc-r3";
   const NPC_TYPES = new Set(["npc_translucent", "npc_rocky"]);
   const CIVILIZATION_BY_TYPE = Object.freeze({
     npc_translucent: "translucent",
@@ -252,10 +252,20 @@
       BF.ObjectEvents.emit(eventType, object, {
         civilizationId,
         cuoType: state.type,
+        npcRole: String(
+          object.userData?.npcRole ||
+          anchor?.userData?.npcRole ||
+          ""
+        ).toLowerCase() || null,
         mapId: engine.currentMapId || null,
         state: "contact",
         interactionSource: object.userData?.requestedInteractionSource || "manual",
-        tags: ["npc_contact", "civilization", civilizationId]
+        tags: [
+          "npc_contact",
+          "civilization",
+          civilizationId,
+          String(object.userData?.npcRole || anchor?.userData?.npcRole || "").toLowerCase()
+        ].filter(Boolean)
       });
     }
     if (!state.speechUntil || elapsed >= state.speechUntil) {
