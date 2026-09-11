@@ -142,6 +142,29 @@
 
   const civilizationIdForType = (type) => CIVILIZATION_BY_TYPE[type] || String(type || "unknown");
 
+  const emitNpcReaction = (state, reaction, cause = "approach", extra = {}) => {
+    const eventType = BF.ObjectEvents?.types?.NPC_REACTION;
+    if (!eventType || !BF.ObjectEvents?.emit || !state?.root) return false;
+    BF.ObjectEvents.emit(eventType, state.root, {
+      civilizationId: civilizationIdForType(state.type),
+      cuoType: state.type,
+      mapId: BF.currentEngine?.currentMapId || null,
+      state: String(reaction || state.state || "rest"),
+      reaction: String(reaction || state.state || "rest"),
+      cause: String(cause || "approach"),
+      distance: Number(extra.distance ?? distanceToPlayer(state.root)),
+      tags: [
+        "npc_reaction",
+        "civilization",
+        civilizationIdForType(state.type),
+        String(reaction || state.state || "rest"),
+        String(cause || "approach")
+      ]
+    });
+    return true;
+  };
+
+
   const updateRelationRank = (state, elapsed) => {
     if (elapsed < state.nextRelationCheckAt) return state.relationRank;
     state.nextRelationCheckAt = elapsed + 1;
@@ -273,6 +296,9 @@
         mapId: engine.currentMapId || null,
         state: "contact",
         interactionSource: object.userData?.requestedInteractionSource || "manual",
+        contactMode:
+          String(object.userData?.npcMissionContactMode || anchor?.userData?.npcMissionContactMode || "").toLowerCase() ||
+          null,
         tags: [
           "npc_contact",
           "civilization",
@@ -928,6 +954,29 @@
       dx = dx / length * distance;
       dz = dz / length * distance;
       return this.moveLocal(root, dx, dz, { state: "flee", autoRelease: true });
+    },
+    reactToApproach(root, options = {}) {
+      const state = states.get(root);
+      if (!state) return null;
+      const candidates = (Array.isArray(options.behaviors) ? options.behaviors : ["curiosity", "vigilance", "flee"])
+        .map((value) => String(value || "").toLowerCase())
+        .filter((value) => ALLOWED_STATES.has(value) && !["movement", "interaction", "dialogue"].includes(value));
+      if (!candidates.length) return null;
+      const reaction = candidates[Math.floor(Math.random() * candidates.length)];
+      const distance = distanceToPlayer(root);
+      if (reaction === "flee") {
+        this.fleeFromPlayer(root, Math.max(2.8, Number(options.fleeDistance) || 3.5));
+      } else {
+        state.motion = null;
+        changeState(state, reaction, nowSeconds() - startedAt, true);
+      }
+      emitNpcReaction(state, reaction, options.cause || "approach", { distance });
+      if (options.autoRelease !== false && reaction !== "flee") {
+        global.setTimeout?.(() => {
+          if (states.has(root)) this.releaseState(root);
+        }, Math.max(900, Number(options.releaseAfterMs) || 1800));
+      }
+      return reaction;
     },
     speak(root, text = "⋔ ⌁ ∆ ⟟", options = {}) {
       const state = states.get(root);

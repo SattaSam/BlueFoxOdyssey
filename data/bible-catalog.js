@@ -8375,6 +8375,217 @@
     })
   });
 
+
+  // ARCH-R5 — Territoires actuels, rencontre prudente et choix de civilisation (ARCH-30 → ARCH-40)
+  const ARCH30 = Object.freeze({
+    id: "ARCH-30", title: "Territoires et frontières",
+    description: "Suivre une limite territoriale actuelle à partir de trois marqueurs distincts.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-29", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-29"]), priority: 251, passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre un nouveau territoire", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ size: "random", biome: "random", requiredObjects: Object.freeze([Object.freeze({ type: "stele", count: 3, contextRole: "archTerritoryMarkers" })]) }) }) }) }),
+      Object.freeze({ slot: "markers", title: "Observer trois marqueurs de frontière distincts", action: "observe", target: 3, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "stele", distinctBy: "instanceId" }) }),
+      Object.freeze({ slot: "follow", title: "Suivre la frontière vers un autre territoire", action: "travel", target: 1, requires: Object.freeze(["markers"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) })
+    ])
+  });
+
+  const ARCH31 = Object.freeze({
+    id: "ARCH-31", title: "Routes d’échange",
+    description: "Identifier deux passages entretenus puis un lieu d’échange ou de stockage.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-30", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-30"]), priority: 250, passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "route1", title: "Rejoindre une première route entretenue", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-ANCIENT-GATEWAY-001", persistent: true, spawnOnce: true })]) }) }) }) }),
+      Object.freeze({ slot: "gate1", title: "Observer le premier passage", action: "observe", target: 1, requires: Object.freeze(["route1"]), params: Object.freeze({ microSceneId: "MSC-ANCIENT-GATEWAY-001" }) }),
+      Object.freeze({ slot: "route2", title: "Rejoindre une seconde route entretenue", action: "travel", target: 1, requires: Object.freeze(["gate1"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-ANCIENT-GATEWAY-001", persistent: true, spawnOnce: true }), Object.freeze({ id: "MSC-CUSTOM-RESERVE-ABANDONEE", persistent: true, spawnOnce: true })]) }) }) }) }),
+      Object.freeze({ slot: "gate2", title: "Observer le second passage", action: "observe", target: 1, requires: Object.freeze(["route2"]), params: Object.freeze({ microSceneId: "MSC-ANCIENT-GATEWAY-001" }) }),
+      Object.freeze({ slot: "exchange", title: "Observer le lieu d’échange ou de stockage", action: "observe", target: 1, requires: Object.freeze(["gate2"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-RESERVE-ABANDONEE" }) })
+    ])
+  });
+
+  const ARCH32 = Object.freeze({
+    id: "ARCH-32", title: "Population actuelle",
+    description: "Comparer trois unités d’habitation actuelles sans compter directement leurs occupants.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-31", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-31"]), priority: 249, passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      ...[1,2,3].flatMap((n) => [
+        Object.freeze({ slot: `travel${n}`, title: `Rejoindre le secteur d’habitation ${n}`, action: "travel", target: 1, requires: n===1?Object.freeze([]):Object.freeze([`settlement${n-1}`]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HABITAT-RUINE", persistent: true, spawnOnce: true })]) }) }) }) }),
+        Object.freeze({ slot: `settlement${n}`, title: `Observer l’unité d’habitation ${n}`, action: "observe", target: 1, requires: Object.freeze([`travel${n}`]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HABITAT-RUINE", distinctBy: "microSceneInstance" }) })
+      ])
+    ])
+  });
+
+  const ARCH33 = Object.freeze({
+    id: "ARCH-33", title: "Symboles et coïncidences",
+    description: "Confirmer deux véritables symboles anciens puis écarter deux ressemblances fortuites.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-32", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-32"]), priority: 248, passivePriorityAxis: "research",
+    mapGeneration: Object.freeze({ requiredObjects: Object.freeze([Object.freeze({ type: "stele", count: 2 }), Object.freeze({ type: "eroded_monolith", count: 2 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "confirmed", title: "Confirmer deux symboles anciens", action: "observe", target: 2, params: Object.freeze({ cuoType: "stele", distinctBy: "instanceId" }) }),
+      Object.freeze({ slot: "coincidences", title: "Écarter deux ressemblances fortuites", action: "observe", target: 2, requires: Object.freeze(["confirmed"]), params: Object.freeze({ cuoType: "eroded_monolith", distinctBy: "instanceId" }) })
+    ]),
+    narrative: Object.freeze({ progress: Object.freeze([
+      Object.freeze({ slot: "confirmed", atCount: 2, text: "Oui, ce sont bien des symboles anciens." }),
+      Object.freeze({ slot: "coincidences", atCount: 2, text: "Ça ressemble, mais ce n’est qu’une coïncidence." })
+    ]) })
+  });
+
+  const ARCH34 = Object.freeze({
+    id: "ARCH-34", title: "Le site entretenu",
+    description: "Rejoindre un ancien site encore entretenu puis l’observer une fois.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-33", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-33"]), priority: 247, passivePriorityAxis: "research",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP", persistent: true, spawnOnce: true })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre le site entretenu", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "site", title: "Observer le site ancien encore entretenu", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-HAUTEL-STELL-RELIC-COMP" }) })
+    ])
+  });
+
+  const ARCH35 = Object.freeze({
+    id: "ARCH-35", title: "Le signal répond",
+    description: "Observer une ancienne balise puis récupérer quinze composants pendant qu’une présence intelligente reste à distance.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-34", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-34"]), priority: 246, passivePriorityAxis: "research",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-TECH-RELAY-001", persistent: true, spawnOnce: true })]), requiredObjects: Object.freeze([Object.freeze({ type: "relay_block", count: 15 }), Object.freeze({ type: "npc_translucent", count: 1 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travel", title: "Rejoindre la map du signal", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "beacon", title: "Observer l’ancienne balise", action: "observe", target: 1, requires: Object.freeze(["travel"]), params: Object.freeze({ cuoType: "survey_beacon", microSceneId: "MSC-TECH-RELAY-001" }) }),
+      Object.freeze({ slot: "components", title: "Récupérer quinze composants", action: "collect", target: 15, requires: Object.freeze(["beacon"]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block","pulse_core","logic_prism","memory_capsule"]) }) })
+    ]),
+    npcEncounters: Object.freeze([Object.freeze({ id: "arch35-witness", cuoType: "npc_translucent", speech: "⋔ ⌁ ∆ ⟟", despawnOnDistanceBelow: 10, despawnOnSlotComplete: "components" })])
+  });
+
+  const ARCH36 = Object.freeze({
+    id: "ARCH-36", title: "Observation réciproque",
+    description: "Observer une réaction réelle d’un Rocky puis obtenir au moins une réaction qui ne soit pas une fuite.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-35", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-35"]), priority: 245, passivePriorityAxis: "relations",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-RUINED-SHRINE-001", persistent: true, spawnOnce: true })]), requiredObjects: Object.freeze([Object.freeze({ type: "npc_rocky", count: 1 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reaction", title: "Observer une première réaction", action: "observe", target: 1, params: Object.freeze({ cuoType: "npc_rocky", reactionsAny: Object.freeze(["flee","vigilance","curiosity","calm"]), distinctBy: "instanceId" }) }),
+      Object.freeze({ slot: "nonFlee", title: "Obtenir une réaction sans fuite", action: "observe", target: 1, params: Object.freeze({ cuoType: "npc_rocky", excludeReactions: Object.freeze(["flee"]), distinctBy: "instanceId" }) })
+    ]),
+    npcEncounters: Object.freeze([Object.freeze({ id: "arch36-rocky", cuoType: "npc_rocky", triggerDistance: 8, rearmDistance: 12, behaviors: Object.freeze(["flee","vigilance","curiosity"]) })])
+  });
+
+  const ARCH37 = Object.freeze({
+    id: "ARCH-37", title: "Deux civilisations possibles",
+    description: "Découvrir deux unités d’habitation culturellement distinctes sur deux maps différentes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-36", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-36"]), priority: 244, passivePriorityAxis: "exploration",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travelRocky", title: "Rejoindre le premier territoire d’habitation", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", persistent: true, spawnOnce: true })]) }) }) }) }),
+      Object.freeze({ slot: "rockyHabitat", title: "Approcher l’habitat rocheux", action: "observe", target: 1, requires: Object.freeze(["travelRocky"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "travelTranslucent", title: "Rejoindre le second territoire d’habitation", action: "travel", target: 1, requires: Object.freeze(["rockyHabitat"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37", persistent: true, spawnOnce: true })]), requiredObjects: Object.freeze([Object.freeze({ type: "npc_translucent", count: 1 })]) }) }) }) }),
+      Object.freeze({ slot: "translucentHabitat", title: "Approcher l’habitat translucide", action: "observe", target: 1, requires: Object.freeze(["travelTranslucent"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "arch37-rocky-habitat", fact: "arch37:rocky-habitat", slot: "rockyHabitat", microSceneId: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", radius: 2.5 }),
+      Object.freeze({ id: "arch37-translucent-habitat", fact: "arch37:translucent-habitat", slot: "translucentHabitat", microSceneId: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37", radius: 2.5 })
+    ]),
+    npcEncounters: Object.freeze([Object.freeze({ id: "arch37-translucent", cuoType: "npc_translucent", despawnOnDistanceBelow: 10 })])
+  });
+
+  const ARCH38 = Object.freeze({
+    id: "ARCH-38", title: "Approcher sans brusquer",
+    description: "Réussir une approche prudente avec chaque civilisation puis choisir celle du premier contact approfondi.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-37", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-37"]), priority: 243, passivePriorityAxis: "relations",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true, autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "travelTranslucent", title: "Rejoindre une présence translucide", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37", persistent: true, spawnOnce: true })]), requiredObjects: Object.freeze([Object.freeze({ type: "npc_translucent", count: 1 })]) }) }) }) }),
+      Object.freeze({ slot: "approachTranslucent", title: "Réussir une approche prudente de la civilisation translucide", action: "observe", target: 1, requires: Object.freeze(["travelTranslucent"]), params: Object.freeze({ cuoType: "npc_translucent", excludeReactions: Object.freeze(["flee"]) }) }),
+      Object.freeze({ slot: "travelRocky", title: "Rejoindre une présence rocheuse", action: "travel", target: 1, requires: Object.freeze(["approachTranslucent"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 1: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", persistent: true, spawnOnce: true })]), requiredObjects: Object.freeze([Object.freeze({ type: "npc_rocky", count: 1 })]) }) }) }) }),
+      Object.freeze({ slot: "approachRocky", title: "Réussir une approche prudente de la civilisation rocheuse", action: "observe", target: 1, requires: Object.freeze(["travelRocky"]), params: Object.freeze({ cuoType: "npc_rocky", excludeReactions: Object.freeze(["flee"]) }) }),
+      Object.freeze({ slot: "firstContact", title: "Choisir la civilisation du premier contact approfondi", action: "observe", target: 1, requires: Object.freeze(["approachTranslucent","approachRocky"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "arch38-civilization-choice", contactSlot: "firstContact" }),
+    npcEncounters: Object.freeze([
+      Object.freeze({ id: "arch38-translucent", cuoType: "npc_translucent", triggerDistance: 8, rearmDistance: 12, behaviors: Object.freeze(["curiosity","vigilance","calm"]), contactMode: "symbols-only" }),
+      Object.freeze({ id: "arch38-rocky", cuoType: "npc_rocky", triggerDistance: 8, rearmDistance: 12, behaviors: Object.freeze(["curiosity","vigilance","calm"]), contactMode: "symbols-only" })
+    ]),
+    narrative: Object.freeze({ progress: Object.freeze([
+      Object.freeze({ slot: "approachRocky", atCount: 1, text: "Approcher prudemment rencontre plus de succès que l’approche rapide. La prochaine espèce que j’approche, je vais tenter un contact plus approfondi pour essayer de créer un échange." })
+    ]) })
+  });
+
+  const ARCH39 = Object.freeze({
+    id: "ARCH-39", title: "Les preuves convergent",
+    description: "Réunir seize observations physiques distinctes et confirmer au moins une habitation de la civilisation choisie.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-38", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-38"]), priority: 242, passivePriorityAxis: "research",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    mapGeneration: Object.freeze({
+      requiredObjects: Object.freeze([
+        Object.freeze({ type: "stele", count: 1 }), Object.freeze({ type: "arch", count: 1 }), Object.freeze({ type: "tech_relic", count: 1 }),
+        Object.freeze({ selectionFact: "civilization:arch-selected", selectionField: "civilizationId", choices: Object.freeze({ rocky: Object.freeze({ type: "npc_rocky", count: 1 }), translucent: Object.freeze({ type: "npc_translucent", count: 1 }) }) })
+      ]),
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-RUINE-MODULAIRE1", persistent: true, spawnOnce: true }),
+        Object.freeze({ selectionFact: "civilization:arch-selected", selectionField: "civilizationId", persistent: true, spawnOnce: true, choices: Object.freeze({ rocky: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", translucent: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37" }) })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "maps", title: "Poursuivre l’enquête sur trois nouvelles maps", action: "travel", target: 3, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "evidence", title: "Observer seize preuves physiques distinctes", action: "observe", target: 16, params: Object.freeze({ distinctBy: "instanceId", anyOfCriteria: Object.freeze([Object.freeze({ cuoTypes: Object.freeze(["stele","arch","tech_relic"]) }), Object.freeze({ microSceneIds: Object.freeze(["MSC-CUSTOM-RUINE-MODULAIRE1","MSC-CUSTOM-HABITAT-ROCKY-ARCH37","MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37"]) })]) }) }),
+      Object.freeze({ slot: "housing", title: "Confirmer une habitation de la civilisation choisie", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "arch39-rocky-housing", fact: "arch39:rocky-housing", slot: "housing", microSceneId: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", radius: 2.5, selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "rocky" }),
+      Object.freeze({ id: "arch39-translucent-housing", fact: "arch39:translucent-housing", slot: "housing", microSceneId: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37", radius: 2.5, selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "translucent" })
+    ]),
+    npcEncounters: Object.freeze([
+      Object.freeze({ id: "arch39-rocky", cuoType: "npc_rocky", selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "rocky", despawnOnDistanceBelow: 10 }),
+      Object.freeze({ id: "arch39-translucent", cuoType: "npc_translucent", selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "translucent", despawnOnDistanceBelow: 10 })
+    ])
+  });
+
+  const ARCH40 = Object.freeze({
+    id: "ARCH-40", title: "Au bord de la rencontre",
+    description: "Poursuivre cinq observations concordantes avant de prolonger l’étude de la civilisation choisie.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-39", count: 1 }),
+    prerequisites: Object.freeze(["ARCH-39"]), priority: 241, passivePriorityAxis: "research",
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    mapGeneration: Object.freeze({
+      requiredObjects: Object.freeze([Object.freeze({ type: "stele", count: 1 }), Object.freeze({ type: "arch", count: 1 }), Object.freeze({ type: "tech_relic", count: 1 })]),
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-RUINE-MODULAIRE1", persistent: true, spawnOnce: true }),
+        Object.freeze({ selectionFact: "civilization:arch-selected", selectionField: "civilizationId", persistent: true, spawnOnce: true, choices: Object.freeze({ rocky: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", translucent: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37" }) })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "evidence", title: "Observer cinq signes concordants", action: "observe", target: 5, params: Object.freeze({ distinctBy: "instanceId", anyOfCriteria: Object.freeze([Object.freeze({ cuoTypes: Object.freeze(["stele","arch","tech_relic"]) }), Object.freeze({ microSceneIds: Object.freeze(["MSC-CUSTOM-RUINE-MODULAIRE1","MSC-CUSTOM-HABITAT-ROCKY-ARCH37","MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37"]) })]) }) }),
+      Object.freeze({ slot: "housing", title: "Observer au moins une habitation de la civilisation choisie", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "arch40-rocky-housing", fact: "arch40:rocky-housing", slot: "housing", microSceneId: "MSC-CUSTOM-HABITAT-ROCKY-ARCH37", radius: 2.5, selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "rocky" }),
+      Object.freeze({ id: "arch40-translucent-housing", fact: "arch40:translucent-housing", slot: "housing", microSceneId: "MSC-CUSTOM-HABITAT-TRANSLUCENT-ARCH37", radius: 2.5, selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "translucent" })
+    ]),
+    narrative: Object.freeze({ revealed: Object.freeze(["Synthèse des observations sur la civilisation choisie : je vais continuer d’observer quelques signes et espérer une nouvelle rencontre."]) })
+  });
+
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -8553,6 +8764,17 @@
     ARCH27,
     ARCH28,
     ARCH29,
+    ARCH30,
+    ARCH31,
+    ARCH32,
+    ARCH33,
+    ARCH34,
+    ARCH35,
+    ARCH36,
+    ARCH37,
+    ARCH38,
+    ARCH39,
+    ARCH40,
     BAL01,
     BAL02,
     BAL03,

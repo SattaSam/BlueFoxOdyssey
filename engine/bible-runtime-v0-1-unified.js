@@ -2213,6 +2213,11 @@
         if (!this.missionLifecycle(mission.id).active) return;
         contexts.forEach((context) => {
           if (!context?.microSceneId || !context?.fact) return;
+          if (context.selectionFact) {
+            const selected = manager.memory.getFact?.(String(context.selectionFact), null);
+            const field = String(context.selectionField || "value");
+            if (String(selected?.[field] ?? selected ?? "") !== String(context.selectionValue ?? "")) return;
+          }
           const existingFact = manager.memory.getFact?.(context.fact, false);
           if (!context.reserve && existingFact) return;
           if (context.reserve && existingFact?.exhausted === true) return;
@@ -2231,6 +2236,153 @@
       const entry = entries.find((item) => String(item?.id || "") === normalized);
       if (!entry) return null;
       return entry.instanceRoot || entry.records?.[0]?.root || null;
+    }
+
+    npcEncounterEntries() {
+      return this.allMissions().flatMap((mission) => {
+        if (!this.missionLifecycle(mission.id).active) return [];
+        return asArray(mission?.npcEncounters)
+          .filter((entry) => entry && entry.cuoType)
+          .filter((entry) => {
+            if (!entry.selectionFact) return true;
+            const fact = this.manager()?.memory?.getFact?.(String(entry.selectionFact), null);
+            const field = String(entry.selectionField || "value");
+            return String(fact?.[field] ?? fact ?? "") === String(entry.selectionValue ?? "");
+          })
+          .map((entry) => ({ mission, entry }));
+      });
+    }
+
+    npcEncounterFactKey(missionId, entry) {
+      return String(entry.fact || `npcEncounter:${missionId}:${entry.id || entry.cuoType}`);
+    }
+
+    npcEncounterRoot(entry) {
+      const roots = BF.NpcRuntime?.list?.(String(entry.cuoType || "")) || [];
+      if (!roots.length) return null;
+      const currentMapId = String(BF.currentEngine?.currentMapId || "");
+      const exact = roots.find((root) =>
+        String(root?.userData?.bibleNpcEncounter || "") === String(entry.id || "")
+      );
+      if (exact) return exact;
+      const unclaimed = roots.find((root) =>
+        !root?.userData?.bibleNpcEncounter &&
+        (!root?.userData?.mapId || String(root.userData.mapId) === currentMapId)
+      );
+      const root = unclaimed || roots[roots.length - 1] || null;
+      if (root && entry.id) root.userData.bibleNpcEncounter = String(entry.id);
+      return root;
+    }
+
+    despawnNpcEncounter(root, mission, entry, reason = "mission-rule") {
+      if (!root) return false;
+      const manager = this.manager();
+      const factKey = this.npcEncounterFactKey(mission.id, entry);
+      const previous = manager?.memory?.getFact?.(factKey, {}) || {};
+      BF.NpcRuntime?.unregister?.(root);
+      root.parent?.remove?.(root);
+      manager?.memory?.setFact?.(factKey, {
+        ...previous,
+        despawned: true,
+        despawnReason: reason,
+        despawnedAt: Date.now()
+      });
+      manager?.memory?.save?.();
+      return true;
+    }
+
+    reviewNpcEncounters() {
+      const engine = BF.currentEngine;
+      const manager = this.manager();
+      const player = engine?.character?.root?.position;
+      if (!engine || !manager?.memory || !player) return false;
+      let changed = false;
+
+      this.npcEncounterEntries().forEach(({ mission, entry }) => {
+        const factKey = this.npcEncounterFactKey(mission.id, entry);
+        const state = manager.memory.getFact?.(factKey, {}) || {};
+        if (state.despawned) return;
+        const root = this.npcEncounterRoot(entry);
+        if (!root) return;
+
+        if (entry.contactMode) {
+          root.userData.npcMissionContactMode = String(entry.contactMode);
+          root.userData.npcMissionId = mission.id;
+        }
+
+        if (entry.speech && !state.speechShown) {
+          BF.NpcRuntime?.speak?.(root, String(entry.speech), {
+            duration: Math.max(1.5, Number(entry.speechDuration) || 4),
+            emitDialogue: false
+          });
+          manager.memory.setFact?.(factKey, {
+            ...state,
+            speechShown: true,
+            speechShownAt: Date.now()
+          });
+          manager.memory.save?.();
+          state.speechShown = true;
+          changed = true;
+        }
+
+        const distance = Math.hypot(
+          Number(player.x) - Number(root.position?.x || 0),
+          Number(player.z) - Number(root.position?.z || 0)
+        );
+
+        if (entry.despawnOnSlotComplete) {
+          const tree = manager.trees?.get?.(mission.id);
+          const node = tree?.find?.(`${mission.id}:${entry.despawnOnSlotComplete}`);
+          if (node?.isComplete) {
+            changed = this.despawnNpcEncounter(root, mission, entry, "slot-complete") || changed;
+            return;
+          }
+        }
+
+        const despawnDistance = Number(entry.despawnOnDistanceBelow);
+        if (Number.isFinite(despawnDistance) && despawnDistance > 0 && distance < despawnDistance) {
+          changed = this.despawnNpcEncounter(root, mission, entry, "player-proximity") || changed;
+          return;
+        }
+
+        const triggerDistance = Number(entry.triggerDistance);
+        if (!Number.isFinite(triggerDistance) || triggerDistance <= 0) return;
+        const rearmDistance = Math.max(
+          triggerDistance + 1,
+          Number(entry.rearmDistance) || triggerDistance + 4
+        );
+
+        if (distance > rearmDistance && state.armed === false) {
+          state.armed = true;
+          manager.memory.setFact?.(factKey, state);
+          manager.memory.save?.();
+          changed = true;
+        }
+
+        const armed = state.armed !== false;
+        if (!armed || distance >= triggerDistance) return;
+
+        const reaction = BF.NpcRuntime?.reactToApproach?.(root, {
+          behaviors: asArray(entry.behaviors),
+          cause: String(entry.cause || "mission-approach"),
+          fleeDistance: Number(entry.fleeDistance) || 4,
+          autoRelease: entry.autoRelease !== false
+        });
+        if (!reaction) return;
+
+        manager.memory.setFact?.(factKey, {
+          ...state,
+          armed: false,
+          lastReaction: reaction,
+          lastReactionAt: Date.now(),
+          lastDistance: distance,
+          reactionCount: Math.max(0, Number(state.reactionCount) || 0) + 1
+        });
+        manager.memory.save?.();
+        changed = true;
+      });
+
+      return changed;
     }
 
     reviewProximityContexts() {
@@ -2306,13 +2458,14 @@
           })
         );
       });
+      changed = this.reviewNpcEncounters() || changed;
       if (changed) manager.publish?.();
       this.refreshProximityContextMonitor();
       return changed;
     }
 
     refreshProximityContextMonitor() {
-      const needed = this.proximityContextEntries().length > 0;
+      const needed = this.proximityContextEntries().length > 0 || this.npcEncounterEntries().length > 0;
       if (!needed && this.proximityContextTimer) {
         global.clearInterval?.(this.proximityContextTimer);
         this.proximityContextTimer = null;
@@ -2844,6 +2997,41 @@
       return changed;
     }
 
+    handleCivilizationArchObjectEvent(rawEvent = {}) {
+      const mission = this.byId.get("ARCH-38");
+      if (!mission || !this.missionLifecycle(mission.id).active) return false;
+      const types = BF.ObjectEvents?.types || {};
+      if (String(rawEvent?.type || "") !== String(types.NPC_CONTACTED || "NPC_CONTACTED")) {
+        return false;
+      }
+      const detail = rawEvent?.detail || {};
+      if (String(detail.interactionSource || "manual") !== "manual") return false;
+      const civilizationId = lower(detail.civilizationId);
+      if (!["translucent", "rocky"].includes(civilizationId)) return false;
+
+      const manager = this.manager();
+      const tree = manager?.trees?.get?.(mission.id);
+      const translucent = tree?.find?.(`${mission.id}:approachTranslucent`);
+      const rocky = tree?.find?.(`${mission.id}:approachRocky`);
+      if (!translucent?.isComplete || !rocky?.isComplete) return false;
+
+      const existing = manager.memory.getFact?.("civilization:arch-selected", null);
+      if (existing?.civilizationId && existing.civilizationId !== civilizationId) return false;
+
+      manager.memory.setFact?.("civilization:arch-selected", {
+        civilizationId,
+        cuoType: String(detail.cuoType || ""),
+        selectedAt: existing?.selectedAt || Date.now(),
+        sourceMissionId: mission.id
+      });
+      manager.memory.save?.();
+      return this.progressRuntimeValidationSlot(
+        mission.id,
+        mission.runtimeValidation?.contactSlot || "firstContact",
+        1
+      );
+    }
+
     handleEnergyMissionObjectEvent(rawEvent = {}) {
       const type = String(rawEvent?.type || "");
       const detail = rawEvent?.detail || {};
@@ -2919,6 +3107,7 @@
     }
 
     onObjectEvent(rawEvent) {
+      this.handleCivilizationArchObjectEvent(rawEvent);
       this.handleEnergyMissionObjectEvent(rawEvent);
       this.handleDroneMissionObjectEvent(rawEvent);
       this.handleFaunaSpeciesObjectEvent(rawEvent);

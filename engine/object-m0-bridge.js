@@ -279,6 +279,10 @@
   const asArray = (value) => Array.isArray(value) ? value : value == null ? [] : [value];
 
   const metadataMatchesMissionCriteria = (metadata, params = {}, options = {}) => {
+    const alternatives = asArray(params.anyOfCriteria).filter((entry) => entry && typeof entry === "object");
+    if (alternatives.length && !alternatives.some((entry) =>
+      metadataMatchesMissionCriteria(metadata, entry, options)
+    )) return false;
     const tags = new Set(asArray(metadata.tags).map(lower).filter(Boolean));
     const exact = {
       objectId: metadata.objectId,
@@ -298,6 +302,8 @@
 
     const cuoTypes = asArray(params.cuoTypes).map(lower).filter(Boolean);
     if (cuoTypes.length && !cuoTypes.includes(lower(metadata.cuoType))) return false;
+    const microSceneIds = asArray(params.microSceneIds).map(lower).filter(Boolean);
+    if (microSceneIds.length && !microSceneIds.includes(lower(metadata.microSceneId))) return false;
 
     const tagsAny = asArray(params.tagsAny).map(lower).filter(Boolean);
     if (tagsAny.length && !tagsAny.some((tag) => tags.has(tag))) return false;
@@ -510,6 +516,19 @@
       }
       return metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}) &&
         relationMatches(tree, node, relationEvidenceFromEvent(event));
+    }
+    if (event.type === BF.ObjectEvents?.types?.NPC_REACTION) {
+      if (!isStudyAction(type)) return false;
+      if (!metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}, { skipSubject: true })) {
+        return false;
+      }
+      if (!relationMatches(tree, node, relationEvidenceFromEvent(event))) return false;
+      const reaction = lower(detail.reaction || detail.state);
+      const allowed = asArray(node.params?.reactionsAny).map(lower).filter(Boolean);
+      const excluded = asArray(node.params?.excludeReactions).map(lower).filter(Boolean);
+      if (allowed.length && !allowed.includes(reaction)) return false;
+      if (excluded.includes(reaction)) return false;
+      return true;
     }
     if (![BF.ObjectEvents?.types.OBJECT_INSPECTED, BF.ObjectEvents?.types.PHENOMENON_OBSERVED, BF.ObjectEvents?.types.OBJECT_ANALYZED].includes(event.type)) return false;
     if (!isStudyAction(type)) return false;

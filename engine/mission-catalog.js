@@ -700,6 +700,10 @@
       if (String(event?.type || "") !== expected) return false;
       if (String(event?.detail?.interactionSource || "manual") !== "manual") return false;
       const civilizationId = String(event?.detail?.civilizationId || "").toLowerCase();
+      if (String(event?.detail?.contactMode || "").toLowerCase() === "symbols-only") {
+        this.speakFor(event, CIVILIZATIONS[civilizationId]?.glyph || "⌁ ⋔ ∆ ⟟");
+        return true;
+      }
       if (String(event?.detail?.npcRole || "").toLowerCase() === "merchant") {
         return this.openTrade(event, civilizationId);
       }

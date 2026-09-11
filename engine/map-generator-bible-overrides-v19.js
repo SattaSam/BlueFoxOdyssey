@@ -57,6 +57,23 @@
     };
   };
 
+  const resolveSelectedEntry = (entry) => {
+    if (!entry || !entry.selectionFact || !entry.choices) return entry;
+    const memory = BF.currentEngine?.missionManager?.memory;
+    const fact = memory?.getFact?.(String(entry.selectionFact), null);
+    const field = String(entry.selectionField || "value");
+    const selected = String(fact?.[field] ?? fact ?? "");
+    const choice = entry.choices?.[selected];
+    if (!choice) return null;
+    const resolved = typeof choice === "string"
+      ? { ...entry, id: choice, type: choice }
+      : { ...entry, ...choice };
+    delete resolved.selectionFact;
+    delete resolved.selectionField;
+    delete resolved.choices;
+    return resolved;
+  };
+
   const applyPrescription = (definition, prescription) => {
     if (!definition || !prescription) return definition;
 
@@ -86,7 +103,10 @@
 
     // Les enrichissements de contenu restent tardifs et indépendants
     // de l'identité visuelle de la map.
-    (prescription.requiredMicroScenes || []).forEach((scene) => {
+    (prescription.requiredMicroScenes || [])
+      .map(resolveSelectedEntry)
+      .filter(Boolean)
+      .forEach((scene) => {
       BF.PersistentMicroScenes?.ensure?.(definition, {
         missionId:
           prescription.missionId ||
@@ -105,7 +125,10 @@
     definition.generator.bibleMissionId = prescription.missionId || null;
     definition.generator.biblePrescriptionApplied = true;
     if (Array.isArray(prescription.requiredObjects)) {
-      definition.generator.requiredObjects = clone(prescription.requiredObjects);
+      definition.generator.requiredObjects = prescription.requiredObjects
+        .map(resolveSelectedEntry)
+        .filter(Boolean)
+        .map((entry) => clone(entry));
     }
     persist(definition);
     return definition;
