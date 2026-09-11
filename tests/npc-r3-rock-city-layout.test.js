@@ -8,6 +8,7 @@ const source=window.BlueFoxCustomMaps.find(m=>m.id==='custom-map-32-rock-village
 assert.equal(village.marker,'arch-keep','ARCH village must remain untouched');
 assert.equal(village.civilizationRole,undefined,'ARCH village must not become a capital');
 assert.equal(tiny.civilizationId,'translucent');assert.equal(tiny.civilizationRole,'city');
+assert.deepEqual(Array.from(tiny.civilizationMerchant.position),[22,0,30],'TinyCity merchant must occupy the validated courtyard');
 assert.equal(source.name,'ROCK_VILLAGE');assert.equal(source.plateauCount,2);assert.equal(source.civilizationId,'rocky');assert.equal(source.civilizationRole,'city');
 assert(source.customMicroScenes.length>=15,'rock village must preserve its authored urban layout');
 const merchant={x:source.civilizationMerchant.position[0],z:source.civilizationMerchant.position[2]};
@@ -18,5 +19,5 @@ const mainIndex=fs.readFileSync(path.join(ROOT,'index.html'),'utf8');
 const mapTestIndex=fs.readFileSync(path.join(ROOT,'map-test/index.html'),'utf8');
 assert(mainIndex.indexOf('custom-maps.js') < mainIndex.indexOf('civilization-cities.js'));
 assert(mainIndex.indexOf('civilization-cities.js') < mainIndex.indexOf('map-registry.js'));
-assert(mapTestIndex.includes('../data/civilization-cities.js?v=npc-r3'));
+assert(mapTestIndex.includes('../data/civilization-cities.js?v='));
 console.log('PASS npc-r3-rock-city-layout');

@@ -7,14 +7,14 @@
     tinyCity.civilizationRole = "city";
     tinyCity.civilizationMerchant = Object.freeze({
       type: "npc_translucent",
-      position: Object.freeze([8, 0, 12]),
+      position: Object.freeze([22, 0, 30]),
       rotation: Math.PI,
       role: "merchant"
     });
     tinyCity.customObjects = Object.freeze([
       Object.freeze({
         type: "npc_translucent",
-        position: Object.freeze([8, 0, 12]),
+        position: Object.freeze([22, 0, 30]),
         rotation: Math.PI,
         instanceId: "civilization-merchant:translucent:custom-map-31-tinycity",
         userData: Object.freeze({

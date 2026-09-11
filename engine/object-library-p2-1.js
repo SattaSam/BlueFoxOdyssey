@@ -156,18 +156,27 @@
       forearm.rotation.z = -0.04;
       root.add(forearm);
 
+      const handAnchor = new THREE.Group();
+      handAnchor.name = "TranslucentHandAnchor";
+      handAnchor.userData.side = side;
+      handAnchor.position.set(0.08, 1.06, side * 0.63);
+      root.add(handAnchor);
+
       const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1), membrane);
       hand.name = "TranslucentHand";
       hand.userData.side = side;
-      hand.position.set(0.08, 1.06, side * 0.63);
+      hand.position.set(0, 0, 0);
       hand.scale.set(0.55, 1.25, 0.67);
-      root.add(hand);
+      handAnchor.add(hand);
 
       [-1, 0, 1].forEach((finger) => {
         const digit = taperedLimb(THREE, 0.021, 0.012, 0.3 + Math.abs(finger) * 0.035, contour, 5);
-        digit.position.set(0.1 + finger * 0.024, 0.82, side * (0.63 + finger * 0.026));
+        digit.name = "TranslucentFinger";
+        digit.userData.side = side;
+        digit.userData.finger = finger;
+        digit.position.set(0.02 + finger * 0.024, -0.24, side * finger * 0.026);
         digit.rotation.z = finger * 0.075 - 0.025;
-        root.add(digit);
+        handAnchor.add(digit);
       });
 
       const thigh = taperedLimb(THREE, 0.17, 0.105, 0.86, membrane, 10);
@@ -222,14 +231,14 @@
       root.add(filament);
     }
 
-    root.userData.npcVisualScale = 0.75;
-    root.userData.npcGroundOffset = 0.5;
-    root.userData.npcIntrinsicYOffset = 0.75;
-    root.scale.setScalar(0.75);
+    root.userData.npcVisualScale = 0.62;
+    root.userData.npcGroundOffset = 0.9;
+    root.userData.npcIntrinsicYOffset = 0.9;
+    root.scale.setScalar(0.62);
     root.rotation.y = variant * 0.31;
     // NPC-R1 : le translucide est volontairement relevé pour conserver sa présence flottante.
-    // L'offset historique reste posé ici ; NpcRuntime le normalise à +0.50 après instanciation.
-    root.position.y += 0.75;
+    // Le ground calibré reste posé ici ; NpcRuntime le normalise à +0.90 après instanciation.
+    root.position.y += 0.9;
     const interactive = hitbox(THREE, root, 0.5, 2.9, "npc_translucent");
     return {
       root: setShadows(root),
@@ -337,6 +346,7 @@
         plate.name = "RockyLimbPlate";
         plate.userData.side = side;
         plate.userData.plateIndex = index;
+        if (index === 2) plate.userData.jointRole = "elbow";
         plate.position.set(index % 2 ? 0.08 : -0.02, y, side * spread);
         plate.scale.set(1.08, 0.72, 0.55);
         plate.rotation.set(index * 0.13, index * 0.27, side * index * 0.07);
@@ -361,11 +371,11 @@
       root.add(chip);
     }
 
-    root.userData.npcVisualScale = 0.68;
-    root.userData.npcGroundOffset = 0.5;
-    root.userData.npcIntrinsicYOffset = 0.5;
-    root.scale.setScalar(0.68);
-    root.position.y += 0.5;
+    root.userData.npcVisualScale = 0.56;
+    root.userData.npcGroundOffset = 0.9;
+    root.userData.npcIntrinsicYOffset = 0.9;
+    root.scale.setScalar(0.56);
+    root.position.y += 0.9;
     root.rotation.y = variant * 0.31;
     const interactive = hitbox(THREE, root, 0.58, 2.55, "npc_rocky");
     return {

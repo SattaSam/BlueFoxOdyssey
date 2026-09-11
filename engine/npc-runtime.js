@@ -7,16 +7,17 @@
     return;
   }
 
-  const VERSION = "P2.2.2-r5-npc-animation-calibration";
+  const VERSION = "P2.2.2-r6-npc-animation-calibration-r41";
   const NPC_TYPES = new Set(["npc_translucent", "npc_rocky"]);
   const CIVILIZATION_BY_TYPE = Object.freeze({
     npc_translucent: "translucent",
     npc_rocky: "rocky"
   });
   const VISUAL_CALIBRATION = Object.freeze({
-    npc_translucent: Object.freeze({ scale: 0.75, groundOffset: 0.5, intrinsicYOffset: 0.75 }),
-    npc_rocky: Object.freeze({ scale: 0.68, groundOffset: 0.5, intrinsicYOffset: 0.5 })
+    npc_translucent: Object.freeze({ scale: 0.62, groundOffset: 0.9, intrinsicYOffset: 0.9 }),
+    npc_rocky: Object.freeze({ scale: 0.56, groundOffset: 0.9, intrinsicYOffset: 0.9 })
   });
+  const FORWARD_FOREARM_ANGLE = Math.PI / 2;
   const ALLOWED_STATES = new Set(["rest", "observation", "curiosity", "vigilance", "movement", "interaction", "dialogue", "flee", "calm"]);
   const registry = new Set();
   const states = new WeakMap();
@@ -81,6 +82,8 @@
       translucentElbows: collectNamed(root, "TranslucentElbow"),
       forearms: collectNamed(root, "TranslucentForearm"),
       translucentHands: collectNamed(root, "TranslucentHand"),
+      translucentHandAnchors: collectNamed(root, "TranslucentHandAnchor"),
+      translucentFingers: collectNamed(root, "TranslucentFinger"),
       translucentThighs: collectNamed(root, "TranslucentThigh"),
       translucentKnees: collectNamed(root, "TranslucentKnee"),
       translucentShins: collectNamed(root, "TranslucentShin"),
@@ -95,6 +98,7 @@
       rockyShins: collectNamed(root, "RockyShin"),
       rockyFeet: collectNamed(root, "RockyFoot"),
       rockyPlates: [...collectNamed(root, "RockyPlate"), ...collectNamed(root, "RockyLimbPlate")],
+      rockyElbowPlates: collectNamed(root, "RockyLimbPlate").filter((plate) => plate.userData?.jointRole === "elbow"),
       rockyFragments: collectNamed(root, "RockyFragment")
     };
 
@@ -165,8 +169,9 @@
     });
     const sprite = new THREE.Sprite(material);
     sprite.name = "NpcSpeechBubble";
-    sprite.position.set(0, state.type === "npc_translucent" ? 4.25 : 3.35, 0);
-    sprite.scale.set(4.35, 1.05, 1);
+    sprite.position.set(0, state.type === "npc_translucent" ? 4.55 : 3.75, 0);
+    if (state.type === "npc_translucent") sprite.scale.set(5.25, 1.25, 1);
+    else sprite.scale.set(5.8, 1.38, 1);
     sprite.renderOrder = 80;
     state.root.add(sprite);
     state.speechCanvas = canvas;
@@ -501,12 +506,30 @@
   const syncKinematics = (state) => {
     [-1, 1].forEach((side) => {
       if (state.type === "npc_translucent") {
-        syncChain2D(state, { side, upper: state.named.upperArms, lower: state.named.forearms, joints: state.named.translucentElbows, terminals: state.named.translucentHands, upperLength: 0.82, lowerLength: 0.88 });
+        syncChain2D(state, { side, upper: state.named.upperArms, lower: state.named.forearms, joints: state.named.translucentElbows, terminals: state.named.translucentHandAnchors, upperLength: 0.82, lowerLength: 0.88 });
         syncChain2D(state, { side, upper: state.named.translucentThighs, lower: state.named.translucentShins, joints: state.named.translucentKnees, terminals: state.named.translucentFeet, upperLength: 0.86, lowerLength: 0.82 });
       } else {
         syncChain2D(state, { side, upper: state.named.rockyUpperArms, lower: state.named.rockyForearms, joints: state.named.rockyElbows, terminals: [], upperLength: 0.93, lowerLength: 0.72 });
         syncChain2D(state, { side, upper: state.named.rockyThighs, lower: state.named.rockyShins, joints: state.named.rockyKnees, terminals: state.named.rockyFeet, upperLength: 0.9, lowerLength: 0.75 });
       }
+    });
+  };
+
+  const syncRockyElbowDecor = (state) => {
+    if (state.type !== "npc_rocky") return;
+    [-1, 1].forEach((side) => {
+      const elbow = bySide(state.named.rockyElbows, side);
+      const plate = bySide(state.named.rockyElbowPlates, side);
+      if (!elbow || !plate) return;
+      const elbowBase = baseOf(state, elbow);
+      const plateBase = baseOf(state, plate);
+      if (!elbowBase || !plateBase) return;
+      const microX = plate.position.x - plateBase.position.x;
+      const microY = plate.position.y - plateBase.position.y;
+      const microZ = plate.position.z - plateBase.position.z;
+      plate.position.x = elbow.position.x + (plateBase.position.x - elbowBase.position.x) + microX;
+      plate.position.y = elbow.position.y + (plateBase.position.y - elbowBase.position.y) + microY;
+      plate.position.z = elbow.position.z + (plateBase.position.z - elbowBase.position.z) + microZ;
     });
   };
 
@@ -614,7 +637,7 @@
       const side = Number(arm.userData.side || 1);
       if (dialogue && side > 0) {
         // Un avant-bras monte ponctuellement presque à 90° : parallèle au sol.
-        arm.rotation.z = base.rotation.z + (-Math.PI / 2 - base.rotation.z) * gesture;
+        arm.rotation.z = base.rotation.z + (FORWARD_FOREARM_ANGLE - base.rotation.z) * gesture;
       } else {
         arm.rotation.z = base.rotation.z - side * gesture * (dialogue ? 0.28 : 0.16);
       }
@@ -640,7 +663,7 @@
       if (!base) return;
       const side = Number(arm.userData.side || 1);
       if (dialogue && side > 0) {
-        arm.rotation.z = base.rotation.z + (-Math.PI / 2 - base.rotation.z) * beat;
+        arm.rotation.z = base.rotation.z + (FORWARD_FOREARM_ANGLE - base.rotation.z) * beat;
       } else {
         arm.rotation.z = base.rotation.z - side * beat * (dialogue ? 0.24 : 0.14);
       }
@@ -795,6 +818,7 @@
     facePlayer(state, distance, interacting ? 1 : vigilant ? 1 : tracking, interacting ? 0.9 : vigilant ? 0.82 : 0.7);
     updateEyes(state, elapsed, 0.82 + proximity * 0.5 + Math.max(0, breath) * 0.08, tracking * 1.2);
     syncKinematics(state);
+    syncRockyElbowDecor(state);
   };
 
   const update = (state, elapsed) => {

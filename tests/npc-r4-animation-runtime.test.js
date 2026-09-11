@@ -11,7 +11,8 @@ function translucent(){
   part('TranslucentUpperArm',-1,.01,2.39,-.54,-.025,.82),part('TranslucentUpperArm',1,.01,2.39,.54,-.025,.82),
   part('TranslucentElbow',-1,.03,1.97,-.59),part('TranslucentElbow',1,.03,1.97,.59),
   part('TranslucentForearm',-1,.05,1.53,-.61,-.04,.88),part('TranslucentForearm',1,.05,1.53,.61,-.04,.88),
-  part('TranslucentHand',-1,.08,1.06,-.63),part('TranslucentHand',1,.08,1.06,.63),
+  part('TranslucentHandAnchor',-1,.08,1.06,-.63),part('TranslucentHandAnchor',1,.08,1.06,.63),
+  part('TranslucentHand',-1,0,0,0),part('TranslucentHand',1,0,0,0),
   part('TranslucentThigh',-1,-.02,.77,-.22,-.025,.86),part('TranslucentThigh',1,-.02,.77,.22,.025,.86),
   part('TranslucentKnee',-1,.04,.3,-.22),part('TranslucentKnee',1,.04,.3,.22),
   part('TranslucentShin',-1,.08,-.16,-.22,-.04,.82),part('TranslucentShin',1,.08,-.16,.22,-.04,.82),
@@ -26,6 +27,8 @@ function rocky(){
   part('RockyUpperArm',-1,0,2.03,-.62,.08,.93),part('RockyUpperArm',1,0,2.03,.62,-.08,.93),
   part('RockyElbow',-1,.03,1.58,-.65),part('RockyElbow',1,.03,1.58,.65),
   part('RockyForearm',-1,.05,1.25,-.68,-.08,.72),part('RockyForearm',1,.05,1.25,.68,-.08,.72),
+  Object.assign(part('RockyLimbPlate',-1,-.02,1.45,-.72),{userData:{side:-1,plateIndex:2,jointRole:'elbow'}}),
+  Object.assign(part('RockyLimbPlate',1,-.02,1.45,.72),{userData:{side:1,plateIndex:2,jointRole:'elbow'}}),
   part('RockyThigh',-1,-.02,.82,-.27,0,.9),part('RockyThigh',1,-.02,.82,.27,0,.9),
   part('RockyKnee',-1,.02,.39,-.28),part('RockyKnee',1,.02,.39,.28),
   part('RockyShin',-1,.05,.07,-.28,0,.75),part('RockyShin',1,.05,.07,.28,0,.75),
@@ -37,14 +40,14 @@ const hooks=[]; const window={BlueFox3D:{ObjectLibrary:{create(){},registerCreat
 vm.runInContext(fs.readFileSync(path.join(ROOT,'engine/npc-runtime.js'),'utf8'),vm.createContext(window));
 const BF=window.BlueFox3D, npc=translucent(); hooks[0]({root:npc.root},{type:'npc_translucent'});
 BF.currentEngine={character:{root:{position:new V3(0,0,2)}}};
-assert(Math.abs(npc.root.scale.x-.75)<1e-9,'spawned translucent scale normalized');
-assert(Math.abs(npc.root.position.y-.5)<1e-9,'spawned translucent ground raised +0.50');
+assert(Math.abs(npc.root.scale.x-.62)<1e-9,'spawned translucent scale normalized');
+assert(Math.abs(npc.root.position.y-.9)<1e-9,'spawned translucent ground raised +0.90');
 BF.NpcRuntime.setState(npc.root,'vigilance'); now=1000; queue.shift()();
 const head=npc.c.find(x=>x.name==='TranslucentHeadFine'); assert(Math.abs(head.rotation.y)>.08,'player tracking visibly rotates head');
 const elbow=npc.c.find(x=>x.name==='TranslucentElbow'&&x.userData.side===1), ex=elbow.position.x;
 BF.NpcRuntime.setState(npc.root,'dialogue'); now=2200; queue.shift()();
 const fore=npc.c.find(x=>x.name==='TranslucentForearm'&&x.userData.side===1);
-assert(Math.abs(Math.abs(fore.rotation.z)-Math.PI/2)<.55,'dialogue bends one forearm close to 90 degrees');
+assert(fore.rotation.z>0 && Math.abs(fore.rotation.z-Math.PI/2)<.55,'dialogue bends one forearm forward close to 90 degrees');
 assert(Math.abs(elbow.position.x-ex)>.015,'elbow follows animated upper arm');
 BF.NpcRuntime.moveLocal(npc.root,3,0,{state:'movement',duration:1,autoRelease:false}); now=2700; queue.shift()();
 assert(Math.abs(npc.root.rotation.y)<.05,'movement along +X faces model forward +X');
@@ -53,8 +56,8 @@ BF.NpcRuntime.moveLocal(npc.root,0,3,{state:'movement',duration:1,autoRelease:fa
 assert(Math.abs(npc.root.rotation.y+Math.PI/2)<.05,'movement along +Z rotates +X-front model toward +Z');
 
 const rock=rocky(); hooks[0]({root:rock.root},{type:'npc_rocky'});
-assert(Math.abs(rock.root.scale.x-.68)<1e-9,'spawned Rocky scale normalized');
-assert(Math.abs(rock.root.position.y-.5)<1e-9,'spawned Rocky ground raised +0.50');
+assert(Math.abs(rock.root.scale.x-.56)<1e-9,'spawned Rocky scale normalized');
+assert(Math.abs(rock.root.position.y-.9)<1e-9,'spawned Rocky ground raised +0.90');
 BF.currentEngine.character.root.position.set(100,0,100);
 BF.NpcRuntime.setState(rock.root,'rest'); now=4000; queue.shift()();
 const rockHead=rock.c.find(x=>x.name==='RockyHead'); const restHead=[rockHead.rotation.x,rockHead.rotation.y,rockHead.rotation.z];
@@ -62,9 +65,13 @@ assert(restHead.some(v=>Math.abs(v)>.01),'Rocky rest has visible head motion');
 BF.NpcRuntime.setState(rock.root,'calm'); now=4700; queue.shift()();
 assert(Math.abs(rockHead.rotation.y-restHead[1])>.01 || Math.abs(rockHead.rotation.x-restHead[0])>.01,'Rocky calm head motion differs from rest');
 const rockElbow=rock.c.find(x=>x.name==='RockyElbow'&&x.userData.side===1), rockEx=rockElbow.position.x;
+const elbowPlateR=rock.c.find(x=>x.name==='RockyLimbPlate'&&x.userData.side===1), plateRx=elbowPlateR.position.x;
+const elbowPlateL=rock.c.find(x=>x.name==='RockyLimbPlate'&&x.userData.side===-1), plateLx=elbowPlateL.position.x;
 BF.NpcRuntime.setState(rock.root,'dialogue'); now=5900; queue.shift()();
 const rockFore=rock.c.find(x=>x.name==='RockyForearm'&&x.userData.side===1);
-assert(Math.abs(Math.abs(rockFore.rotation.z)-Math.PI/2)<.6,'Rocky dialogue bends one forearm close to 90 degrees');
+assert(rockFore.rotation.z>0 && Math.abs(rockFore.rotation.z-Math.PI/2)<.6,'Rocky dialogue bends one forearm forward close to 90 degrees');
 assert(Math.abs(rockElbow.position.x-rockEx)>.01,'Rocky elbow follows animated upper arm');
+assert(Math.abs(elbowPlateR.position.x-plateRx)>.005,'Rocky right elbow plate follows its joint');
+assert(Math.abs(elbowPlateL.position.x-plateLx)>.002,'Rocky left elbow plate follows its joint');
 
 console.log('PASS npc-r4-animation-runtime');
