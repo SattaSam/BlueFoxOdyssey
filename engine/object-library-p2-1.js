@@ -40,8 +40,10 @@
   const taperedLimb = (THREE, upperRadius, lowerRadius, length, material, radialSegments = 8) =>
     new THREE.Mesh(new THREE.CylinderGeometry(lowerRadius, upperRadius, length, radialSegments), material);
 
-  const addJoint = (THREE, root, material, position, scale) => {
+  const addJoint = (THREE, root, material, position, scale, name = null, side = 0) => {
     const joint = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 1), material);
+    if (name) joint.name = name;
+    if (side) joint.userData.side = side;
     joint.position.copy(position);
     joint.scale.set(...scale);
     root.add(joint);
@@ -134,32 +136,37 @@
       const upperArm = taperedLimb(THREE, 0.125, 0.075, 0.82, membrane, 9);
       upperArm.name = "TranslucentUpperArm";
       upperArm.userData.side = side;
-      upperArm.position.set(0.02, 2.37, side * 0.59);
-      upperArm.rotation.x = side * 0.12;
-      upperArm.rotation.z = -0.04;
+      upperArm.position.set(0.01, 2.39, side * 0.54);
+      upperArm.rotation.x = side * 0.08;
+      upperArm.rotation.z = -0.025;
       root.add(upperArm);
 
-      addJoint(THREE, root, contour, new THREE.Vector3(0.05, 1.93, side * 0.65), [0.68, 0.86, 0.64]);
+      addJoint(
+        THREE, root, contour,
+        new THREE.Vector3(0.03, 1.97, side * 0.59),
+        [0.68, 0.86, 0.64],
+        "TranslucentElbow", side
+      );
 
       const forearm = taperedLimb(THREE, 0.09, 0.045, 0.88, membrane, 8);
       forearm.name = "TranslucentForearm";
       forearm.userData.side = side;
-      forearm.position.set(0.12, 1.46, side * 0.69);
-      forearm.rotation.x = side * 0.08;
-      forearm.rotation.z = -0.09;
+      forearm.position.set(0.05, 1.53, side * 0.61);
+      forearm.rotation.x = side * 0.055;
+      forearm.rotation.z = -0.04;
       root.add(forearm);
 
       const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1), membrane);
       hand.name = "TranslucentHand";
       hand.userData.side = side;
-      hand.position.set(0.2, 0.95, side * 0.72);
+      hand.position.set(0.08, 1.06, side * 0.63);
       hand.scale.set(0.55, 1.25, 0.67);
       root.add(hand);
 
       [-1, 0, 1].forEach((finger) => {
         const digit = taperedLimb(THREE, 0.021, 0.012, 0.3 + Math.abs(finger) * 0.035, contour, 5);
-        digit.position.set(0.24 + finger * 0.03, 0.72, side * (0.72 + finger * 0.036));
-        digit.rotation.z = finger * 0.09 - 0.04;
+        digit.position.set(0.1 + finger * 0.024, 0.82, side * (0.63 + finger * 0.026));
+        digit.rotation.z = finger * 0.075 - 0.025;
         root.add(digit);
       });
 
@@ -170,7 +177,12 @@
       thigh.rotation.z = side * 0.025;
       root.add(thigh);
 
-      addJoint(THREE, root, contour, new THREE.Vector3(0.04, 0.3, side * 0.22), [0.72, 0.95, 0.68]);
+      addJoint(
+        THREE, root, contour,
+        new THREE.Vector3(0.04, 0.3, side * 0.22),
+        [0.72, 0.95, 0.68],
+        "TranslucentKnee", side
+      );
 
       const shin = taperedLimb(THREE, 0.105, 0.052, 0.82, membrane, 8);
       shin.name = "TranslucentShin";
@@ -210,9 +222,13 @@
       root.add(filament);
     }
 
-    root.scale.setScalar(0.69);
+    root.userData.npcVisualScale = 0.75;
+    root.userData.npcGroundOffset = 0.5;
+    root.userData.npcIntrinsicYOffset = 0.75;
+    root.scale.setScalar(0.75);
     root.rotation.y = variant * 0.31;
     // NPC-R1 : le translucide est volontairement relevé pour conserver sa présence flottante.
+    // L'offset historique reste posé ici ; NpcRuntime le normalise à +0.50 après instanciation.
     root.position.y += 0.75;
     const interactive = hitbox(THREE, root, 0.5, 2.9, "npc_translucent");
     return {
@@ -283,6 +299,12 @@
       upperArm.position.set(0, 2.03, side * 0.62);
       upperArm.rotation.x = side * 0.08;
       root.add(upperArm);
+      addJoint(
+        THREE, root, stone,
+        new THREE.Vector3(0.03, 1.58, side * 0.65),
+        [0.88, 0.88, 0.88],
+        "RockyElbow", side
+      );
       const forearm = taperedLimb(THREE, 0.13, 0.09, 0.72, dark, 7);
       forearm.name = "RockyForearm";
       forearm.userData.side = side;
@@ -295,6 +317,12 @@
       thigh.userData.side = side;
       thigh.position.set(-0.02, 0.82, side * 0.27);
       root.add(thigh);
+      addJoint(
+        THREE, root, stone,
+        new THREE.Vector3(0.02, 0.39, side * 0.28),
+        [0.95, 0.88, 0.95],
+        "RockyKnee", side
+      );
       const shin = taperedLimb(THREE, 0.17, 0.115, 0.75, dark, 7);
       shin.name = "RockyShin";
       shin.userData.side = side;
@@ -333,7 +361,11 @@
       root.add(chip);
     }
 
-    root.scale.setScalar(0.72);
+    root.userData.npcVisualScale = 0.68;
+    root.userData.npcGroundOffset = 0.5;
+    root.userData.npcIntrinsicYOffset = 0.5;
+    root.scale.setScalar(0.68);
+    root.position.y += 0.5;
     root.rotation.y = variant * 0.31;
     const interactive = hitbox(THREE, root, 0.58, 2.55, "npc_rocky");
     return {

@@ -1,0 +1,18 @@
+const fs=require('fs'); const assert=require('assert'); const path=require('path');
+const ROOT=path.resolve(__dirname,'..');
+const obj=fs.readFileSync(path.join(ROOT,'engine/object-library-p2-1.js'),'utf8');
+const rt=fs.readFileSync(path.join(ROOT,'engine/npc-runtime.js'),'utf8');
+const map=fs.readFileSync(path.join(ROOT,'map-test/index.html'),'utf8');
+for(const joint of ['TranslucentElbow','TranslucentKnee','RockyElbow','RockyKnee']) assert(obj.includes(joint),`joint missing ${joint}`);
+assert(obj.includes('npcVisualScale = 0.75'),'translucent visual scale 0.75');
+assert(obj.includes('npcVisualScale = 0.68'),'rocky visual scale 0.68');
+assert((obj.match(/npcGroundOffset = 0\.5/g)||[]).length>=2,'ground offset +0.50 both species');
+assert(rt.includes('Math.atan2(-dz, dx)'),'motion/player facing uses +X model front axis');
+assert(rt.includes('syncKinematics(state)'),'kinematic joint synchronization active');
+assert(rt.includes('dialogueEnvelope'),'dialogue gesture envelope active');
+assert(rt.includes('-Math.PI / 2'),'dialogue reaches approximately 90 degree forearm');
+assert(rt.includes('yawAmplitude = vigilant ? 0.34'),'vigilance head motion visibly amplified');
+assert(rt.includes('state.lookBlend += (strength - state.lookBlend) * 0.18'),'player tracking response amplified');
+for(const action of ['rest','calm','vigilance','dialogue','track','flee','return']) assert(map.includes(`data-npc-test="${action}"`),`MAP_Test control missing ${action}`);
+assert(map.includes('Joueur test en orbite'),'MAP_Test tracking demo present');
+console.log('PASS npc-r4-animation-contract');

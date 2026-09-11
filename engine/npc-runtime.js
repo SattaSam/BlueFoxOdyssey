@@ -7,11 +7,15 @@
     return;
   }
 
-  const VERSION = "P2.2.2-r4-npc-r3";
+  const VERSION = "P2.2.2-r5-npc-animation-calibration";
   const NPC_TYPES = new Set(["npc_translucent", "npc_rocky"]);
   const CIVILIZATION_BY_TYPE = Object.freeze({
     npc_translucent: "translucent",
     npc_rocky: "rocky"
+  });
+  const VISUAL_CALIBRATION = Object.freeze({
+    npc_translucent: Object.freeze({ scale: 0.75, groundOffset: 0.5, intrinsicYOffset: 0.75 }),
+    npc_rocky: Object.freeze({ scale: 0.68, groundOffset: 0.5, intrinsicYOffset: 0.5 })
   });
   const ALLOWED_STATES = new Set(["rest", "observation", "curiosity", "vigilance", "movement", "interaction", "dialogue", "flee", "calm"]);
   const registry = new Set();
@@ -74,16 +78,20 @@
       filaments: collectNamed(root, "TranslucentFilament"),
       shoulders: collectNamed(root, "TranslucentShoulder"),
       upperArms: collectNamed(root, "TranslucentUpperArm"),
+      translucentElbows: collectNamed(root, "TranslucentElbow"),
       forearms: collectNamed(root, "TranslucentForearm"),
       translucentHands: collectNamed(root, "TranslucentHand"),
       translucentThighs: collectNamed(root, "TranslucentThigh"),
+      translucentKnees: collectNamed(root, "TranslucentKnee"),
       translucentShins: collectNamed(root, "TranslucentShin"),
       translucentFeet: collectNamed(root, "TranslucentFoot"),
       rockyHead: collectNamed(root, "RockyHead"),
       rockyTorso: collectNamed(root, "RockyTorso"),
       rockyUpperArms: collectNamed(root, "RockyUpperArm"),
+      rockyElbows: collectNamed(root, "RockyElbow"),
       rockyForearms: collectNamed(root, "RockyForearm"),
       rockyThighs: collectNamed(root, "RockyThigh"),
+      rockyKnees: collectNamed(root, "RockyKnee"),
       rockyShins: collectNamed(root, "RockyShin"),
       rockyFeet: collectNamed(root, "RockyFoot"),
       rockyPlates: [...collectNamed(root, "RockyPlate"), ...collectNamed(root, "RockyLimbPlate")],
@@ -157,8 +165,8 @@
     });
     const sprite = new THREE.Sprite(material);
     sprite.name = "NpcSpeechBubble";
-    sprite.position.set(0, state.type === "npc_translucent" ? 6.05 : 5.2, 0);
-    sprite.scale.set(5.6, 1.32, 1);
+    sprite.position.set(0, state.type === "npc_translucent" ? 4.25 : 3.35, 0);
+    sprite.scale.set(4.35, 1.05, 1);
     sprite.renderOrder = 80;
     state.root.add(sprite);
     state.speechCanvas = canvas;
@@ -303,10 +311,34 @@
     return true;
   };
 
+  const setUniformScale = (scale, value) => {
+    if (!scale) return;
+    if (typeof scale.setScalar === "function") scale.setScalar(value);
+    else if (typeof scale.set === "function") scale.set(value, value, value);
+    else scale.x = scale.y = scale.z = value;
+  };
+
+  const applyVisualCalibration = (root, type) => {
+    const config = VISUAL_CALIBRATION[type];
+    if (!root || !config) return false;
+    setUniformScale(root.scale, Number(root.userData?.npcVisualScale) || config.scale);
+    const groundOffset = Number(root.userData?.npcGroundOffset ?? config.groundOffset);
+    const intrinsicYOffset = Number(root.userData?.npcIntrinsicYOffset ?? config.intrinsicYOffset);
+    if (root.userData?.spawnSource) {
+      root.position.y += groundOffset;
+    } else {
+      root.position.y += groundOffset - intrinsicYOffset;
+    }
+    root.userData.npcCalibratedScale = config.scale;
+    root.userData.npcCalibratedGround = groundOffset;
+    return true;
+  };
+
   const register = (root, type) => {
     if (!root || !NPC_TYPES.has(type) || states.has(root)) return false;
     root.userData.libraryType ||= type;
     root.userData.npcRuntime = VERSION;
+    applyVisualCalibration(root, type);
     BF.PassiveObjectRuntime?.setEnabled?.(root, false);
     const state = capture(root, type);
     states.set(root, state);
@@ -364,16 +396,22 @@
     if (!player || !Number.isFinite(distance)) return;
     const dx = Number(player.position.x || 0) - Number(state.root.position.x || 0);
     const dz = Number(player.position.z || 0) - Number(state.root.position.z || 0);
-    const targetYaw = Math.atan2(dx, dz);
+    // Les deux modèles regardent +X : cette formule aligne le regard et le corps
+    // sur leur vrai axe frontal, contrairement à l'ancien calcul supposant +Z.
+    const targetYaw = Math.atan2(-dz, dx);
     let delta = targetYaw - state.root.rotation.y;
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     const desired = clamp(delta, -maxAngle, maxAngle);
-    state.lookBlend += (strength - state.lookBlend) * 0.06;
+    state.lookBlend += (strength - state.lookBlend) * 0.18;
     const heads = state.type === "npc_rocky" ? state.named.rockyHead : state.named.translucentHead;
     heads.forEach((head) => {
-      const base = baseOf(state, head);
+      head.rotation.y += desired * state.lookBlend;
+    });
+    const torsos = state.type === "npc_rocky" ? state.named.rockyTorso : state.named.translucentTorso;
+    torsos.forEach((torso) => {
+      const base = baseOf(state, torso);
       if (!base) return;
-      head.rotation.y = base.rotation.y + desired * state.lookBlend;
+      torso.rotation.y = base.rotation.y + desired * state.lookBlend * (state.type === "npc_rocky" ? 0.28 : 0.38);
     });
   };
 
@@ -394,6 +432,81 @@
         );
       }
       eye.rotation.y = base.rotation.y + tracking * (eye.userData.side || 0) * 0.06;
+    });
+  };
+
+  const animateHeadState = (state, elapsed) => {
+    const vigilant = state.state === "vigilance";
+    const calm = state.state === "calm";
+    const rest = state.state === "rest";
+    const observing = state.state === "observation" || state.state === "curiosity";
+    const speed = vigilant ? 2.05 : observing ? 1.25 : calm ? 0.72 : 0.5;
+    const yawAmplitude = vigilant ? 0.34 : observing ? 0.24 : calm ? 0.16 : rest ? 0.11 : 0.14;
+    const pitchAmplitude = vigilant ? 0.1 : observing ? 0.075 : calm ? 0.05 : 0.035;
+    const rollAmplitude = vigilant ? 0.075 : observing ? 0.055 : calm ? 0.035 : 0.025;
+    const yaw = Math.sin(elapsed * speed + state.phase) * yawAmplitude;
+    const pitch = Math.sin(elapsed * (speed * 0.63) + state.phase * 0.7) * pitchAmplitude;
+    const roll = Math.sin(elapsed * (speed * 0.47) + state.phase * 1.3) * rollAmplitude;
+    const heads = state.type === "npc_rocky" ? state.named.rockyHead : state.named.translucentHead;
+    heads.forEach((head) => {
+      const base = baseOf(state, head);
+      if (!base) return;
+      head.rotation.x = base.rotation.x + pitch;
+      head.rotation.y = base.rotation.y + yaw;
+      head.rotation.z = base.rotation.z + roll;
+    });
+  };
+
+  const segmentLength = (object, fallback) =>
+    Number(object?.geometry?.parameters?.height) || Number(fallback) || 0.8;
+
+  const bySide = (items, side) =>
+    (items || []).find((item) => Number(item?.userData?.side || 0) === Number(side)) || null;
+
+  const syncChain2D = (state, options) => {
+    const upper = bySide(options.upper, options.side);
+    const lower = bySide(options.lower, options.side);
+    if (!upper || !lower) return;
+    const upperBase = baseOf(state, upper);
+    const lowerBase = baseOf(state, lower);
+    if (!upperBase || !lowerBase) return;
+    const upperLength = segmentLength(upper, options.upperLength);
+    const lowerLength = segmentLength(lower, options.lowerLength);
+    const baseAngle = Number(upperBase.rotation.z || 0);
+    const anchorX = upperBase.position.x - Math.sin(baseAngle) * upperLength * 0.5;
+    const anchorY = upperBase.position.y + Math.cos(baseAngle) * upperLength * 0.5;
+    const upperAngle = Number(upper.rotation.z || 0);
+    upper.position.x = anchorX + Math.sin(upperAngle) * upperLength * 0.5;
+    upper.position.y = anchorY - Math.cos(upperAngle) * upperLength * 0.5;
+    const jointX = anchorX + Math.sin(upperAngle) * upperLength;
+    const jointY = anchorY - Math.cos(upperAngle) * upperLength;
+    const lowerAngle = Number(lower.rotation.z || 0);
+    lower.position.x = jointX + Math.sin(lowerAngle) * lowerLength * 0.5;
+    lower.position.y = jointY - Math.cos(lowerAngle) * lowerLength * 0.5;
+    const endX = jointX + Math.sin(lowerAngle) * lowerLength;
+    const endY = jointY - Math.cos(lowerAngle) * lowerLength;
+    const joint = bySide(options.joints, options.side);
+    if (joint) {
+      joint.position.x = jointX;
+      joint.position.y = jointY;
+    }
+    const terminal = bySide(options.terminals, options.side);
+    if (terminal) {
+      const terminalBase = baseOf(state, terminal);
+      terminal.position.x = endX + (terminalBase ? terminalBase.position.x - (lowerBase.position.x + Math.sin(Number(lowerBase.rotation.z || 0)) * lowerLength * 0.5) : 0);
+      terminal.position.y = endY + (terminalBase ? terminalBase.position.y - (lowerBase.position.y - Math.cos(Number(lowerBase.rotation.z || 0)) * lowerLength * 0.5) : 0);
+    }
+  };
+
+  const syncKinematics = (state) => {
+    [-1, 1].forEach((side) => {
+      if (state.type === "npc_translucent") {
+        syncChain2D(state, { side, upper: state.named.upperArms, lower: state.named.forearms, joints: state.named.translucentElbows, terminals: state.named.translucentHands, upperLength: 0.82, lowerLength: 0.88 });
+        syncChain2D(state, { side, upper: state.named.translucentThighs, lower: state.named.translucentShins, joints: state.named.translucentKnees, terminals: state.named.translucentFeet, upperLength: 0.86, lowerLength: 0.82 });
+      } else {
+        syncChain2D(state, { side, upper: state.named.rockyUpperArms, lower: state.named.rockyForearms, joints: state.named.rockyElbows, terminals: [], upperLength: 0.93, lowerLength: 0.72 });
+        syncChain2D(state, { side, upper: state.named.rockyThighs, lower: state.named.rockyShins, joints: state.named.rockyKnees, terminals: state.named.rockyFeet, upperLength: 0.9, lowerLength: 0.75 });
+      }
     });
   };
 
@@ -471,10 +584,18 @@
     });
   };
 
+  const dialogueEnvelope = (age) => {
+    const cycle = ((age % 4.2) + 4.2) % 4.2;
+    if (cycle < 0.75) return 0.5 - Math.cos((cycle / 0.75) * Math.PI) * 0.5;
+    if (cycle < 2.05) return 1;
+    if (cycle < 2.9) return 0.5 + Math.cos(((cycle - 2.05) / 0.85) * Math.PI) * 0.5;
+    return 0;
+  };
+
   const animateTranslucentInteraction = (state, elapsed, dialogue) => {
     const age = elapsed - state.stateSince;
-    const gesture = Math.sin(age * (dialogue ? 2.2 : 1.45));
-    const nod = Math.sin(age * 1.25) * 0.035;
+    const gesture = dialogue ? Math.max(0.22, dialogueEnvelope(age)) : Math.max(0, Math.sin(age * 1.45));
+    const nod = Math.sin(age * 1.35) * (dialogue ? 0.1 : 0.06);
     state.named.translucentHead.forEach((head) => {
       const base = baseOf(state, head);
       if (base) head.rotation.z = base.rotation.z + nod;
@@ -483,37 +604,46 @@
       const base = baseOf(state, arm);
       if (!base) return;
       const side = Number(arm.userData.side || 1);
-      arm.rotation.z = base.rotation.z + side * (0.08 + gesture * (dialogue ? 0.11 : 0.07));
-      arm.rotation.x = base.rotation.x + side * 0.045;
+      const active = side > 0 ? 1 : 0.28;
+      arm.rotation.z = base.rotation.z + side * gesture * (dialogue ? 0.42 : 0.18) * active;
+      arm.rotation.x = base.rotation.x + side * gesture * 0.09 * active;
     });
     state.named.forearms.forEach((arm) => {
       const base = baseOf(state, arm);
       if (!base) return;
       const side = Number(arm.userData.side || 1);
-      arm.rotation.z = base.rotation.z - side * (0.1 + gesture * (dialogue ? 0.14 : 0.08));
+      if (dialogue && side > 0) {
+        // Un avant-bras monte ponctuellement presque à 90° : parallèle au sol.
+        arm.rotation.z = base.rotation.z + (-Math.PI / 2 - base.rotation.z) * gesture;
+      } else {
+        arm.rotation.z = base.rotation.z - side * gesture * (dialogue ? 0.28 : 0.16);
+      }
     });
   };
 
   const animateRockyInteraction = (state, elapsed, dialogue) => {
     const age = elapsed - state.stateSince;
-    const beat = Math.max(0, Math.sin(age * (dialogue ? 1.7 : 1.1)));
+    const beat = dialogue ? Math.max(0.2, dialogueEnvelope(age)) : Math.max(0, Math.sin(age * 1.1));
     state.named.rockyHead.forEach((head) => {
       const base = baseOf(state, head);
-      if (base) head.rotation.z = base.rotation.z + beat * 0.055;
+      if (base) head.rotation.z = base.rotation.z + beat * (dialogue ? 0.11 : 0.07);
     });
     state.named.rockyUpperArms.forEach((arm) => {
       const base = baseOf(state, arm);
       if (!base) return;
       const side = Number(arm.userData.side || 1);
-      const active = side > 0 ? 1 : 0.35;
-      arm.rotation.z = base.rotation.z + side * beat * (dialogue ? 0.12 : 0.08) * active;
+      const active = side > 0 ? 1 : 0.3;
+      arm.rotation.z = base.rotation.z + side * beat * (dialogue ? 0.34 : 0.13) * active;
     });
     state.named.rockyForearms.forEach((arm) => {
       const base = baseOf(state, arm);
       if (!base) return;
       const side = Number(arm.userData.side || 1);
-      const active = side > 0 ? 1 : 0.35;
-      arm.rotation.z = base.rotation.z - side * beat * (dialogue ? 0.16 : 0.1) * active;
+      if (dialogue && side > 0) {
+        arm.rotation.z = base.rotation.z + (-Math.PI / 2 - base.rotation.z) * beat;
+      } else {
+        arm.rotation.z = base.rotation.z - side * beat * (dialogue ? 0.24 : 0.14);
+      }
     });
   };
 
@@ -532,7 +662,7 @@
     state.root.position.z = motion.from.z + (motion.to.z - motion.from.z) * t;
     const dx = motion.to.x - motion.from.x;
     const dz = motion.to.z - motion.from.z;
-    if (Math.abs(dx) + Math.abs(dz) > 0.001) state.root.rotation.y = Math.atan2(dx, dz);
+    if (Math.abs(dx) + Math.abs(dz) > 0.001) state.root.rotation.y = Math.atan2(-dz, dx);
     if (raw >= 1) {
       state.motion = null;
       if (motion.autoRelease) {
@@ -609,10 +739,13 @@
       if (base && !moving && !interacting) part.rotation.z = base.rotation.z - breathe * 0.01 + (vigilant ? (index ? 0.035 : -0.035) : 0);
     });
 
+    animateHeadState(state, elapsed);
     if (moving) animateTranslucentGait(state, elapsed, state.state === "flee" ? 1.35 : 1);
     if (interacting) animateTranslucentInteraction(state, elapsed, state.state === "dialogue");
-    facePlayer(state, distance, interacting ? 1 : proximity, interacting ? 0.52 : vigilant ? 0.62 : 0.42);
-    updateEyes(state, elapsed, 0.9 + proximity * 0.35, proximity);
+    const tracking = Number.isFinite(distance) && distance < 7 ? Math.max(0.48, clamp(1 - distance / 8, 0, 1)) : 0;
+    facePlayer(state, distance, interacting ? 1 : vigilant ? 1 : tracking, interacting ? 1.05 : vigilant ? 0.95 : 0.78);
+    updateEyes(state, elapsed, 0.9 + proximity * 0.35, tracking * 1.35);
+    syncKinematics(state);
   };
 
   const updateRocky = (state, elapsed, distance) => {
@@ -655,10 +788,13 @@
       fragment.rotation.y = base.rotation.y + elapsed * (0.012 + index * 0.001);
     });
 
+    animateHeadState(state, elapsed);
     if (moving) animateRockyGait(state, elapsed, state.state === "flee" ? 1.25 : 1);
     if (interacting) animateRockyInteraction(state, elapsed, state.state === "dialogue");
-    facePlayer(state, distance, interacting ? 0.9 : proximity, interacting ? 0.42 : vigilant ? 0.35 : 0.24);
-    updateEyes(state, elapsed, 0.82 + proximity * 0.5 + Math.max(0, breath) * 0.08, proximity * 0.65);
+    const tracking = Number.isFinite(distance) && distance < 7 ? Math.max(0.45, clamp(1 - distance / 8, 0, 1)) : 0;
+    facePlayer(state, distance, interacting ? 1 : vigilant ? 1 : tracking, interacting ? 0.9 : vigilant ? 0.82 : 0.7);
+    updateEyes(state, elapsed, 0.82 + proximity * 0.5 + Math.max(0, breath) * 0.08, tracking * 1.2);
+    syncKinematics(state);
   };
 
   const update = (state, elapsed) => {
