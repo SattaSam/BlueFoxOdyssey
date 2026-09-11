@@ -213,6 +213,48 @@
       return true;
     }
 
+    resetMissionAttempt(missionId, options = {}) {
+      const definition = this.definition(missionId);
+      if (!definition) return false;
+      const lifecycle = this.ensureLifecycle(missionId);
+      if (!["active", "paused", "failed", "completed", "available"].includes(lifecycle.status)) return false;
+
+      const snapshot = {
+        status: lifecycle.status,
+        activatedAt: Number(lifecycle.activatedAt) || 0,
+        completedAt: Number(lifecycle.completedAt) || 0,
+        failedAt: Number(lifecycle.failedAt) || 0,
+        failureReason: lifecycle.failureReason || "",
+        resetAt: Date.now(),
+        reason: options.reason || "Nouvelle tentative missionnelle."
+      };
+      lifecycle.attemptHistory = Array.isArray(lifecycle.attemptHistory)
+        ? [...lifecycle.attemptHistory, snapshot].slice(-12)
+        : [snapshot];
+      lifecycle.attemptCount = Math.max(0, Number(lifecycle.attemptCount) || 0) + 1;
+
+      this.activeMissionIds = this.activeMissionIds.filter((id) => id !== missionId);
+      delete this.memory.state.missions?.[missionId];
+      this.trees.delete(missionId);
+      if (this.primaryMissionId === missionId) this.primaryMissionId = null;
+      lifecycle.status = "available";
+      lifecycle.activatedAt = 0;
+      lifecycle.completedAt = 0;
+      lifecycle.failedAt = 0;
+      lifecycle.pausedAt = 0;
+      lifecycle.failureReason = "";
+      lifecycle.rearmedAt = Date.now();
+      lifecycle.source = options.source || lifecycle.source || "attempt-reset";
+      lifecycle.discoveryReason = options.reason || lifecycle.discoveryReason || "Nouvelle tentative disponible.";
+      lifecycle.selectionReason = "";
+      delete lifecycle.waitingForBibleGate;
+      delete lifecycle.waitingForBibleGateMessage;
+      this.memory.save?.();
+      this.syncMissionSelection?.();
+      this.publish();
+      return true;
+    }
+
     startMission(missionId, options = {}) {
       const definition = this.definition(missionId);
       if (!definition) return false;

@@ -132,6 +132,13 @@
       contactControlled: false,
       relationRank: "neutral",
       nextRelationCheckAt: 0,
+      relationalEncounterId: 1,
+      relationalEncounterOpen: false,
+      lastRelationalDistance: Infinity,
+      lastRelationalDistanceAt: 0,
+      relationalClosureSpeed: 0,
+      cautiousSince: 0,
+      cautiousEmitted: false,
       speechSprite: null,
       speechCanvas: null,
       speechTexture: null,
@@ -145,20 +152,26 @@
   const emitNpcReaction = (state, reaction, cause = "approach", extra = {}) => {
     const eventType = BF.ObjectEvents?.types?.NPC_REACTION;
     if (!eventType || !BF.ObjectEvents?.emit || !state?.root) return false;
+    const normalizedReaction = String(reaction || state.state || "rest");
+    const normalizedCause = String(cause || "approach");
     BF.ObjectEvents.emit(eventType, state.root, {
       civilizationId: civilizationIdForType(state.type),
       cuoType: state.type,
       mapId: BF.currentEngine?.currentMapId || null,
-      state: String(reaction || state.state || "rest"),
-      reaction: String(reaction || state.state || "rest"),
-      cause: String(cause || "approach"),
+      state: normalizedReaction,
+      reaction: normalizedReaction,
+      cause: normalizedCause,
       distance: Number(extra.distance ?? distanceToPlayer(state.root)),
+      encounterId: Number(extra.encounterId ?? state.relationalEncounterId) || 1,
+      behaviorSignature: String(extra.behaviorSignature || normalizedReaction),
+      durationSeconds: Number(extra.durationSeconds) || 0,
       tags: [
         "npc_reaction",
         "civilization",
         civilizationIdForType(state.type),
-        String(reaction || state.state || "rest"),
-        String(cause || "approach")
+        normalizedReaction,
+        normalizedCause,
+        ...(Array.isArray(extra.tags) ? extra.tags.map(String) : [])
       ]
     });
     return true;
@@ -395,6 +408,48 @@
       controlled: state.controlled
     });
     return true;
+  };
+
+
+  const updateRelationalApproach = (state, elapsed, distance) => {
+    if (!Number.isFinite(distance)) return false;
+    const resetDistance = 12;
+    if (distance >= resetDistance) {
+      if (state.relationalEncounterOpen) state.relationalEncounterId += 1;
+      state.relationalEncounterOpen = false;
+      state.cautiousSince = 0;
+      state.cautiousEmitted = false;
+    } else {
+      state.relationalEncounterOpen = true;
+    }
+
+    if (!Number.isFinite(state.lastRelationalDistance)) {
+      state.lastRelationalDistance = distance;
+      state.lastRelationalDistanceAt = elapsed;
+      return false;
+    }
+    const dt = Math.max(0.001, elapsed - Number(state.lastRelationalDistanceAt || elapsed));
+    const closure = (Number(state.lastRelationalDistance) - distance) / dt;
+    state.relationalClosureSpeed = state.relationalClosureSpeed * 0.55 + closure * 0.45;
+    state.lastRelationalDistance = distance;
+    state.lastRelationalDistanceAt = elapsed;
+
+    const inRespectBand = distance >= 4 && distance <= 8;
+    const nearlyStill = Math.abs(state.relationalClosureSpeed) <= 0.14;
+    if (!inRespectBand || !nearlyStill) {
+      if (!state.cautiousEmitted) state.cautiousSince = 0;
+      return false;
+    }
+    state.cautiousSince ||= elapsed;
+    if (state.cautiousEmitted || elapsed - state.cautiousSince < 1.25) return false;
+    state.cautiousEmitted = emitNpcReaction(state, "cautious_approach", "relational-approach", {
+      distance,
+      encounterId: state.relationalEncounterId,
+      durationSeconds: elapsed - state.cautiousSince,
+      behaviorSignature: "cautious_approach",
+      tags: ["cautious_approach", "no_flee", "relational_behavior"]
+    });
+    return state.cautiousEmitted;
   };
 
   const chooseState = (state, elapsed, distance) => {
@@ -847,6 +902,7 @@
     const distance = distanceToPlayer(state.root);
     updateRelationRank(state, elapsed);
     updateContactSession(state, elapsed);
+    updateRelationalApproach(state, elapsed, distance);
     chooseState(state, elapsed, distance);
     updateMotion(state, elapsed);
     if (state.speechSprite && elapsed >= state.speechUntil) state.speechSprite.visible = false;
@@ -950,6 +1006,45 @@
       dz = dz / length * distance;
       return this.moveLocal(root, dx, dz, { state: "flee", autoRelease: true });
     },
+    chooseRelationalDistance(root, options = {}) {
+      const state = states.get(root);
+      const player = playerRoot();
+      if (!state || !player) return null;
+      const choices = (Array.isArray(options.choices) ? options.choices : ["approach", "hold", "retreat"])
+        .map((value) => String(value || "").toLowerCase())
+        .filter((value) => ["approach", "hold", "retreat"].includes(value));
+      if (!choices.length) return null;
+      const choice = choices[Math.floor(Math.random() * choices.length)];
+      const dx = Number(player.position?.x || 0) - Number(root.position?.x || 0);
+      const dz = Number(player.position?.z || 0) - Number(root.position?.z || 0);
+      const length = Math.hypot(dx, dz) || 1;
+      const step = Math.max(0.6, Number(options.stepDistance) || 1.2);
+      const cause = String(options.cause || "relational-distance-choice");
+      let reaction = "calm";
+      let signature = "distance_hold";
+      if (choice === "approach") {
+        this.moveLocal(root, dx / length * step, dz / length * step, { state: "movement", autoRelease: true });
+        reaction = "curiosity";
+        signature = "distance_reduce";
+      } else if (choice === "retreat") {
+        this.moveLocal(root, -dx / length * step, -dz / length * step, { state: "movement", autoRelease: true });
+        reaction = "observation";
+        signature = "distance_increase";
+      } else {
+        state.motion = null;
+        changeState(state, "calm", nowSeconds() - startedAt, true);
+      }
+      emitNpcReaction(state, reaction, cause, {
+        distance: distanceToPlayer(root),
+        encounterId: state.relationalEncounterId,
+        behaviorSignature: signature,
+        tags: ["relational_behavior", "spatial_choice", signature]
+      });
+      if (choice === "hold" && options.autoRelease !== false) {
+        global.setTimeout?.(() => { if (states.has(root)) this.releaseState(root); }, 1600);
+      }
+      return choice;
+    },
     reactToApproach(root, options = {}) {
       const state = states.get(root);
       if (!state) return null;
@@ -965,7 +1060,12 @@
         state.motion = null;
         changeState(state, reaction, nowSeconds() - startedAt, true);
       }
-      emitNpcReaction(state, reaction, options.cause || "approach", { distance });
+      emitNpcReaction(state, reaction, options.cause || "approach", {
+        distance,
+        encounterId: state.relationalEncounterId,
+        behaviorSignature: options.behaviorSignature || reaction,
+        tags: Array.isArray(options.tags) ? options.tags : []
+      });
       if (options.autoRelease !== false && reaction !== "flee") {
         global.setTimeout?.(() => {
           if (states.has(root)) this.releaseState(root);

@@ -8586,6 +8586,129 @@
   });
 
 
+  const contactNpcEntries = (id, options = {}) => Object.freeze([
+    Object.freeze({ id: `${id}-rocky`, cuoType: "npc_rocky", selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "rocky", triggerDistance: options.triggerDistance || 8, rearmDistance: options.rearmDistance || 12, behaviors: Object.freeze(options.behaviors || ["curiosity","calm","vigilance"]), cause: options.cause || "contact-initiative", autoContact: options.autoContact === true, contactMode: options.contactMode || null, contactSlot: options.contactSlot || null, postContactReaction: options.postContactReaction || null, postContactBehaviors: Object.freeze(options.postContactBehaviors || ["curiosity","calm"]), speech: options.speech || null, speechTriggerDistance: options.speechTriggerDistance || null, emitDialogue: options.emitDialogue === true, spatialDecision: options.spatialDecision === true, spatialChoices: Object.freeze(options.spatialChoices || ["approach","hold","retreat"]), spatialStepDistance: options.spatialStepDistance || 1.2, requiresSlotComplete: options.requiresSlotComplete || null }),
+    Object.freeze({ id: `${id}-translucent`, cuoType: "npc_translucent", selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "translucent", triggerDistance: options.triggerDistance || 8, rearmDistance: options.rearmDistance || 12, behaviors: Object.freeze(options.behaviors || ["curiosity","calm","vigilance"]), cause: options.cause || "contact-initiative", autoContact: options.autoContact === true, contactMode: options.contactMode || null, contactSlot: options.contactSlot || null, postContactReaction: options.postContactReaction || null, postContactBehaviors: Object.freeze(options.postContactBehaviors || ["curiosity","calm"]), speech: options.speech || null, speechTriggerDistance: options.speechTriggerDistance || null, emitDialogue: options.emitDialogue === true, spatialDecision: options.spatialDecision === true, spatialChoices: Object.freeze(options.spatialChoices || ["approach","hold","retreat"]), spatialStepDistance: options.spatialStepDistance || 1.2, requiresSlotComplete: options.requiresSlotComplete || null })
+  ]);
+
+  const contactSelectedNpcRequirement = Object.freeze({
+    selectionFact: "civilization:arch-selected",
+    selectionField: "civilizationId",
+    choices: Object.freeze({
+      rocky: Object.freeze({ type: "npc_rocky", count: 1 }),
+      translucent: Object.freeze({ type: "npc_translucent", count: 1 })
+    })
+  });
+  const contactSelectedNpcMapGeneration = Object.freeze({
+    requiredObjects: Object.freeze([contactSelectedNpcRequirement])
+  });
+
+  const CONTACT01 = Object.freeze({
+    id: "CONTACT-01", title: "Rester à la bonne distance",
+    description: "Rencontrer la civilisation choisie sans provoquer de fuite et respecter une distance prudente.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ARCH-40", count: 1 }), prerequisites: Object.freeze(["ARCH-40"]), priority: 240, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Respecter une distance prudente", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "approach", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact01", { cause: "contact-initiative", behaviors: ["curiosity","calm","vigilance"] })
+  });
+
+  const CONTACT02 = Object.freeze({
+    id: "CONTACT-02", title: "Laisser l’autre choisir la distance",
+    description: "Rester disponible sans réduire la distance et laisser le PNJ choisir sa réaction spatiale.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-01", count: 1 }), prerequisites: Object.freeze(["CONTACT-01"]), priority: 239, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Laisser le PNJ choisir la distance", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "initiative", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact02", { cause: "contact-initiative", spatialDecision: true, spatialChoices: ["approach","hold","retreat"] })
+  });
+
+  const CONTACT03 = Object.freeze({
+    id: "CONTACT-03", title: "Un geste qui revient",
+    description: "Constater le même signal relationnel lors de deux rencontres distinctes.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-02", count: 1 }), prerequisites: Object.freeze(["CONTACT-02"]), priority: 238, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Reconnaître deux fois le même signal", action: "observe", target: 2, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "signal-repeat", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact03", { cause: "contact-signal", behaviors: ["curiosity","calm"] })
+  });
+
+  const CONTACT04 = Object.freeze({
+    id: "CONTACT-04", title: "Répondre sans imposer",
+    description: "Répondre simplement au signal puis obtenir une réaction non hostile du PNJ.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-03", count: 1 }), prerequisites: Object.freeze(["CONTACT-03"]), priority: 237, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Répondre sans imposer", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "response", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact04", { cause: "contact-initiative", behaviors: ["curiosity","calm"], autoContact: true, contactMode: "symbols-only", contactSlot: "contact", postContactReaction: "contact-response", postContactBehaviors: ["curiosity","calm"] })
+  });
+
+  const CONTACT05 = Object.freeze({
+    id: "CONTACT-05", title: "Revenir sans être rejeté",
+    description: "Revenir lors d’une nouvelle rencontre et constater une réaction cohérente avec la relation construite.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-04", count: 1 }), prerequisites: Object.freeze(["CONTACT-04"]), priority: 236, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Être reconnu lors d’une nouvelle rencontre", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "return", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact05", { cause: "contact-return", behaviors: ["curiosity","calm","observation"] })
+  });
+
+  const CONTACT06 = Object.freeze({
+    id: "CONTACT-06", title: "Quelques mots au milieu des signes",
+    description: "Recevoir une émission très courte mêlant signes et indice contextuel, sans traduction universelle.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-05", count: 1 }), prerequisites: Object.freeze(["CONTACT-05"]), priority: 235, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Comprendre un indice contextuel", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "dialogue", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact06", { speech: "⋔ ⌁ … stèle … ⧖", speechTriggerDistance: 8, emitDialogue: true, cause: "contact-dialogue", behaviors: ["calm","curiosity"] })
+  });
+
+  const CONTACT07 = Object.freeze({
+    id: "CONTACT-07", title: "Suivre une indication",
+    description: "Reconnaître une indication du PNJ puis observer le lieu réel qu’elle désigne.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-06", count: 1 }), prerequisites: Object.freeze(["CONTACT-06"]), priority: 234, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: Object.freeze({ requiredObjects: Object.freeze([contactSelectedNpcRequirement, Object.freeze({ type: "stele", count: 1 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "indication", title: "Comprendre l’indication", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "follow", title: "Observer le lieu indiqué", action: "observe", target: 1, requires: Object.freeze(["indication"]), params: Object.freeze({ cuoType: "stele" }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "indication", slot: "indication" }),
+    npcEncounters: contactNpcEntries("contact07", { speech: "⌁ ⋔ … stèle … →", speechTriggerDistance: 8, emitDialogue: true, cause: "contact-indication", behaviors: ["calm","curiosity"] })
+  });
+
+  const CONTACT08 = Object.freeze({
+    id: "CONTACT-08", title: "Agir ensemble",
+    description: "Répondre à une demande simple par une action réelle du monde puis observer une réaction positive.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-07", count: 1 }), prerequisites: Object.freeze(["CONTACT-07"]), priority: 233, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: Object.freeze({ requiredObjects: Object.freeze([contactSelectedNpcRequirement, Object.freeze({ type: "relay_block", count: 1 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "contribute", title: "Contribuer à une demande simple", action: "collect", target: 1, params: Object.freeze({ cuoType: "relay_block" }) }),
+      Object.freeze({ slot: "contact", title: "Observer la réaction après la coopération", action: "observe", target: 1, requires: Object.freeze(["contribute"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "cooperation-reaction", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact08", { cause: "contact-cooperation", behaviors: ["calm","curiosity"], requiresSlotComplete: "contribute" })
+  });
+
+  const CONTACT09 = Object.freeze({
+    id: "CONTACT-09", title: "Reconnu comme ami",
+    description: "Revenir après la coopération et obtenir une interaction positive qui établit la relation amicale persistante.",
+    pattern: "SEQUENCE_ACTIONS", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-08", count: 1 }), prerequisites: Object.freeze(["CONTACT-08"]), priority: 232, passivePriorityAxis: "relations",
+    slots: Object.freeze({}),
+    mapGeneration: contactSelectedNpcMapGeneration,
+    sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Être reconnu comme ami", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
+    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "friendly", slot: "contact" }),
+    npcEncounters: contactNpcEntries("contact09", { cause: "contact-initiative", behaviors: ["calm","curiosity"], autoContact: true, contactMode: "symbols-only", contactSlot: "contact", postContactReaction: "contact-friendly", postContactBehaviors: ["calm","curiosity"] })
+  });
+
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -8775,6 +8898,7 @@
     ARCH38,
     ARCH39,
     ARCH40,
+    CONTACT01, CONTACT02, CONTACT03, CONTACT04, CONTACT05, CONTACT06, CONTACT07, CONTACT08, CONTACT09,
     BAL01,
     BAL02,
     BAL03,

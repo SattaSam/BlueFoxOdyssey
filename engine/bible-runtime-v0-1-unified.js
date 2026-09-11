@@ -2302,6 +2302,11 @@
         const factKey = this.npcEncounterFactKey(mission.id, entry);
         const state = manager.memory.getFact?.(factKey, {}) || {};
         if (state.despawned) return;
+        const tree = manager.trees?.get?.(mission.id);
+        if (entry.requiresSlotComplete) {
+          const required = tree?.find?.(`${mission.id}:${entry.requiresSlotComplete}`);
+          if (!required?.isComplete) return;
+        }
         const root = this.npcEncounterRoot(entry);
         if (!root) return;
 
@@ -2310,10 +2315,19 @@
           root.userData.npcMissionId = mission.id;
         }
 
-        if (entry.speech && !state.speechShown) {
+        const distance = Math.hypot(
+          Number(player.x) - Number(root.position?.x || 0),
+          Number(player.z) - Number(root.position?.z || 0)
+        );
+
+        if (entry.speech && !state.speechShown && (
+          !Number.isFinite(Number(entry.speechTriggerDistance)) ||
+          Number(entry.speechTriggerDistance) <= 0 ||
+          distance <= Number(entry.speechTriggerDistance)
+        )) {
           BF.NpcRuntime?.speak?.(root, String(entry.speech), {
             duration: Math.max(1.5, Number(entry.speechDuration) || 4),
-            emitDialogue: false
+            emitDialogue: entry.emitDialogue === true
           });
           manager.memory.setFact?.(factKey, {
             ...state,
@@ -2324,11 +2338,6 @@
           state.speechShown = true;
           changed = true;
         }
-
-        const distance = Math.hypot(
-          Number(player.x) - Number(root.position?.x || 0),
-          Number(player.z) - Number(root.position?.z || 0)
-        );
 
         if (entry.despawnOnSlotComplete) {
           const tree = manager.trees?.get?.(mission.id);
@@ -2362,13 +2371,33 @@
         const armed = state.armed !== false;
         if (!armed || distance >= triggerDistance) return;
 
-        const reaction = BF.NpcRuntime?.reactToApproach?.(root, {
-          behaviors: asArray(entry.behaviors),
-          cause: String(entry.cause || "mission-approach"),
-          fleeDistance: Number(entry.fleeDistance) || 4,
-          autoRelease: entry.autoRelease !== false
-        });
+        const reaction = entry.spatialDecision === true
+          ? BF.NpcRuntime?.chooseRelationalDistance?.(root, {
+              choices: asArray(entry.spatialChoices).length ? asArray(entry.spatialChoices) : ["approach", "hold", "retreat"],
+              cause: String(entry.cause || "mission-spatial-choice"),
+              stepDistance: Number(entry.spatialStepDistance) || 1.2,
+              autoRelease: entry.autoRelease !== false
+            })
+          : BF.NpcRuntime?.reactToApproach?.(root, {
+              behaviors: asArray(entry.behaviors),
+              cause: String(entry.cause || "mission-approach"),
+              behaviorSignature: entry.behaviorSignature || null,
+              tags: asArray(entry.tags),
+              fleeDistance: Number(entry.fleeDistance) || 4,
+              autoRelease: entry.autoRelease !== false
+            });
         if (!reaction) return;
+
+        if (entry.autoContact === true && reaction !== "flee") {
+          const contactTarget = (engine.currentMap?.interactables || []).find((candidate) =>
+            candidate === root || candidate?.userData?.worldAnchor === root
+          ) || root;
+          contactTarget.userData.requestedInteraction = "contact";
+          contactTarget.userData.requestedInteractionSource = "mission";
+          contactTarget.userData.missionId = mission.id;
+          contactTarget.userData.missionNodeId = entry.contactSlot ? `${mission.id}:${entry.contactSlot}` : null;
+          engine.targetInteraction?.(contactTarget);
+        }
 
         manager.memory.setFact?.(factKey, {
           ...state,
@@ -2997,6 +3026,176 @@
       return changed;
     }
 
+    selectedCivilization() {
+      const selected = this.manager()?.memory?.getFact?.("civilization:arch-selected", null);
+      return lower(selected?.civilizationId || "");
+    }
+
+    activeCivilizationContactMission() {
+      return this.allMissions().find((mission) =>
+        mission?.runtimeValidation?.type === "civilization-contact" &&
+        this.missionLifecycle(mission.id).active
+      ) || null;
+    }
+
+    resetCivilizationContactArc(reason = "Rupture relationnelle significative.") {
+      const manager = this.manager();
+      if (!manager) return false;
+      let changed = false;
+      for (let index = 1; index <= 9; index += 1) {
+        const missionId = `CONTACT-${String(index).padStart(2, "0")}`;
+        const lifecycle = this.missionLifecycle(missionId);
+        if (!["active", "paused", "failed", "completed"].includes(lifecycle.status)) continue;
+        changed = manager.resetMissionAttempt?.(missionId, {
+          source: "civilization-contact",
+          reason
+        }) === true || changed;
+      }
+      if (changed) {
+        manager.startMission?.("CONTACT-01", {
+          primary: false,
+          autoPrimaryEligible: false,
+          prerequisites: ["ARCH-40"],
+          source: "civilization-contact",
+          reason: "Nouvelle tentative de rapprochement après une rupture."
+        });
+      }
+      return changed;
+    }
+
+    triggerCivilizationPostContactReaction(mission, civilizationId) {
+      const engine = BF.currentEngine;
+      const pending = engine?.pendingInteraction;
+      const root = pending?.userData?.worldAnchor || pending;
+      if (!mission || !root || !BF.NpcRuntime?.reactToApproach) return false;
+
+      const entry = asArray(mission.npcEncounters).find((candidate) => {
+        if (!candidate?.postContactReaction) return false;
+        if (candidate.selectionFact && candidate.selectionField) {
+          const fact = this.manager()?.memory?.getFact?.(candidate.selectionFact, null);
+          if (!fact || String(fact[candidate.selectionField] || "") !== String(candidate.selectionValue || "")) {
+            return false;
+          }
+        }
+        const expectedCivilization = String(candidate.selectionValue || "").toLowerCase();
+        const expectedType = String(candidate.cuoType || "").toLowerCase();
+        const actualType = String(root?.userData?.libraryType || root?.userData?.functional?.type || "").toLowerCase();
+        if (expectedCivilization && expectedCivilization !== String(civilizationId || "").toLowerCase()) return false;
+        return !expectedType || expectedType === actualType;
+      });
+      if (!entry) return false;
+
+      return BF.NpcRuntime.reactToApproach(root, {
+        behaviors: asArray(entry.postContactBehaviors || ["curiosity", "calm"]),
+        cause: String(entry.postContactReaction),
+        autoRelease: true
+      }) || false;
+    }
+
+    handleCivilizationContactEvent(rawEvent = {}) {
+      const mission = this.activeCivilizationContactMission();
+      if (!mission) return false;
+      const validation = mission.runtimeValidation || {};
+      const detail = rawEvent?.detail || {};
+      const types = BF.ObjectEvents?.types || {};
+      const type = String(rawEvent?.type || "");
+      const civilizationId = lower(detail.civilizationId);
+      const selected = this.selectedCivilization();
+      if (!selected || civilizationId && civilizationId !== selected) return false;
+
+      const reaction = lower(detail.reaction || detail.state);
+      const cause = lower(detail.cause);
+      const encounterId = String(detail.encounterId || "");
+      const positive = ["cautious_approach", "curiosity", "calm", "observation", "interaction"].includes(reaction);
+
+      if (
+        type === String(types.NPC_REACTION || "NPC_REACTION") &&
+        reaction === "flee" &&
+        (cause.startsWith("contact-") || cause === "relational-approach")
+      ) {
+        const controller = this.manager()?.catalogController;
+        const relation = controller?.getRelation?.(selected);
+        if (relation && !["friendly", "honored"].includes(relation.rank)) {
+          controller.setRelation?.(selected, relation.rank, { score: Number(relation.score || 0) - 2 });
+        }
+        return this.resetCivilizationContactArc("Le PNJ a fui après une rupture relationnelle significative.");
+      }
+
+      const phase = String(validation.phase || "");
+      const slot = String(validation.slot || "contact");
+      if (phase === "approach") {
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || reaction !== "cautious_approach") return false;
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "initiative") {
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-initiative") return false;
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "signal-repeat") {
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-signal" || !encounterId) return false;
+        const key = `civilization:contact-signal:${selected}`;
+        const previous = this.manager()?.memory?.getFact?.(key, { signature: "", encounters: [] }) || {};
+        const signature = String(detail.behaviorSignature || reaction);
+        const encounters = Array.isArray(previous.encounters) ? [...previous.encounters] : [];
+        if (previous.signature && previous.signature !== signature) return false;
+        if (encounters.includes(encounterId)) return false;
+        encounters.push(encounterId);
+        this.manager()?.memory?.setFact?.(key, { signature, encounters: encounters.slice(-4), updatedAt: Date.now() });
+        this.manager()?.memory?.save?.();
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "response") {
+        if (type === String(types.NPC_CONTACTED || "NPC_CONTACTED")) {
+          this.manager()?.memory?.setFact?.(`civilization:contact-response:${mission.id}`, true);
+          this.manager()?.memory?.save?.();
+          this.triggerCivilizationPostContactReaction(mission, selected);
+          return false;
+        }
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-response") return false;
+        if (this.manager()?.memory?.getFact?.(`civilization:contact-response:${mission.id}`, false) !== true) return false;
+        if (encounterId) {
+          this.manager()?.memory?.setFact?.(`civilization:contact-response-encounter:${selected}`, encounterId);
+          this.manager()?.memory?.save?.();
+        }
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "return") {
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-return" || !encounterId) return false;
+        const key = `civilization:contact-return:${selected}`;
+        const responseEncounter = String(this.manager()?.memory?.getFact?.(`civilization:contact-response-encounter:${selected}`, ""));
+        const previous = String(this.manager()?.memory?.getFact?.(key, ""));
+        if (responseEncounter && responseEncounter === encounterId) return false;
+        if (previous === encounterId) return false;
+        this.manager()?.memory?.setFact?.(key, encounterId);
+        this.manager()?.memory?.save?.();
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "dialogue" || phase === "indication") {
+        if (type !== String(types.NPC_DIALOGUE || "NPC_DIALOGUE")) return false;
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "cooperation-reaction") {
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-cooperation") return false;
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
+      }
+      if (phase === "friendly") {
+        if (type === String(types.NPC_CONTACTED || "NPC_CONTACTED")) {
+          this.manager()?.memory?.setFact?.(`civilization:contact-friendly:${mission.id}`, true);
+          this.manager()?.memory?.save?.();
+          this.triggerCivilizationPostContactReaction(mission, selected);
+          return false;
+        }
+        if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-friendly") return false;
+        if (this.manager()?.memory?.getFact?.(`civilization:contact-friendly:${mission.id}`, false) !== true) return false;
+        const changed = this.progressRuntimeValidationSlot(mission.id, slot, 1);
+        const controller = this.manager()?.catalogController;
+        const relation = controller?.getRelation?.(selected);
+        if (changed && relation) controller.setRelation?.(selected, "friendly", { score: Math.max(1, Number(relation.score || 0) + 3) });
+        return changed;
+      }
+      return false;
+    }
+
     handleCivilizationArchObjectEvent(rawEvent = {}) {
       const mission = this.byId.get("ARCH-38");
       if (!mission || !this.missionLifecycle(mission.id).active) return false;
@@ -3107,6 +3306,7 @@
     }
 
     onObjectEvent(rawEvent) {
+      this.handleCivilizationContactEvent(rawEvent);
       this.handleCivilizationArchObjectEvent(rawEvent);
       this.handleEnergyMissionObjectEvent(rawEvent);
       this.handleDroneMissionObjectEvent(rawEvent);
