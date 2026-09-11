@@ -1,0 +1,18 @@
+const fs=require('fs'); const assert=require('assert'); const path=require('path');
+const ROOT=path.resolve(__dirname,'..');
+const obj=fs.readFileSync(path.join(ROOT,'engine/object-library-p2-1.js'),'utf8');
+const rt=fs.readFileSync(path.join(ROOT,'engine/npc-runtime.js'),'utf8');
+const html=fs.readFileSync(path.join(ROOT,'cuo-lab/index.html'),'utf8');
+for(const name of ['TranslucentThigh','TranslucentShin','TranslucentFoot','RockyForearm','RockyThigh','RockyShin','RockyFoot']) assert(obj.includes(name),`missing ${name}`);
+assert(/root\.position\.y\s*\+=\s*0\.75/.test(obj),'translucent +0.75 vertical offset preserved');
+for(const state of ['movement','interaction','dialogue','flee','calm']) assert(rt.includes(`"${state}"`),`missing state ${state}`);
+assert(rt.includes('RuntimeBudget.shouldUpdate(root, "npc", elapsed)'),'RuntimeBudget preserved');
+assert(rt.includes('BF.PassiveObjectRuntime?.setEnabled?.(root, false)'),'PassiveObjectRuntime exclusion preserved');
+assert(rt.includes('bluefox:npc-state'),'historical state event preserved');
+assert(rt.includes('bluefox:npc-speech'),'speech event present');
+assert(html.includes('../engine/npc-runtime.js'),'CUO validation uses real NpcRuntime');
+assert(html.includes('../engine/object-library-p2-1.js'),'CUO validation uses real P2.1 models');
+assert(html.includes('BF.NpcRuntime.moveLocal') && html.includes('BF.NpcRuntime.speak'),'CUO controls consume owner API');
+assert(html.includes('NPC-R1 · Validation animations'),'CUO validation panel present');
+assert(!rt.includes('PathPlanner') && !rt.includes('MissionManager'),'R1 does not create navigation/mission coupling');
+console.log('PASS npc-r1-contract');

@@ -150,6 +150,8 @@
       root.add(forearm);
 
       const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1), membrane);
+      hand.name = "TranslucentHand";
+      hand.userData.side = side;
       hand.position.set(0.2, 0.95, side * 0.72);
       hand.scale.set(0.55, 1.25, 0.67);
       root.add(hand);
@@ -162,6 +164,8 @@
       });
 
       const thigh = taperedLimb(THREE, 0.17, 0.105, 0.86, membrane, 10);
+      thigh.name = "TranslucentThigh";
+      thigh.userData.side = side;
       thigh.position.set(-0.02, 0.77, side * 0.22);
       thigh.rotation.z = side * 0.025;
       root.add(thigh);
@@ -169,11 +173,15 @@
       addJoint(THREE, root, contour, new THREE.Vector3(0.04, 0.3, side * 0.22), [0.72, 0.95, 0.68]);
 
       const shin = taperedLimb(THREE, 0.105, 0.052, 0.82, membrane, 8);
+      shin.name = "TranslucentShin";
+      shin.userData.side = side;
       shin.position.set(0.08, -0.16, side * 0.22);
       shin.rotation.z = -0.04;
       root.add(shin);
 
       const foot = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 1), membrane);
+      foot.name = "TranslucentFoot";
+      foot.userData.side = side;
       foot.position.set(0.23, -0.61, side * 0.22);
       foot.scale.set(1.5, 0.34, 0.62);
       root.add(foot);
@@ -204,6 +212,8 @@
 
     root.scale.setScalar(0.69);
     root.rotation.y = variant * 0.31;
+    // NPC-R1 : le translucide est volontairement relevé pour conserver sa présence flottante.
+    root.position.y += 0.75;
     const interactive = hitbox(THREE, root, 0.5, 2.9, "npc_translucent");
     return {
       root: setShadows(root),
@@ -274,14 +284,20 @@
       upperArm.rotation.x = side * 0.08;
       root.add(upperArm);
       const forearm = taperedLimb(THREE, 0.13, 0.09, 0.72, dark, 7);
+      forearm.name = "RockyForearm";
+      forearm.userData.side = side;
       forearm.position.set(0.05, 1.25, side * 0.68);
       forearm.rotation.z = -0.08;
       root.add(forearm);
 
       const thigh = taperedLimb(THREE, 0.2, 0.14, 0.9, dark, 7);
+      thigh.name = "RockyThigh";
+      thigh.userData.side = side;
       thigh.position.set(-0.02, 0.82, side * 0.27);
       root.add(thigh);
       const shin = taperedLimb(THREE, 0.17, 0.115, 0.75, dark, 7);
+      shin.name = "RockyShin";
+      shin.userData.side = side;
       shin.position.set(0.05, 0.07, side * 0.28);
       root.add(shin);
 
@@ -300,6 +316,8 @@
       });
 
       const foot = new THREE.Mesh(new THREE.DodecahedronGeometry(0.24, 0), stone);
+      foot.name = "RockyFoot";
+      foot.userData.side = side;
       foot.position.set(0.19, -0.39, side * 0.28);
       foot.scale.set(1.45, 0.45, 0.7);
       root.add(foot);
