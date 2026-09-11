@@ -6135,6 +6135,237 @@
     })
   });
 
+
+  // Missions de consommation — transformer des surplus réels en entretien ou recherche.
+  // Les effets restent portés par inventory.consume ; aucune seconde économie n'est créée.
+  const SURPLUS01 = Object.freeze({
+    id: "SURPLUS-01",
+    title: "Entretenir et améliorer la Base",
+    description: "Profiter d'un surplus de bois et de fibres pour effectuer un entretien concret de la Base : couchage ou matelas, toiture, murs, rangement ou espace de préparation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze(["GAME-base"]),
+    repeatable: true,
+    repeatableCondition: Object.freeze({
+      shelterKinds: Object.freeze(["base"]),
+      radius: 12,
+      requirements: Object.freeze([
+        Object.freeze({ inventoryKey: "wood", minimum: 100, rearmIncrease: 50 }),
+        Object.freeze({ inventoryKey: "fiber", minimum: 100, rearmIncrease: 50 })
+      ])
+    }),
+    priority: 27,
+    passivePriorityAxis: "survival",
+    narrativeAxis: "LOGISTICIEN",
+    autoPrimaryEligible: false,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "chooseMaintenance",
+        title: "Choisir l'entretien le plus utile à la Base",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "performMaintenance",
+        title: "Réaliser l'amélioration avec le surplus disponible",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["chooseMaintenance"]),
+        params: Object.freeze({})
+      })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 50 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 50 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Le stock déborde assez pour penser à autre chose qu'au strict nécessaire. Je peux reprendre le couchage ou le matelas, refaire une partie de la toiture, consolider un mur, améliorer les rangements ou rendre l'espace de préparation plus pratique."
+      ]),
+      completed: Object.freeze([
+        "Cinquante bois et cinquante fibres ont servi à un entretien utile de la Base. Ce n'est pas une nouvelle construction : simplement un lieu de vie un peu plus solide, pratique ou confortable."
+      ])
+    })
+  });
+
+  const SURPLUS02_MINERAL = Object.freeze({
+    id: "SURPLUS-02-MINERAL",
+    title: "Série d'essais sur les matériaux — minerais",
+    description: "Employer un stock minéral redevenu abondant pour mener une série d'essais comparatifs au lieu de laisser les échantillons s'accumuler.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze(["GAME-engineering_2"]),
+    repeatable: true,
+    repeatableCondition: Object.freeze({
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 12,
+      inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]),
+      minimum: 50,
+      rearmIncrease: 30
+    }),
+    priority: 26,
+    passivePriorityAxis: "research",
+    autoPrimaryEligible: false,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prepare", title: "Préparer une série d'essais minéraux", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "compare", title: "Comparer les résultats des essais", action: "research", target: 1, requires: Object.freeze(["prepare"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({
+        type: "inventory.consume",
+        inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]),
+        quantity: 30
+      })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "surplus-material-tests-v1",
+      category: "engineering",
+      label: "Essais comparatifs sur les matériaux"
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les minerais recommencent à s'accumuler. J'en sacrifierais volontiers une partie pour comparer leurs réactions plutôt que les conserver sans but."]),
+      completed: Object.freeze(["Trente unités minérales ont été utilisées dans les essais. Même les résultats peu concluants enrichissent ma compréhension des matériaux."])
+    })
+  });
+
+  const SURPLUS02_CRYSTAL = Object.freeze({
+    id: "SURPLUS-02-CRYSTAL",
+    title: "Série d'essais sur les matériaux — cristaux",
+    description: "Employer un stock de cristaux redevenu abondant pour mener la variante cristalline des essais comparatifs.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze(["GAME-engineering_2"]),
+    repeatable: true,
+    repeatableCondition: Object.freeze({
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 12,
+      inventoryKey: "crystal",
+      minimum: 50,
+      rearmIncrease: 20
+    }),
+    priority: 26,
+    passivePriorityAxis: "research",
+    autoPrimaryEligible: false,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prepare", title: "Préparer une série d'essais cristallins", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "compare", title: "Comparer les résultats des essais", action: "research", target: 1, requires: Object.freeze(["prepare"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "crystal", quantity: 20 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "surplus-material-tests-v1",
+      category: "engineering",
+      label: "Essais comparatifs sur les matériaux"
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les cristaux sont assez nombreux pour que je puisse en consacrer quelques-uns à des comparaisons destructives sans compromettre mes réserves utiles."]),
+      completed: Object.freeze(["Vingt cristaux ont servi aux essais. Les mesures complètent la même connaissance expérimentale que les séries minérales."])
+    })
+  });
+
+  const SURPLUS03 = Object.freeze({
+    id: "SURPLUS-03",
+    title: "Essais biologiques et préparation",
+    description: "Employer un surplus végétal pour comparer, conserver ou préparer des ressources alimentaires sans laisser les stocks s'accumuler inutilement.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "manual", count: 1 }),
+    prerequisites: Object.freeze(["SUR-05"]),
+    repeatable: true,
+    repeatableCondition: Object.freeze({
+      shelterKinds: Object.freeze(["camp", "refuge", "base"]),
+      radius: 12,
+      inventoryKeys: Object.freeze(["fiber", "adaptive_biomass"]),
+      minimum: 50,
+      rearmIncrease: 20
+    }),
+    priority: 26,
+    passivePriorityAxis: "survival",
+    autoPrimaryEligible: false,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prepare", title: "Préparer les échantillons végétaux", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "experiment", title: "Mener les essais biologiques", action: "research", target: 1, requires: Object.freeze(["prepare"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["fiber", "adaptive_biomass"]), quantity: 20 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "surplus-biological-preparation-v1",
+      category: "survival",
+      label: "Essais biologiques de préparation"
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le stock végétal est suffisamment confortable pour que je puisse tester plusieurs préparations sans mettre mes réserves en danger."]),
+      completed: Object.freeze(["Vingt unités végétales ont servi aux essais. Les résultats pourront guider mes prochaines préparations et recherches alimentaires."])
+    })
+  });
+
+  const MAT01 = Object.freeze({
+    id: "MAT-01",
+    title: "Matériaux composites",
+    description: "Tester l'association du bois, des fibres et d'une petite quantité de minerai afin d'obtenir un matériau léger utilisable dans de futurs équipements.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "COL-MINERAL-100", count: 1 }),
+    prerequisites: Object.freeze(["COL-WOOD-100", "COL-FIBER-100", "COL-MINERAL-100"]),
+    priority: 55,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "assemblies", title: "Comparer plusieurs assemblages bois-fibres-minerai", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "validateComposite", title: "Valider un composite suffisamment stable", action: "research", target: 1, requires: Object.freeze(["assemblies"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 20 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 20 }),
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 5 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "composite-materials-v1",
+      category: "engineering",
+      label: "Matériaux composites"
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Bois, fibres et minerai n'ont pas les mêmes qualités. En sacrifiant quelques lots à des assemblages comparatifs, je peux chercher un matériau plus utile que chacun séparément."]),
+      completed: Object.freeze(["Un composite suffisamment stable se dégage des essais. Je peux désormais considérer ces matériaux comme une base crédible pour des fabrications plus techniques."])
+    })
+  });
+
+  const TECHLAB01 = Object.freeze({
+    id: "TECH-LAB-01",
+    title: "Améliorer le poste d'analyse",
+    description: "Transformer l'espace de travail existant en poste d'analyse plus fiable pour les recherches avancées.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "MAT-01", count: 1 }),
+    prerequisites: Object.freeze(["MAT-01", "GAME-engineering_6"]),
+    priority: 54,
+    passivePriorityAxis: "research",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prepareUpgrade", title: "Préparer l'amélioration du poste d'analyse", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "validateUpgrade", title: "Valider le poste amélioré par une analyse avancée", action: "research", target: 1, requires: Object.freeze(["prepareUpgrade"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 30 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 20 }),
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 20 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "crystal", quantity: 5 })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "advanced-analysis-station-v1",
+      category: "engineering",
+      label: "Poste d'analyse amélioré"
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["L'établi me permet déjà de travailler proprement. Avec de meilleurs supports et davantage de matière, je peux rendre mes analyses plus fiables plutôt que multiplier les bricolages."]),
+      completed: Object.freeze(["Le poste d'analyse est renforcé et mieux organisé. Les recherches qui exigent un matériel scientifique plus précis disposent maintenant d'une base crédible."])
+    })
+  });
+
   const COLLECTION_FAMILIES = Object.freeze({
     WOOD: Object.freeze({
       key: "WOOD",
@@ -8333,6 +8564,12 @@
     SUR03,
     SUR05,
     SUR06,
+    SURPLUS01,
+    SURPLUS02_MINERAL,
+    SURPLUS02_CRYSTAL,
+    SURPLUS03,
+    MAT01,
+    TECHLAB01,
     ...COLLECTION_MISSIONS,
     ...ENV_GLOBAL_MISSIONS,
     ...ENV_MAP_MISSIONS,

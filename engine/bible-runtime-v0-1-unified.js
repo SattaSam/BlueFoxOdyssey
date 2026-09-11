@@ -4091,6 +4091,25 @@
       return `repeatableWoodBaseline:${missionId}`;
     }
 
+    repeatableStockRequirements(rule = {}) {
+      const structured = asArray(rule.requirements)
+        .filter((requirement) => requirement && typeof requirement === "object");
+      return structured.length ? structured : [rule];
+    }
+
+    repeatableStockSnapshot(rule = {}) {
+      return this.repeatableStockRequirements(rule).map((requirement) => {
+        const keys = this.inventoryKeysForRequirement(requirement);
+        return {
+          amount: keys.length
+            ? Math.max(0, Number(BF.progression?.availableInventory?.(keys)) || 0)
+            : 0,
+          minimum: Math.max(0, Number(requirement.minimum) || 0),
+          rearmIncrease: Math.max(0, Number(requirement.rearmIncrease) || 0)
+        };
+      });
+    }
+
     nearShelterForRepeatable(rule = {}) {
       const engine = BF.currentEngine;
       const mapId = String(engine?.currentMapId || "");
@@ -4116,17 +4135,19 @@
         const rule = mission.repeatableCondition || {};
         if (!asArray(mission.prerequisites).every((id) => this.missionLifecycle(id).completed)) return;
         if (!this.nearShelterForRepeatable(rule)) return;
-        const keys = this.inventoryKeysForRequirement(rule);
-        const wood = keys.length ? Math.max(0, Number(BF.progression?.availableInventory?.(keys)) || 0) : 0;
-        const minimum = Math.max(0, Number(rule.minimum) || 0);
-        if (wood < minimum) return;
+        const stock = this.repeatableStockSnapshot(rule);
+        if (!stock.length || stock.some((entry) => entry.amount < entry.minimum)) return;
 
         let lifecycle = manager.memory.state.missionLifecycle?.[mission.id] || null;
         const baselineKey = this.repeatableWoodBaselineKey(mission.id);
-        const baseline = Math.max(0, Number(manager.memory.getFact?.(baselineKey, 0)?.amount ?? manager.memory.getFact?.(baselineKey, 0)) || 0);
-        const increase = Math.max(0, Number(rule.rearmIncrease) || 0);
+        const baselineFact = manager.memory.getFact?.(baselineKey, 0) || 0;
         if (lifecycle?.status === "completed") {
-          if (wood < baseline + increase) return;
+          const baselineAmounts = Array.isArray(baselineFact?.amounts)
+            ? baselineFact.amounts
+            : [Math.max(0, Number(baselineFact?.amount ?? baselineFact) || 0)];
+          if (stock.some((entry, index) =>
+            entry.amount < Math.max(0, Number(baselineAmounts[index]) || 0) + entry.rearmIncrease
+          )) return;
           if (!manager.rearmRepeatableMission?.(mission.id, { source: "bible-repeatable", reason: "Le stock local permet de reprendre cette routine." })) return;
           lifecycle = manager.memory.state.missionLifecycle?.[mission.id] || null;
           changed = true;
@@ -5161,9 +5182,11 @@
         if (!effectsReady) continue;
 
         if (mission.repeatable === true && mission.repeatableCondition) {
-          const keys = this.inventoryKeysForRequirement(mission.repeatableCondition);
-          const amount = keys.length ? Math.max(0, Number(BF.progression?.availableInventory?.(keys)) || 0) : 0;
-          manager?.memory?.setFact?.(this.repeatableWoodBaselineKey(mission.id), { amount, at: Date.now() });
+          const stock = this.repeatableStockSnapshot(mission.repeatableCondition);
+          const baseline = stock.length > 1
+            ? { amounts: stock.map((entry) => entry.amount), at: Date.now() }
+            : { amount: stock[0]?.amount || 0, at: Date.now() };
+          manager?.memory?.setFact?.(this.repeatableWoodBaselineKey(mission.id), baseline);
           manager?.memory?.save?.();
         }
         BF.completeMissionPsychology?.(mission);
