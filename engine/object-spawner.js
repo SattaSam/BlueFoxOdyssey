@@ -73,13 +73,30 @@
       const instance = BF.ObjectLibrary.create(this.THREE, type, options.palette || this.palette, options.variant || 0);
       const root = instance.root;
       if (root) {
-        root.position.set(position.x || 0, position.y || 0, position.z || 0);
+        const npcIntrinsicTransform = type === "npc_translucent" || type === "npc_rocky";
+        if (npcIntrinsicTransform) {
+          const intrinsicY = Number(root.position?.y) || 0;
+          root.position.set(
+            position.x || 0,
+            (position.y || 0) + intrinsicY,
+            position.z || 0
+          );
+        } else {
+          // Contrat historique ObjectSpawner : hors PNJ, le placement global
+          // remplace entièrement le Y intrinsèque éventuel du constructeur.
+          root.position.set(position.x || 0, position.y || 0, position.z || 0);
+        }
         root.rotation.set(
           options.rotationX || 0,
           options.rotationY ?? options.rotation ?? 0,
           options.rotationZ || 0
         );
-        root.scale.setScalar(options.scale || 1);
+        if (npcIntrinsicTransform) {
+          if (options.scale != null) root.scale.setScalar(options.scale);
+        } else {
+          // Contrat historique inchangé pour tous les objets non-PNJ.
+          root.scale.setScalar(options.scale || 1);
+        }
         root.userData.spawnSource = options.source || "object-spawner";
         (options.scene || this.scene)?.add(root);
       }

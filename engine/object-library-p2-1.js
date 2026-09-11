@@ -23,6 +23,19 @@
     ...options
   });
 
+  const groundNpcVisual = (THREE, root, scale) => {
+    root.scale.setScalar(scale);
+    root.updateMatrixWorld?.(true);
+    const bounds = new THREE.Box3().setFromObject(root);
+    const groundOffset = Number.isFinite(bounds.min.y) ? -bounds.min.y : 0;
+    root.position.y = groundOffset;
+    root.updateMatrixWorld?.(true);
+    root.userData.npcVisualScale = scale;
+    root.userData.npcGroundOffset = groundOffset;
+    root.userData.npcIntrinsicYOffset = groundOffset;
+    return groundOffset;
+  };
+
   const hitbox = (THREE, root, radius, height, kind) => {
     const mesh = new THREE.Mesh(
       new THREE.CylinderGeometry(radius, radius, height, 12),
@@ -231,14 +244,8 @@
       root.add(filament);
     }
 
-    root.userData.npcVisualScale = 0.62;
-    root.userData.npcGroundOffset = 0.9;
-    root.userData.npcIntrinsicYOffset = 0.9;
-    root.scale.setScalar(0.62);
     root.rotation.y = variant * 0.31;
-    // NPC-R1 : le translucide est volontairement relevé pour conserver sa présence flottante.
-    // Le ground calibré reste posé ici ; NpcRuntime le normalise à +0.90 après instanciation.
-    root.position.y += 0.9;
+    groundNpcVisual(THREE, root, 0.35);
     const interactive = hitbox(THREE, root, 0.5, 2.9, "npc_translucent");
     return {
       root: setShadows(root),
@@ -371,12 +378,8 @@
       root.add(chip);
     }
 
-    root.userData.npcVisualScale = 0.56;
-    root.userData.npcGroundOffset = 0.9;
-    root.userData.npcIntrinsicYOffset = 0.9;
-    root.scale.setScalar(0.56);
-    root.position.y += 0.9;
     root.rotation.y = variant * 0.31;
+    groundNpcVisual(THREE, root, 0.47);
     const interactive = hitbox(THREE, root, 0.58, 2.55, "npc_rocky");
     return {
       root: setShadows(root),

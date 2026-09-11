@@ -7,15 +7,15 @@
     return;
   }
 
-  const VERSION = "P2.2.2-r6-npc-animation-calibration-r41";
+  const VERSION = "P2.2.2-r8-npc-grounding-r43";
   const NPC_TYPES = new Set(["npc_translucent", "npc_rocky"]);
   const CIVILIZATION_BY_TYPE = Object.freeze({
     npc_translucent: "translucent",
     npc_rocky: "rocky"
   });
   const VISUAL_CALIBRATION = Object.freeze({
-    npc_translucent: Object.freeze({ scale: 0.62, groundOffset: 0.9, intrinsicYOffset: 0.9 }),
-    npc_rocky: Object.freeze({ scale: 0.56, groundOffset: 0.9, intrinsicYOffset: 0.9 })
+    npc_translucent: Object.freeze({ scale: 0.35 }),
+    npc_rocky: Object.freeze({ scale: 0.47 })
   });
   const FORWARD_FOREARM_ANGLE = Math.PI / 2;
   const ALLOWED_STATES = new Set(["rest", "observation", "curiosity", "vigilance", "movement", "interaction", "dialogue", "flee", "calm"]);
@@ -342,34 +342,29 @@
     return true;
   };
 
-  const setUniformScale = (scale, value) => {
-    if (!scale) return;
-    if (typeof scale.setScalar === "function") scale.setScalar(value);
-    else if (typeof scale.set === "function") scale.set(value, value, value);
-    else scale.x = scale.y = scale.z = value;
-  };
-
-  const applyVisualCalibration = (root, type) => {
+  const recordVisualCalibration = (root, type) => {
     const config = VISUAL_CALIBRATION[type];
     if (!root || !config) return false;
-    setUniformScale(root.scale, Number(root.userData?.npcVisualScale) || config.scale);
-    const groundOffset = Number(root.userData?.npcGroundOffset ?? config.groundOffset);
-    const intrinsicYOffset = Number(root.userData?.npcIntrinsicYOffset ?? config.intrinsicYOffset);
-    if (root.userData?.spawnSource) {
-      root.position.y += groundOffset;
-    } else {
-      root.position.y += groundOffset - intrinsicYOffset;
-    }
-    root.userData.npcCalibratedScale = config.scale;
-    root.userData.npcCalibratedGround = groundOffset;
+    root.userData.npcCalibratedScale =
+      Number(root.userData?.npcVisualScale) || Number(root.scale?.x) || config.scale;
+    root.userData.npcCalibratedGround = Number(root.userData?.npcGroundOffset) || 0;
     return true;
+  };
+
+  const isSceneAttached = (root) => {
+    let node = root;
+    while (node) {
+      if (node.isScene || node.type === "Scene") return true;
+      node = node.parent;
+    }
+    return false;
   };
 
   const register = (root, type) => {
     if (!root || !NPC_TYPES.has(type) || states.has(root)) return false;
     root.userData.libraryType ||= type;
     root.userData.npcRuntime = VERSION;
-    applyVisualCalibration(root, type);
+    recordVisualCalibration(root, type);
     BF.PassiveObjectRuntime?.setEnabled?.(root, false);
     const state = capture(root, type);
     states.set(root, state);
@@ -882,7 +877,7 @@
     if (elapsed - lastCleanupAt > 8) {
       lastCleanupAt = elapsed;
       registry.forEach((root) => {
-        if (!root?.parent) unregister(root);
+        if (!isSceneAttached(root)) unregister(root);
       });
     }
     global.requestAnimationFrame?.(frame);

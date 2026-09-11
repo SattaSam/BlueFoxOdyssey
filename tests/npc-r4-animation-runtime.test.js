@@ -18,7 +18,7 @@ function translucent(){
   part('TranslucentShin',-1,.08,-.16,-.22,-.04,.82),part('TranslucentShin',1,.08,-.16,.22,-.04,.82),
   part('TranslucentFoot',-1,.23,-.61,-.22),part('TranslucentFoot',1,.23,-.61,.22)
  ];
- const root={userData:{spawnSource:'test'},position:new V3(0,0,0),rotation:new E(),scale:new V3(1,1,1),children:c,parent:{},visible:true,traverse(fn){c.forEach(fn)},dispatchEvent(){}}; return {root,c};
+ const root={userData:{spawnSource:'test',npcVisualScale:.35,npcGroundOffset:.22},position:new V3(0,.22,0),rotation:new E(),scale:new V3(.35,.35,.35),children:c,parent:{type:'Scene'},visible:true,traverse(fn){c.forEach(fn)},dispatchEvent(){}}; return {root,c};
 }
 
 function rocky(){
@@ -34,14 +34,14 @@ function rocky(){
   part('RockyShin',-1,.05,.07,-.28,0,.75),part('RockyShin',1,.05,.07,.28,0,.75),
   part('RockyFoot',-1,.19,-.39,-.28),part('RockyFoot',1,.19,-.39,.28)
  ];
- const root={userData:{spawnSource:'test'},position:new V3(0,0,0),rotation:new E(),scale:new V3(1,1,1),children:c,parent:{},visible:true,traverse(fn){c.forEach(fn)},dispatchEvent(){}}; return {root,c};
+ const root={userData:{spawnSource:'test',npcVisualScale:.47,npcGroundOffset:.19},position:new V3(0,.19,0),rotation:new E(),scale:new V3(.47,.47,.47),children:c,parent:{type:'Scene'},visible:true,traverse(fn){c.forEach(fn)},dispatchEvent(){}}; return {root,c};
 }
 const hooks=[]; const window={BlueFox3D:{ObjectLibrary:{create(){},registerCreateHook(fn){hooks.push(fn)}},PassiveObjectRuntime:{setEnabled(){}},RuntimeBudget:{shouldUpdate(){return true;}}},performance:{now:()=>now},Date,Math:TestMath,console,requestAnimationFrame(fn){queue.push(fn);return queue.length},dispatchEvent(){},CustomEvent:class{constructor(type,o){this.type=type;this.detail=o.detail}}}; window.window=window;
 vm.runInContext(fs.readFileSync(path.join(ROOT,'engine/npc-runtime.js'),'utf8'),vm.createContext(window));
 const BF=window.BlueFox3D, npc=translucent(); hooks[0]({root:npc.root},{type:'npc_translucent'});
 BF.currentEngine={character:{root:{position:new V3(0,0,2)}}};
-assert(Math.abs(npc.root.scale.x-.62)<1e-9,'spawned translucent scale normalized');
-assert(Math.abs(npc.root.position.y-.9)<1e-9,'spawned translucent ground raised +0.90');
+assert(Math.abs(npc.root.scale.x-.35)<1e-9,'NpcRuntime preserves translucent model scale');
+assert(Math.abs(npc.root.position.y-.22)<1e-9,'NpcRuntime preserves translucent grounded anchor');
 BF.NpcRuntime.setState(npc.root,'vigilance'); now=1000; queue.shift()();
 const head=npc.c.find(x=>x.name==='TranslucentHeadFine'); assert(Math.abs(head.rotation.y)>.08,'player tracking visibly rotates head');
 const elbow=npc.c.find(x=>x.name==='TranslucentElbow'&&x.userData.side===1), ex=elbow.position.x;
@@ -56,8 +56,8 @@ BF.NpcRuntime.moveLocal(npc.root,0,3,{state:'movement',duration:1,autoRelease:fa
 assert(Math.abs(npc.root.rotation.y+Math.PI/2)<.05,'movement along +Z rotates +X-front model toward +Z');
 
 const rock=rocky(); hooks[0]({root:rock.root},{type:'npc_rocky'});
-assert(Math.abs(rock.root.scale.x-.56)<1e-9,'spawned Rocky scale normalized');
-assert(Math.abs(rock.root.position.y-.9)<1e-9,'spawned Rocky ground raised +0.90');
+assert(Math.abs(rock.root.scale.x-.47)<1e-9,'NpcRuntime preserves Rocky model scale');
+assert(Math.abs(rock.root.position.y-.19)<1e-9,'NpcRuntime preserves Rocky grounded anchor');
 BF.currentEngine.character.root.position.set(100,0,100);
 BF.NpcRuntime.setState(rock.root,'rest'); now=4000; queue.shift()();
 const rockHead=rock.c.find(x=>x.name==='RockyHead'); const restHead=[rockHead.rotation.x,rockHead.rotation.y,rockHead.rotation.z];

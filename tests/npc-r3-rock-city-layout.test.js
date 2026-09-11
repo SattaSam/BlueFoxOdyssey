@@ -8,7 +8,7 @@ const source=window.BlueFoxCustomMaps.find(m=>m.id==='custom-map-32-rock-village
 assert.equal(village.marker,'arch-keep','ARCH village must remain untouched');
 assert.equal(village.civilizationRole,undefined,'ARCH village must not become a capital');
 assert.equal(tiny.civilizationId,'translucent');assert.equal(tiny.civilizationRole,'city');
-assert.deepEqual(Array.from(tiny.civilizationMerchant.position),[22,0,30],'TinyCity merchant must occupy the validated courtyard');
+assert.deepEqual(Array.from(tiny.civilizationMerchant.position),[-36,0,-20],'TinyCity merchant must occupy the visually validated plateau position');
 assert.equal(source.name,'ROCK_VILLAGE');assert.equal(source.plateauCount,2);assert.equal(source.civilizationId,'rocky');assert.equal(source.civilizationRole,'city');
 assert(source.customMicroScenes.length>=15,'rock village must preserve its authored urban layout');
 const merchant={x:source.civilizationMerchant.position[0],z:source.civilizationMerchant.position[2]};
