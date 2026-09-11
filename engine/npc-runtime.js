@@ -7,8 +7,12 @@
     return;
   }
 
-  const VERSION = "P2.2.2-r2-npc-r1";
+  const VERSION = "P2.2.2-r3-npc-r2";
   const NPC_TYPES = new Set(["npc_translucent", "npc_rocky"]);
+  const CIVILIZATION_BY_TYPE = Object.freeze({
+    npc_translucent: "translucent",
+    npc_rocky: "rocky"
+  });
   const ALLOWED_STATES = new Set(["rest", "observation", "curiosity", "vigilance", "movement", "interaction", "dialogue", "flee", "calm"]);
   const registry = new Set();
   const states = new WeakMap();
@@ -112,8 +116,152 @@
       lookBlend: 0,
       controlled: false,
       motion: null,
+      contactToken: 0,
+      contactControlled: false,
+      relationRank: "neutral",
+      nextRelationCheckAt: 0,
+      speechSprite: null,
+      speechCanvas: null,
+      speechTexture: null,
+      speechUntil: 0,
       enabled: true
     };
+  };
+
+  const civilizationIdForType = (type) => CIVILIZATION_BY_TYPE[type] || String(type || "unknown");
+
+  const updateRelationRank = (state, elapsed) => {
+    if (elapsed < state.nextRelationCheckAt) return state.relationRank;
+    state.nextRelationCheckAt = elapsed + 1;
+    const relation = BF.currentEngine?.missionManager?.catalogController?.getRelation?.(
+      civilizationIdForType(state.type)
+    );
+    state.relationRank = String(relation?.rank || "neutral").toLowerCase();
+    return state.relationRank;
+  };
+
+  const ensureSpeechSprite = (state) => {
+    const THREE = BF.currentEngine?.THREE;
+    if (!THREE || !global.document?.createElement) return null;
+    if (state.speechSprite) return state.speechSprite;
+    const canvas = global.document.createElement("canvas");
+    canvas.width = 768;
+    canvas.height = 180;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.name = "NpcSpeechBubble";
+    sprite.position.set(0, state.type === "npc_translucent" ? 6.05 : 5.2, 0);
+    sprite.scale.set(5.6, 1.32, 1);
+    sprite.renderOrder = 80;
+    state.root.add(sprite);
+    state.speechCanvas = canvas;
+    state.speechTexture = texture;
+    state.speechSprite = sprite;
+    return sprite;
+  };
+
+  const drawSpeech = (state, text) => {
+    const sprite = ensureSpeechSprite(state);
+    const canvas = state.speechCanvas;
+    const context = canvas?.getContext?.("2d");
+    if (!sprite || !context) return false;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(5,18,28,0.90)";
+    context.strokeStyle = state.type === "npc_translucent"
+      ? "rgba(125,231,255,0.95)"
+      : "rgba(255,196,110,0.95)";
+    context.lineWidth = 6;
+    context.beginPath();
+    if (typeof context.roundRect === "function") context.roundRect(8, 8, 752, 142, 28);
+    else context.rect(8, 8, 752, 142);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#f1fbff";
+    context.font = "600 42px system-ui, sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    const safe = String(text || "").slice(0, 54);
+    context.fillText(safe, canvas.width / 2, 78, 720);
+    state.speechTexture.needsUpdate = true;
+    sprite.visible = true;
+    return true;
+  };
+
+  const presentSpeech = (state, text, elapsed, duration = 3.8, emitDialogue = true) => {
+    const message = String(text || "⋔ ⌁ ∆ ⟟");
+    state.speechUntil = elapsed + Math.max(1.2, Number(duration) || 3.8);
+    drawSpeech(state, message);
+    rootEvent(state.root, "bluefox:npc-speech", {
+      type: state.type,
+      civilizationId: civilizationIdForType(state.type),
+      text: message
+    });
+    if (emitDialogue) {
+      const eventType = BF.ObjectEvents?.types?.NPC_DIALOGUE;
+      if (eventType && BF.ObjectEvents?.emit) {
+        BF.ObjectEvents.emit(eventType, state.root, {
+          civilizationId: civilizationIdForType(state.type),
+          cuoType: state.type,
+          mapId: BF.currentEngine?.currentMapId || null,
+          state: "dialogue",
+          tags: ["npc_dialogue", "civilization", civilizationIdForType(state.type)],
+          text: message
+        });
+      }
+    }
+    return true;
+  };
+
+  const updateContactSession = (state, elapsed) => {
+    const engine = BF.currentEngine;
+    const object = engine?.pendingInteraction;
+    const anchor = object?.userData?.worldAnchor || object;
+    const profile = object?.userData?.interactionProfile;
+    const action = String(profile?.action || "").toLowerCase();
+    const activeContact = Boolean(
+      object && anchor === state.root && engine?.interactionStartedAt &&
+      (action === "contact" || action === "talk")
+    );
+    if (!activeContact) {
+      if (state.contactToken) {
+        state.contactToken = 0;
+        if (state.contactControlled) {
+          state.contactControlled = false;
+          state.controlled = false;
+          state.nextIdleChangeAt = elapsed;
+        }
+      }
+      if (state.speechSprite && elapsed >= state.speechUntil) state.speechSprite.visible = false;
+      return false;
+    }
+    const token = Number(engine.interactionStartedAt) || 1;
+    if (state.contactToken === token) return true;
+    state.contactToken = token;
+    state.contactControlled = true;
+    changeState(state, "dialogue", elapsed, true);
+    const civilizationId = civilizationIdForType(state.type);
+    const eventType = BF.ObjectEvents?.types?.NPC_CONTACTED;
+    if (eventType && BF.ObjectEvents?.emit) {
+      BF.ObjectEvents.emit(eventType, object, {
+        civilizationId,
+        cuoType: state.type,
+        mapId: engine.currentMapId || null,
+        state: "contact",
+        interactionSource: object.userData?.requestedInteractionSource || "manual",
+        tags: ["npc_contact", "civilization", civilizationId]
+      });
+    }
+    if (!state.speechUntil || elapsed >= state.speechUntil) {
+      presentSpeech(state, "⌁ ⋔ … contact … ⧖", elapsed, 3.2, false);
+    }
+    return true;
   };
 
   const restoreObject = (snapshot) => {
@@ -138,6 +286,10 @@
     root.scale.copy(state.anchor.scale);
     restorePose(state);
     state.motion = null;
+    if (state.speechSprite) state.speechSprite.visible = false;
+    state.speechUntil = 0;
+    state.contactToken = 0;
+    state.contactControlled = false;
     return true;
   };
 
@@ -179,8 +331,11 @@
 
   const chooseState = (state, elapsed, distance) => {
     if (state.controlled) return;
+    const rank = updateRelationRank(state, elapsed);
     let next = state.state;
-    if (distance < 2.1) next = "vigilance";
+    if (rank === "honored" && distance < 5.5) next = "calm";
+    else if (rank === "friendly" && distance < 2.1) next = "calm";
+    else if (distance < 2.1) next = "vigilance";
     else if (distance < 5.5) next = "curiosity";
     else if (elapsed >= state.nextIdleChangeAt) {
       const choices = state.type === "npc_rocky"
@@ -499,8 +654,11 @@
   const update = (state, elapsed) => {
     if (!state.enabled || !state.root.parent || state.root.visible === false) return;
     const distance = distanceToPlayer(state.root);
+    updateRelationRank(state, elapsed);
+    updateContactSession(state, elapsed);
     chooseState(state, elapsed, distance);
     updateMotion(state, elapsed);
+    if (state.speechSprite && elapsed >= state.speechUntil) state.speechSprite.visible = false;
     if (state.type === "npc_translucent") updateTranslucent(state, elapsed, distance);
     else updateRocky(state, elapsed, distance);
   };
@@ -551,6 +709,8 @@
         stateSince: state.stateSince,
         controlled: state.controlled,
         moving: Boolean(state.motion),
+        relationRank: state.relationRank,
+        civilizationId: civilizationIdForType(state.type),
         enabled: state.enabled
       }) : null;
     },
@@ -599,12 +759,18 @@
       dz = dz / length * distance;
       return this.moveLocal(root, dx, dz, { state: "flee", autoRelease: true });
     },
-    speak(root, text = "⋔ ⌁ ∆ ⟟") {
+    speak(root, text = "⋔ ⌁ ∆ ⟟", options = {}) {
       const state = states.get(root);
       if (!state) return false;
-      changeState(state, "dialogue", nowSeconds() - startedAt, true);
-      rootEvent(root, "bluefox:npc-speech", { type: state.type, text: String(text || "") });
-      return true;
+      const elapsed = nowSeconds() - startedAt;
+      changeState(state, "dialogue", elapsed, true);
+      return presentSpeech(
+        state,
+        text,
+        elapsed,
+        Number(options.duration) || 3.8,
+        options.emitDialogue !== false
+      );
     },
     setEnabled(root, enabled) {
       const state = states.get(root);
