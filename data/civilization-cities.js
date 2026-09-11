@@ -22,6 +22,20 @@
           civilizationId: "translucent",
           fixedCityMerchant: true
         })
+      }),
+      Object.freeze({
+        type: "npc_translucent",
+        position: Object.freeze([-24, 0, -8]),
+        rotation: Math.PI * 0.35,
+        instanceId: "civilization-resident-1:translucent:custom-map-31-tinycity",
+        userData: Object.freeze({ npcRole: "resident", civilizationId: "translucent" })
+      }),
+      Object.freeze({
+        type: "npc_translucent",
+        position: Object.freeze([-17, 0, -27]),
+        rotation: -Math.PI * 0.4,
+        instanceId: "civilization-resident-2:translucent:custom-map-31-tinycity",
+        userData: Object.freeze({ npcRole: "resident", civilizationId: "translucent" })
       })
     ]);
   }
@@ -304,6 +318,34 @@
         "npcRole": "merchant",
         "civilizationId": "rocky",
         "fixedCityMerchant": true
+      }
+    },
+    {
+      "type": "npc_rocky",
+      "position": [
+        -6,
+        0,
+        12
+      ],
+      "rotation": 1.047198,
+      "instanceId": "civilization-resident-1:rocky:custom-map-32-rock-village",
+      "userData": {
+        "npcRole": "resident",
+        "civilizationId": "rocky"
+      }
+    },
+    {
+      "type": "npc_rocky",
+      "position": [
+        18,
+        0,
+        -10
+      ],
+      "rotation": -0.785398,
+      "instanceId": "civilization-resident-2:rocky:custom-map-32-rock-village",
+      "userData": {
+        "npcRole": "resident",
+        "civilizationId": "rocky"
       }
     }
   ],

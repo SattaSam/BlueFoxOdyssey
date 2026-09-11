@@ -70,12 +70,12 @@
     const membrane = new THREE.MeshPhysicalMaterial({
       color: variant % 2 ? 0xbff7ff : 0xa8e9ff,
       emissive: 0x195f82,
-      emissiveIntensity: 0.48,
+      emissiveIntensity: 0.62,
       transparent: true,
-      opacity: 0.47,
-      transmission: 0.38,
-      thickness: 0.18,
-      roughness: 0.28,
+      opacity: 0.64,
+      transmission: 0.18,
+      thickness: 0.28,
+      roughness: 0.34,
       metalness: 0.01,
       side: THREE.DoubleSide,
       depthWrite: false

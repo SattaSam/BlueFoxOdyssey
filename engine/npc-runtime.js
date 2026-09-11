@@ -7,7 +7,7 @@
     return;
   }
 
-  const VERSION = "P2.2.2-r8-npc-grounding-r43";
+  const VERSION = "P2.2.2-r10-npc-relational-approach";
   const NPC_TYPES = new Set(["npc_translucent", "npc_rocky"]);
   const CIVILIZATION_BY_TYPE = Object.freeze({
     npc_translucent: "translucent",
@@ -139,6 +139,9 @@
       relationalClosureSpeed: 0,
       cautiousSince: 0,
       cautiousEmitted: false,
+      relationalFleeUntil: 0,
+      relationalFleeEmitted: false,
+      relationalReactionControlled: false,
       speechSprite: null,
       speechCanvas: null,
       speechTexture: null,
@@ -165,6 +168,7 @@
       encounterId: Number(extra.encounterId ?? state.relationalEncounterId) || 1,
       behaviorSignature: String(extra.behaviorSignature || normalizedReaction),
       durationSeconds: Number(extra.durationSeconds) || 0,
+      closureSpeed: Number(extra.closureSpeed) || 0,
       tags: [
         "npc_reaction",
         "civilization",
@@ -412,13 +416,16 @@
 
 
   const updateRelationalApproach = (state, elapsed, distance) => {
-    if (!Number.isFinite(distance)) return false;
+    if (!Number.isFinite(distance)) return { threat: false, cautious: false };
+
     const resetDistance = 12;
     if (distance >= resetDistance) {
       if (state.relationalEncounterOpen) state.relationalEncounterId += 1;
       state.relationalEncounterOpen = false;
       state.cautiousSince = 0;
       state.cautiousEmitted = false;
+      state.relationalFleeEmitted = false;
+      state.relationalFleeUntil = 0;
     } else {
       state.relationalEncounterOpen = true;
     }
@@ -426,30 +433,62 @@
     if (!Number.isFinite(state.lastRelationalDistance)) {
       state.lastRelationalDistance = distance;
       state.lastRelationalDistanceAt = elapsed;
-      return false;
+      return { threat: false, cautious: false };
     }
+
     const dt = Math.max(0.001, elapsed - Number(state.lastRelationalDistanceAt || elapsed));
     const closure = (Number(state.lastRelationalDistance) - distance) / dt;
     state.relationalClosureSpeed = state.relationalClosureSpeed * 0.55 + closure * 0.45;
     state.lastRelationalDistance = distance;
     state.lastRelationalDistanceAt = elapsed;
 
+    // Une interaction réelle ou un mouvement PNJ déjà engagé ne doit pas être
+    // requalifié à partir de sa propre variation de distance.
+    if (
+      state.contactControlled ||
+      state.motion ||
+      (state.controlled && !state.relationalReactionControlled)
+    ) {
+      state.cautiousSince = 0;
+      return { threat: false, cautious: state.cautiousEmitted };
+    }
+
     const inRespectBand = distance >= 4 && distance <= 8;
     const nearlyStill = Math.abs(state.relationalClosureSpeed) <= 0.14;
-    if (!inRespectBand || !nearlyStill) {
-      if (!state.cautiousEmitted) state.cautiousSince = 0;
-      return false;
+    if (inRespectBand && nearlyStill) {
+      state.cautiousSince ||= elapsed;
+      if (!state.cautiousEmitted && elapsed - state.cautiousSince >= 1.25) {
+        state.cautiousEmitted = emitNpcReaction(state, "cautious_approach", "relational-approach", {
+          distance,
+          encounterId: state.relationalEncounterId,
+          durationSeconds: elapsed - state.cautiousSince,
+          behaviorSignature: "cautious_approach",
+          closureSpeed: state.relationalClosureSpeed,
+          tags: ["cautious_approach", "no_flee", "relational_behavior"]
+        });
+      }
+    } else if (!state.cautiousEmitted) {
+      state.cautiousSince = 0;
     }
-    state.cautiousSince ||= elapsed;
-    if (state.cautiousEmitted || elapsed - state.cautiousSince < 1.25) return false;
-    state.cautiousEmitted = emitNpcReaction(state, "cautious_approach", "relational-approach", {
-      distance,
-      encounterId: state.relationalEncounterId,
-      durationSeconds: elapsed - state.cautiousSince,
-      behaviorSignature: "cautious_approach",
-      tags: ["cautious_approach", "no_flee", "relational_behavior"]
-    });
-    return state.cautiousEmitted;
+
+    // Réutilisation du contrat FAU : rapprochement rapide + intrusion proche.
+    // Une approche prudente déjà qualifiée augmente la tolérance avant fuite.
+    const threatDistance = state.cautiousEmitted ? 2.5 : 3.5;
+    const threatSpeed = state.cautiousEmitted ? 2.8 : 1.05;
+    const rapidThreat =
+      distance < threatDistance &&
+      state.relationalClosureSpeed >= threatSpeed;
+    const closeIntrusion =
+      !state.cautiousEmitted &&
+      distance < 2.2;
+
+    return {
+      threat: rapidThreat || closeIntrusion,
+      cautious: state.cautiousEmitted,
+      rapidThreat,
+      closeIntrusion,
+      closureSpeed: state.relationalClosureSpeed
+    };
   };
 
   const chooseState = (state, elapsed, distance) => {
@@ -600,12 +639,13 @@
       const elbowBase = baseOf(state, elbow);
       const plateBase = baseOf(state, plate);
       if (!elbowBase || !plateBase) return;
-      const microX = plate.position.x - plateBase.position.x;
+      // Les plaques de coude restent attachées à la sphère d'articulation.
+      // X/Z repartent toujours de l'offset capturé à l'enregistrement : aucune dérive cumulative.
+      // Y conserve uniquement la micro-animation recalculée depuis la base à chaque frame.
       const microY = plate.position.y - plateBase.position.y;
-      const microZ = plate.position.z - plateBase.position.z;
-      plate.position.x = elbow.position.x + (plateBase.position.x - elbowBase.position.x) + microX;
+      plate.position.x = elbow.position.x + (plateBase.position.x - elbowBase.position.x);
       plate.position.y = elbow.position.y + (plateBase.position.y - elbowBase.position.y) + microY;
-      plate.position.z = elbow.position.z + (plateBase.position.z - elbowBase.position.z) + microZ;
+      plate.position.z = elbow.position.z + (plateBase.position.z - elbowBase.position.z);
     });
   };
 
@@ -902,7 +942,25 @@
     const distance = distanceToPlayer(state.root);
     updateRelationRank(state, elapsed);
     updateContactSession(state, elapsed);
-    updateRelationalApproach(state, elapsed, distance);
+    const approach = updateRelationalApproach(state, elapsed, distance);
+    if (
+      approach.threat &&
+      elapsed >= state.relationalFleeUntil &&
+      !state.contactControlled &&
+      !state.motion
+    ) {
+      state.relationalFleeUntil = elapsed + 2.6;
+      if (!state.relationalFleeEmitted) {
+        state.relationalFleeEmitted = emitNpcReaction(state, "flee", "relational-approach", {
+          distance,
+          encounterId: state.relationalEncounterId,
+          behaviorSignature: "flee",
+          closureSpeed: approach.closureSpeed,
+          tags: ["flee", "intrusive_approach", "relational_behavior"]
+        });
+      }
+      BF.NpcRuntime?.fleeFromPlayer?.(state.root, 3.5);
+    }
     chooseState(state, elapsed, distance);
     updateMotion(state, elapsed);
     if (state.speechSprite && elapsed >= state.speechUntil) state.speechSprite.visible = false;
@@ -965,12 +1023,14 @@
       const state = states.get(root);
       if (!state || !ALLOWED_STATES.has(nextState)) return false;
       state.motion = null;
+      state.relationalReactionControlled = false;
       return changeState(state, nextState, nowSeconds() - startedAt, true);
     },
     releaseState(root) {
       const state = states.get(root);
       if (!state) return false;
       state.controlled = false;
+      state.relationalReactionControlled = false;
       state.motion = null;
       state.nextIdleChangeAt = nowSeconds() - startedAt;
       return true;
@@ -978,6 +1038,7 @@
     moveLocal(root, dx = 0, dz = 0, options = {}) {
       const state = states.get(root);
       if (!state) return false;
+      state.relationalReactionControlled = false;
       const distance = Math.hypot(Number(dx) || 0, Number(dz) || 0);
       const maxDistance = Math.max(0.25, Math.min(4.5, Number(options.maxDistance) || 4.5));
       const scale = distance > maxDistance ? maxDistance / distance : 1;
@@ -1055,9 +1116,11 @@
       const reaction = candidates[Math.floor(Math.random() * candidates.length)];
       const distance = distanceToPlayer(root);
       if (reaction === "flee") {
+        state.relationalReactionControlled = false;
         this.fleeFromPlayer(root, Math.max(2.8, Number(options.fleeDistance) || 3.5));
       } else {
         state.motion = null;
+        state.relationalReactionControlled = true;
         changeState(state, reaction, nowSeconds() - startedAt, true);
       }
       emitNpcReaction(state, reaction, options.cause || "approach", {
@@ -1077,6 +1140,7 @@
       const state = states.get(root);
       if (!state) return false;
       const elapsed = nowSeconds() - startedAt;
+      state.relationalReactionControlled = false;
       changeState(state, "dialogue", elapsed, true);
       return presentSpeech(
         state,

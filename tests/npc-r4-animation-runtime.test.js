@@ -73,5 +73,13 @@ assert(rockFore.rotation.z>0 && Math.abs(rockFore.rotation.z-Math.PI/2)<.6,'Rock
 assert(Math.abs(rockElbow.position.x-rockEx)>.01,'Rocky elbow follows animated upper arm');
 assert(Math.abs(elbowPlateR.position.x-plateRx)>.005,'Rocky right elbow plate follows its joint');
 assert(Math.abs(elbowPlateL.position.x-plateLx)>.002,'Rocky left elbow plate follows its joint');
+const elbowL=rock.c.find(x=>x.name==='RockyElbow'&&x.userData.side===-1);
+const fixedR={x:elbowPlateR.position.x-rockElbow.position.x,z:elbowPlateR.position.z-rockElbow.position.z};
+const fixedL={x:elbowPlateL.position.x-elbowL.position.x,z:elbowPlateL.position.z-elbowL.position.z};
+for(let i=0;i<160;i++){ now=6000+i*33; const frame=queue.shift(); assert(frame,'runtime frame remains scheduled'); frame(); }
+assert(Math.abs((elbowPlateR.position.x-rockElbow.position.x)-fixedR.x)<1e-9,'Rocky right elbow plate has zero cumulative X drift');
+assert(Math.abs((elbowPlateR.position.z-rockElbow.position.z)-fixedR.z)<1e-9,'Rocky right elbow plate has zero cumulative Z drift');
+assert(Math.abs((elbowPlateL.position.x-elbowL.position.x)-fixedL.x)<1e-9,'Rocky left elbow plate has zero cumulative X drift');
+assert(Math.abs((elbowPlateL.position.z-elbowL.position.z)-fixedL.z)<1e-9,'Rocky left elbow plate has zero cumulative Z drift');
 
 console.log('PASS npc-r4-animation-runtime');

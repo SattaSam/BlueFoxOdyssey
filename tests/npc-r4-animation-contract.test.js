@@ -22,7 +22,7 @@ assert((city.match(/position: Object\.freeze\(\[-36, 0, -20\]\)/g)||[]).length==
 assert(rt.includes('state.lookBlend += (strength - state.lookBlend) * 0.18'),'player tracking response amplified');
 for(const action of ['rest','calm','vigilance','dialogue','track','flee','return']) assert(map.includes(`data-npc-test="${action}"`),`MAP_Test control missing ${action}`);
 assert(map.includes('Joueur test en orbite'),'MAP_Test tracking demo present');
-assert(cuo.includes('../engine/object-library-p2-1.js?v=npc-r43-grounding') && cuo.includes('../engine/npc-runtime.js?v=npc-r43-grounding'),'CUO Lab must load current NPC visual/runtime assets');
+assert(cuo.includes('../engine/object-library-p2-1.js?v=npc-r45-relational-visibility') && cuo.includes('../engine/npc-runtime.js?v=npc-r45-relational-visibility'),'CUO Lab must load current NPC visual/runtime assets');
 assert(rt.includes('npcMissionContactMode'),'ARCH-R5 contact mode producer preserved');
 assert(rt.includes('emitNpcReaction'),'ARCH-R5 NPC reaction producer preserved');
 assert(rt.includes('reactToApproach(root, options = {})'),'ARCH-R5 approach reaction API preserved');

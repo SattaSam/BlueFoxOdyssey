@@ -12,8 +12,8 @@ assert(rt.includes('RuntimeBudget.shouldUpdate(root, "npc", elapsed)'),'RuntimeB
 assert(rt.includes('BF.PassiveObjectRuntime?.setEnabled?.(root, false)'),'PassiveObjectRuntime exclusion preserved');
 assert(rt.includes('bluefox:npc-state'),'historical state event preserved');
 assert(rt.includes('bluefox:npc-speech'),'speech event present');
-assert(html.includes('../engine/npc-runtime.js?v=npc-r43-grounding'),'CUO validation uses current NpcRuntime');
-assert(html.includes('../engine/object-library-p2-1.js?v=npc-r43-grounding'),'CUO validation uses current P2.1 models');
+assert(html.includes('../engine/npc-runtime.js?v=npc-r45-relational-visibility'),'CUO validation uses current NpcRuntime');
+assert(html.includes('../engine/object-library-p2-1.js?v=npc-r45-relational-visibility'),'CUO validation uses current P2.1 models');
 assert(html.includes('BF.NpcRuntime.moveLocal') && html.includes('BF.NpcRuntime.speak'),'CUO controls consume owner API');
 assert(html.includes('NPC-R1 · Validation animations'),'CUO validation panel present');
 assert(!rt.includes('PathPlanner') && !rt.includes('MissionManager'),'R1 does not create navigation/mission coupling');
