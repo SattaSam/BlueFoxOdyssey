@@ -67,16 +67,28 @@
     const root = new THREE.Group();
     root.name = "NpcTranslucentP21";
 
-    const membrane = new THREE.MeshPhysicalMaterial({
+    // Structure porteuse : translucide mais avec écriture de profondeur stable.
+    // Pas de transmission optique : on garde la silhouette sans effet verre qui disparaît selon l’angle.
+    const bodySurface = new THREE.MeshStandardMaterial({
+      color: variant % 2 ? 0x9be8f4 : 0x86deec,
+      emissive: 0x0b3440,
+      emissiveIntensity: 0.08,
+      transparent: true,
+      opacity: 0.32,
+      roughness: 0.26,
+      metalness: 0.01,
+      side: THREE.DoubleSide,
+      depthWrite: true
+    });
+    // Membranes décoratives : restent nettement plus translucides que le corps.
+    const membrane = new THREE.MeshStandardMaterial({
       color: variant % 2 ? 0xbff7ff : 0xa8e9ff,
       emissive: 0x195f82,
-      emissiveIntensity: 0.62,
+      emissiveIntensity: 0.16,
       transparent: true,
-      opacity: 0.64,
-      transmission: 0.18,
-      thickness: 0.28,
-      roughness: 0.34,
-      metalness: 0.01,
+      opacity: 0.20,
+      roughness: 0.44,
+      metalness: 0,
       side: THREE.DoubleSide,
       depthWrite: false
     });
@@ -103,7 +115,7 @@
       [0.16, 0.0], [0.27, 0.18], [0.25, 0.46], [0.34, 0.75],
       [0.3, 1.04], [0.44, 1.31], [0.48, 1.55], [0.34, 1.79], [0.2, 1.98]
     ].map(([x, y]) => new THREE.Vector2(x, y));
-    const torso = new THREE.Mesh(new THREE.LatheGeometry(torsoShape, 22), membrane);
+    const torso = new THREE.Mesh(new THREE.LatheGeometry(torsoShape, 22), bodySurface);
     torso.name = "TranslucentTorsoFine";
     torso.position.y = 1.15;
     torso.scale.set(0.84, 1, 0.62);
@@ -115,11 +127,11 @@
     sternum.scale.set(0.62, 1.55, 0.52);
     root.add(sternum);
 
-    const neck = taperedLimb(THREE, 0.14, 0.105, 0.48, membrane, 9);
+    const neck = taperedLimb(THREE, 0.14, 0.105, 0.48, bodySurface, 9);
     neck.position.y = 3.24;
     root.add(neck);
 
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.48, 3), membrane);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.48, 3), bodySurface);
     head.name = "TranslucentHeadFine";
     head.position.set(0.06, 3.72, 0);
     head.scale.set(0.64, 1.04, 0.68);
@@ -139,14 +151,14 @@
       eye.scale.set(0.65, 1.12, 0.55);
       root.add(eye);
 
-      const shoulder = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 2), membrane);
+      const shoulder = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 2), bodySurface);
       shoulder.name = "TranslucentShoulder";
       shoulder.userData.side = side;
       shoulder.position.set(0, 2.82, side * 0.48);
       shoulder.scale.set(1.15, 0.55, 0.66);
       root.add(shoulder);
 
-      const upperArm = taperedLimb(THREE, 0.125, 0.075, 0.82, membrane, 9);
+      const upperArm = taperedLimb(THREE, 0.125, 0.075, 0.82, bodySurface, 9);
       upperArm.name = "TranslucentUpperArm";
       upperArm.userData.side = side;
       upperArm.position.set(0.01, 2.39, side * 0.54);
@@ -161,7 +173,7 @@
         "TranslucentElbow", side
       );
 
-      const forearm = taperedLimb(THREE, 0.09, 0.045, 0.88, membrane, 8);
+      const forearm = taperedLimb(THREE, 0.09, 0.045, 0.88, bodySurface, 8);
       forearm.name = "TranslucentForearm";
       forearm.userData.side = side;
       forearm.position.set(0.05, 1.53, side * 0.61);
@@ -175,7 +187,7 @@
       handAnchor.position.set(0.08, 1.06, side * 0.63);
       root.add(handAnchor);
 
-      const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1), membrane);
+      const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1), bodySurface);
       hand.name = "TranslucentHand";
       hand.userData.side = side;
       hand.position.set(0, 0, 0);
@@ -192,7 +204,7 @@
         handAnchor.add(digit);
       });
 
-      const thigh = taperedLimb(THREE, 0.17, 0.105, 0.86, membrane, 10);
+      const thigh = taperedLimb(THREE, 0.17, 0.105, 0.86, bodySurface, 10);
       thigh.name = "TranslucentThigh";
       thigh.userData.side = side;
       thigh.position.set(-0.02, 0.77, side * 0.22);
@@ -206,14 +218,14 @@
         "TranslucentKnee", side
       );
 
-      const shin = taperedLimb(THREE, 0.105, 0.052, 0.82, membrane, 8);
+      const shin = taperedLimb(THREE, 0.105, 0.052, 0.82, bodySurface, 8);
       shin.name = "TranslucentShin";
       shin.userData.side = side;
       shin.position.set(0.08, -0.16, side * 0.22);
       shin.rotation.z = -0.04;
       root.add(shin);
 
-      const foot = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 1), membrane);
+      const foot = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 1), bodySurface);
       foot.name = "TranslucentFoot";
       foot.userData.side = side;
       foot.position.set(0.23, -0.61, side * 0.22);

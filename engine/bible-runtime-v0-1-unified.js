@@ -3671,23 +3671,40 @@
       const mission = this.byId.get(missionId);
       if (!mission) return true;
       const standaloneConsumes = this.standaloneInventoryConsumeMission(mission);
-      if (!mission.completionGate && !standaloneConsumes) return true;
-
       const establish = this.constructionPlacementEffect(mission);
+      if (!mission.completionGate && !standaloneConsumes && !establish) return true;
+
       if (establish) {
         const kind = lower(establish.kind);
-        const mapId = this.missionTargetMapId(mission);
-        const site = mapId ? this.siteBucket(mapId)?.[kind] : null;
-        const established =
+        const mapId =
+          this.missionTargetMapId(mission) ||
+          (!mission.completionGate ? String(BF.currentEngine?.currentMapId || "") : "");
+        const currentSite = () => mapId ? this.siteBucket(mapId)?.[kind] : null;
+        const isEstablished = (site) =>
           Boolean(site) &&
           String(site.mapId || "") === mapId &&
           String(site.missionId || "") === String(mission.id || "");
 
         // Pour une construction répétable, un ancien gate/receipt ne constitue
         // jamais une preuve de fin : le site réel de CETTE mission doit exister.
-        if (!established) {
+        if (!isEstablished(currentSite())) {
           delete this.state.gatesSatisfied[mission.id];
-          return false;
+
+          // Les constructions qui portent un completionGate conservent leur
+          // parcours existant (retour de map / placement joueur ou autonomie).
+          if (mission.completionGate) return false;
+
+          // Une construction missionnelle sans gate (T03 et futurs équivalents)
+          // reste atomique : ressources -> spawn -> consommation -> persistance.
+          if (!this.inventoryEffectsReady(mission)) {
+            const resourceStatus = this.constructionResourceStatus(mission);
+            this.pendingConstructionResourceMissions.add(mission.id);
+            this.publishConstructionResourceStatus(mission, resourceStatus);
+            return false;
+          }
+          this.pendingConstructionResourceMissions.delete(mission.id);
+          if (!this.applyEffects(mission, { source: "mission-completion" })) return false;
+          if (!isEstablished(currentSite())) return false;
         }
 
         if (!this.state.gatesSatisfied[mission.id]) {
@@ -3724,7 +3741,11 @@
       const manager = this.manager();
       if (!manager) return false;
       const waiting = this.allMissions().some((mission) => {
-        if (!mission.completionGate && !this.standaloneInventoryConsumeMission(mission)) {
+        if (
+          !mission.completionGate &&
+          !this.standaloneInventoryConsumeMission(mission) &&
+          !this.constructionPlacementEffect(mission)
+        ) {
           return false;
         }
         const lifecycle = manager.memory?.state?.missionLifecycle?.[mission.id];
@@ -3746,7 +3767,8 @@
     completionGateState(missionId) {
       const mission = this.byId.get(missionId);
       const standaloneConsumes = this.standaloneInventoryConsumeMission(mission);
-      if (!mission?.completionGate && !standaloneConsumes) {
+      const establish = this.constructionPlacementEffect(mission);
+      if (!mission?.completionGate && !standaloneConsumes && !establish) {
         return { managed: false, canFinalize: true, message: "" };
       }
       const canFinalize = this.canFinalizeMission(missionId);
