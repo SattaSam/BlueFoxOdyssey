@@ -2,6 +2,59 @@
   "use strict";
   const BF = global.BlueFox3D = global.BlueFox3D || {};
 
+  const SCIENTIFIC_EXPERIMENTS = Object.freeze([
+    Object.freeze({
+      id: "biology", label: "Biologie", axis: "research",
+      stages: Object.freeze([
+        Object.freeze({ stage: 1, location: "camp", title: "Comparer des échantillons biologiques", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 10 }), Object.freeze({ inventoryKey: "fiber", quantity: 5 })]), narratives: Object.freeze(["Les tissus réagissent différemment. Je garde la comparaison, même si le résultat reste imparfait.", "Cette combinaison est plus stable que prévu. J'ai une base biologique exploitable."]) }),
+        Object.freeze({ stage: 2, location: "camp", title: "Tester conservation et compatibilité", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 12 }), Object.freeze({ inventoryKey: "fiber", quantity: 2 })]), narratives: Object.freeze(["La conservation modifie la réponse des tissus. C'est utile, même sans résultat parfait.", "La compatibilité tient assez longtemps pour être mesurée proprement."]) }),
+        Object.freeze({ stage: 3, location: "camp", title: "Stabiliser une association biologique", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 15 })]), knowledge: Object.freeze({ id: "biology_applied", label: "Biologie appliquée" }), narratives: Object.freeze(["Trois essais cohérents : je comprends mieux comment stabiliser ces ressources vivantes.", "Cette fois la logique biologique est assez claire pour guider une préparation réelle."]) }),
+        Object.freeze({ stage: 4, location: "workbench", title: "Mesurer un échange vivant-minéral", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 6 }), Object.freeze({ inventoryKey: "crystal", quantity: 4 }), Object.freeze({ inventoryKey: "parts", quantity: 2 })]), narratives: Object.freeze(["L'échange existe, mais il reste instable. L'établi me permet enfin de le mesurer.", "Le vivant et le cristal ne réagissent pas au hasard. Il y a une signature reproductible."]) }),
+        Object.freeze({ stage: 5, location: "workbench", title: "Confirmer une symbiose énergétique", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 10 }), Object.freeze({ inventoryKey: "crystal", quantity: 5 })]), knowledge: Object.freeze({ id: "biotic_energy_symbiosis", label: "Symbiose énergétique" }), narratives: Object.freeze(["La relation tient. Le vivant peut participer à un échange énergétique mesurable.", "Je peux désormais relier certaines réponses biologiques aux signatures énergétiques du monde."]) })
+      ])
+    }),
+    Object.freeze({
+      id: "geology", label: "Géologie", axis: "research",
+      stages: Object.freeze([
+        Object.freeze({ stage: 1, location: "camp", title: "Comparer trois familles minérales", requirements: Object.freeze([Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 }), Object.freeze({ inventoryKey: "azure_ferrite", quantity: 4 }), Object.freeze({ inventoryKey: "resonant_basalt", quantity: 4 })]), narratives: Object.freeze(["Les trois minerais ne réagissent pas de la même manière. C'est déjà une information utile.", "Le contraste entre les échantillons est net. Je peux commencer à les classer par comportement."]) }),
+        Object.freeze({ stage: 2, location: "camp", title: "Comparer roche, cristal et minerai rare", requirements: Object.freeze([Object.freeze({ inventoryKey: "magnetic_ore", quantity: 5 }), Object.freeze({ inventoryKey: "crystal", quantity: 5 }), Object.freeze({ inventoryKey: "stellar_iridium", quantity: 4 })]), narratives: Object.freeze(["Le cristal amplifie certaines différences entre les minerais.", "La structure rare répond autrement. Je dois cesser de traiter tous les minerais comme une seule famille."]) }),
+        Object.freeze({ stage: 3, location: "camp", title: "Caractériser un matériau magnétique", requirements: Object.freeze([Object.freeze({ inventoryKey: "magnetic_ore", quantity: 6 }), Object.freeze({ inventoryKey: "crystal", quantity: 4 }), Object.freeze({ inventoryKey: "azure_ferrite", quantity: 4 })]), knowledge: Object.freeze({ id: "materials_science", label: "Science des matériaux" }), narratives: Object.freeze(["Je commence à prévoir la réaction d'un matériau avant de le transformer.", "Trois séries suffisent : j'ai une vraie méthode de comparaison des matériaux."]) }),
+        Object.freeze({ stage: 4, location: "workbench", title: "Tester une résonance minérale contrôlée", requirements: Object.freeze([Object.freeze({ inventoryKey: "magnetic_ore", quantity: 5 }), Object.freeze({ inventoryKey: "resonant_basalt", quantity: 5 }), Object.freeze({ inventoryKey: "crystal", quantity: 3 })]), narratives: Object.freeze(["La résonance est faible mais mesurable. Sans l'établi, je l'aurais prise pour du bruit.", "Le basalte et le minerai magnétique se répondent sous contrainte contrôlée."]) }),
+        Object.freeze({ stage: 5, location: "workbench", title: "Relier structure profonde et énergie", requirements: Object.freeze([Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 }), Object.freeze({ inventoryKey: "resonant_basalt", quantity: 4 }), Object.freeze({ inventoryKey: "crystal", quantity: 4 })]), knowledge: Object.freeze({ id: "deep_geology", label: "Géologie profonde" }), narratives: Object.freeze(["Les signatures convergent : la géologie profonde participe au réseau énergétique.", "Je ne regarde plus seulement des roches isolées ; je commence à lire une structure planétaire."]) })
+      ])
+    }),
+    Object.freeze({
+      id: "construction", label: "Construction", axis: "research",
+      stages: Object.freeze([
+        Object.freeze({ stage: 1, location: "camp", title: "Tester un assemblage bois-fibres", requirements: Object.freeze([Object.freeze({ inventoryKey: "wood", quantity: 8 }), Object.freeze({ inventoryKey: "fiber", quantity: 6 })]), narratives: Object.freeze(["L'assemblage tient, mais les contraintes se concentrent toujours aux mêmes endroits.", "Bois et fibres suffisent pour tester une vraie logique de structure."]) }),
+        Object.freeze({ stage: 2, location: "camp", title: "Renforcer un assemblage simple", requirements: Object.freeze([Object.freeze({ inventoryKey: "wood", quantity: 6 }), Object.freeze({ inventoryKey: "fiber", quantity: 4 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 })]), narratives: Object.freeze(["Le renfort minéral change complètement la distribution des efforts.", "La structure gagne en rigidité sans devenir inutilement lourde."]) }),
+        Object.freeze({ stage: 3, location: "camp", title: "Définir une structure reproductible", requirements: Object.freeze([Object.freeze({ inventoryKey: "wood", quantity: 5 }), Object.freeze({ inventoryKey: "fiber", quantity: 5 }), Object.freeze({ inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 5 })]), knowledge: Object.freeze({ id: "structural_design", label: "Conception structurelle" }), narratives: Object.freeze(["Je peux maintenant raisonner en fonctions structurelles plutôt qu'en empilement de ressources.", "Trois essais cohérents : je sais définir une structure avant de la construire."]) }),
+        Object.freeze({ stage: 4, location: "workbench", title: "Tester un assemblage modulaire", requirements: Object.freeze([Object.freeze({ inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 6 }), Object.freeze({ inventoryKey: "parts", quantity: 4 }), Object.freeze({ inventoryKey: "fiber", quantity: 4 })]), narratives: Object.freeze(["Les pièces standardisées réduisent les faiblesses de l'assemblage.", "Avec l'établi, je peux enfin tester des modules plutôt qu'un bloc unique."]) }),
+        Object.freeze({ stage: 5, location: "workbench", title: "Valider une architecture modulaire", requirements: Object.freeze([Object.freeze({ inventoryKeys: Object.freeze(["azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 6 }), Object.freeze({ inventoryKey: "parts", quantity: 5 }), Object.freeze({ inventoryKey: "crystal", quantity: 3 })]), knowledge: Object.freeze({ id: "modular_architecture", label: "Architecture modulaire" }), narratives: Object.freeze(["La structure reste stable quand je remplace un module : c'est le principe qu'il me fallait.", "Je peux désormais concevoir une infrastructure comme un ensemble de fonctions remplaçables."]) })
+      ])
+    }),
+    Object.freeze({
+      id: "engineering", label: "Ingénierie", axis: "research",
+      stages: Object.freeze([
+        Object.freeze({ stage: 1, location: "camp", title: "Tester un assemblage électronique rudimentaire", requirements: Object.freeze([Object.freeze({ inventoryKey: "parts", quantity: 10 }), Object.freeze({ inventoryKeys: Object.freeze(["azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 6 })]), narratives: Object.freeze(["J'ai bien failli faire exploser l'assemblage. Mauvais résultat, excellente information.", "Le montage tient juste assez longtemps pour montrer quelles pièces ne doivent surtout pas être associées."]) }),
+        Object.freeze({ stage: 2, location: "camp", title: "Stabiliser un circuit minéral", requirements: Object.freeze([Object.freeze({ inventoryKey: "parts", quantity: 8 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 }), Object.freeze({ inventoryKey: "crystal", quantity: 3 })]), narratives: Object.freeze(["Le minerai magnétique stabilise une partie du signal, mais pas toute la chaîne.", "Le circuit devient assez régulier pour être comparé à une architecture réelle."]) }),
+        Object.freeze({ stage: 3, location: "camp", title: "Comprendre une architecture technique", requirements: Object.freeze([Object.freeze({ inventoryKey: "parts", quantity: 10 }), Object.freeze({ inventoryKey: "core", quantity: 2 }), Object.freeze({ inventoryKeys: Object.freeze(["azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 4 })]), knowledge: Object.freeze({ id: "reverse_engineering", label: "Rétro-ingénierie comprise" }), narratives: Object.freeze(["Je peux maintenant remonter d'un assemblage fonctionnel vers les choix qui l'ont rendu possible.", "Le noyau n'est plus une boîte noire : j'en distingue les fonctions et les contraintes."]) }),
+        Object.freeze({ stage: 4, location: "workbench", title: "Contrôler une architecture avancée", requirements: Object.freeze([Object.freeze({ inventoryKey: "parts", quantity: 8 }), Object.freeze({ inventoryKey: "core", quantity: 2 }), Object.freeze({ inventoryKey: "stellar_iridium", quantity: 4 })]), narratives: Object.freeze(["L'établi me permet de séparer les fonctions au lieu de bricoler tout le système d'un coup.", "L'iridium tient là où les assemblages précédents dérivaient."]) }),
+        Object.freeze({ stage: 5, location: "workbench", title: "Valider une ingénierie avancée", requirements: Object.freeze([Object.freeze({ inventoryKey: "parts", quantity: 8 }), Object.freeze({ inventoryKey: "core", quantity: 2 }), Object.freeze({ inventoryKey: "crystal", quantity: 2 }), Object.freeze({ inventoryKey: "resonant_basalt", quantity: 2 })]), knowledge: Object.freeze({ id: "advanced_engineering", label: "Ingénierie avancée" }), narratives: Object.freeze(["Je peux désormais combiner noyau, composants et matériaux résonants sans travailler à l'aveugle.", "Ce niveau d'ingénierie ouvre la voie aux systèmes anciens, mais ne suffit pas à les comprendre seul."]) })
+      ])
+    }),
+    Object.freeze({
+      id: "energy", label: "Énergie", axis: "research",
+      stages: Object.freeze([
+        Object.freeze({ stage: 1, location: "camp", title: "Tester un transfert énergétique simple", requirements: Object.freeze([Object.freeze({ inventoryKey: "crystal", quantity: 5 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 5 }), Object.freeze({ inventoryKey: "parts", quantity: 4 })]), narratives: Object.freeze(["Le transfert est bref, mais réel. Je peux mesurer quelque chose au lieu de seulement l'observer.", "Le cristal et le minerai magnétique forment une boucle imparfaite mais reproductible."]) }),
+        Object.freeze({ stage: 2, location: "camp", title: "Comparer transfert minéral et biologique", requirements: Object.freeze([Object.freeze({ inventoryKey: "crystal", quantity: 5 }), Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 5 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 })]), narratives: Object.freeze(["Le vivant perturbe le transfert, mais il ne l'annule pas.", "La réponse biologique suit une partie de la signature énergétique du cristal."]) }),
+        Object.freeze({ stage: 3, location: "camp", title: "Stabiliser un transfert contrôlé", requirements: Object.freeze([Object.freeze({ inventoryKey: "crystal", quantity: 6 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 }), Object.freeze({ inventoryKey: "parts", quantity: 4 })]), knowledge: Object.freeze({ id: "energy_control", label: "Maîtrise énergétique de base" }), narratives: Object.freeze(["Je sais maintenant provoquer et limiter un transfert énergétique simple.", "Trois séries cohérentes : je peux parler de maîtrise de base, pas seulement d'observation."]) }),
+        Object.freeze({ stage: 4, location: "workbench", title: "Tester un stockage intermédiaire", requirements: Object.freeze([Object.freeze({ inventoryKey: "crystal", quantity: 6 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 }), Object.freeze({ inventoryKey: "accumulator", quantity: 1 })]), narratives: Object.freeze(["L'accumulateur amortit le transfert et rend la mesure beaucoup plus propre.", "Pour la première fois, je peux séparer la production, le stockage et la restitution."]) }),
+        Object.freeze({ stage: 5, location: "workbench", title: "Confirmer une résonance énergétique", requirements: Object.freeze([Object.freeze({ inventoryKey: "crystal", quantity: 5 }), Object.freeze({ inventoryKey: "resonant_basalt", quantity: 5 }), Object.freeze({ inventoryKey: "magnetic_ore", quantity: 4 })]), knowledge: Object.freeze({ id: "energy_resonance", label: "Résonance énergétique" }), narratives: Object.freeze(["Les trois matériaux entrent dans une résonance stable. Ce n'est plus un accident local.", "Je peux désormais relier ces essais aux signatures énergétiques mesurées à l'échelle de la planète."]) })
+      ])
+    })
+  ]);
+
   const T01 = Object.freeze({
     id: "T01",
     title: "Reconnaître le Site du crash",
@@ -1710,6 +1763,7 @@
 
   const gameEngineering3 = Object.freeze({
     id: "GAME-engineering_3",
+    experimentalPrerequisites: Object.freeze(["materials_science"]),
     title: "Chauffer pour comprendre",
     description: "Utiliser le feu du camp pour tester l'effet de la chaleur sur des matériaux réels.",
     pattern: "SEQUENCE_ACTIONS",
@@ -1793,6 +1847,7 @@
 
   const gameEngineering5 = Object.freeze({
     id: "GAME-engineering_5",
+    experimentalPrerequisites: Object.freeze(["structural_design"]),
     title: "Concevoir un établi",
     description: "Formaliser le plan d'un véritable poste de travail après avoir constaté les limites du feu.",
     pattern: "SEQUENCE_ACTIONS",
@@ -2133,6 +2188,7 @@
 
   const ENE11 = Object.freeze({
     id: "ENE-11",
+    experimentalPrerequisites: Object.freeze(["energy_control"]),
     title: "Premier accumulateur",
     description: "Revenir à l’établi de Crystal, assembler un premier prototype avec des ressources réelles puis valider que la charge reste exploitable.",
     pattern: "SEQUENCE_ACTIONS",
@@ -2251,6 +2307,7 @@
 
   const ENE14 = Object.freeze({
     id: "ENE-14",
+    experimentalPrerequisites: Object.freeze(["biotic_energy_symbiosis", "deep_geology", "energy_resonance"]),
     title: "Le réseau énergétique planétaire",
     description: "Relier trois mesures de cristaux chargés, calibrer la lecture au Giant Tree puis formaliser la synthèse dans Recherche.",
     pattern: "SEQUENCE_ACTIONS",
@@ -2464,6 +2521,7 @@
 
   const DRN01 = Object.freeze({
     id: "DRN-01",
+    experimentalPrerequisites: Object.freeze(["reverse_engineering"]),
     title: "Comprendre le Scout",
     description: "Démonter intellectuellement le Scout déjà opérationnel afin de formaliser son architecture reproductible.",
     pattern: "SEQUENCE_ACTIONS",
@@ -5921,6 +5979,7 @@
 
   const SUR03 = Object.freeze({
     id: "SUR-03",
+    experimentalPrerequisites: Object.freeze(["biology_applied"]),
     title: "Composer une ration stable",
     description:
       "Comparer plusieurs plantes du Bosquet et confirmer une préparation alimentaire stable.",
@@ -8575,6 +8634,8 @@
     ...ENV_MAP_MISSIONS,
     ...ENV_WORLD_MISSIONS
   ]);
+
+  BF.BibleExperiments = SCIENTIFIC_EXPERIMENTS;
 
   BF.BibleRuntimeReference = Object.freeze({
     phase: "tutorial-rewards-reconnection",

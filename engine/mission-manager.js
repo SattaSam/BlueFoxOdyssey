@@ -214,16 +214,29 @@
     }
 
     startMission(missionId, options = {}) {
-      if (!this.definition(missionId)) return false;
+      const definition = this.definition(missionId);
+      if (!definition) return false;
       const prerequisites = Array.isArray(options.prerequisites)
         ? options.prerequisites.filter(Boolean)
         : [];
+      const experimentalPrerequisites = Array.isArray(options.experimentalPrerequisites)
+        ? options.experimentalPrerequisites.filter(Boolean)
+        : Array.isArray(definition.experimentalPrerequisites)
+          ? definition.experimentalPrerequisites.filter(Boolean)
+          : [];
       const missing = prerequisites.filter((id) =>
         this.memory.state.missionLifecycle?.[id]?.status !== "completed"
       );
-      if (missing.length) {
+      const missingExperimental = experimentalPrerequisites.filter((id) =>
+        BF.bibleRuntime?.isResearchRewardUnlocked?.(id) !== true
+      );
+      if (missing.length || missingExperimental.length) {
         this.memory.state.pendingActivations = this.memory.state.pendingActivations || {};
-        const pendingOptions = { ...options, prerequisites: undefined };
+        const pendingOptions = {
+          ...options,
+          prerequisites: undefined,
+          experimentalPrerequisites: undefined
+        };
         const existing = this.memory.state.pendingActivations[missionId] || null;
         const lifecycle = this.ensureLifecycle(missionId, "hidden");
         const sameList = (left, right) => {
@@ -231,10 +244,15 @@
           const b = [...new Set(Array.isArray(right) ? right : [])].sort();
           return a.length === b.length && a.every((value, index) => value === b[index]);
         };
+        const waitingFor = [
+          ...missing,
+          ...missingExperimental.map((id) => `research:${id}`)
+        ];
         const unchangedPending = Boolean(
           existing &&
           sameList(existing.prerequisites, prerequisites) &&
-          sameList(lifecycle.waitingFor, missing) &&
+          sameList(existing.experimentalPrerequisites, experimentalPrerequisites) &&
+          sameList(lifecycle.waitingFor, waitingFor) &&
           JSON.stringify(existing.options || {}) === JSON.stringify(pendingOptions) &&
           lifecycle.status === "hidden"
         );
@@ -243,11 +261,12 @@
         this.memory.state.pendingActivations[missionId] = {
           missionId,
           prerequisites,
+          experimentalPrerequisites,
           options: pendingOptions,
           requestedAt: existing?.requestedAt || Date.now()
         };
         lifecycle.status = "hidden";
-        lifecycle.waitingFor = missing;
+        lifecycle.waitingFor = waitingFor;
         this.memory.save();
         this.publish();
         return true;
@@ -1244,12 +1263,105 @@
       return changed;
     }
 
+    pendingExperimentalRequests() {
+      return Object.values(this.memory.state.pendingActivations || {})
+        .map((request) => {
+          const missingKnowledge = (request.experimentalPrerequisites || []).filter((id) =>
+            BF.bibleRuntime?.isResearchRewardUnlocked?.(id) !== true
+          );
+          if (!missingKnowledge.length) return null;
+          const definition = this.definition(request.missionId) || {};
+          const knowledge = missingKnowledge.map((id) => ({
+            id,
+            experiment: BF.Research?.experimentationForKnowledge?.(id) || null
+          }));
+          const nextExperiment = knowledge
+            .map((entry) => entry.experiment)
+            .filter(Boolean)
+            .sort((a, b) => Number(a.stage?.stage || 99) - Number(b.stage?.stage || 99))[0] || null;
+          const stageNumber = Number(nextExperiment?.stage?.stage) || 0;
+          const target = stageNumber >= 4 ? "workbench" : "camp";
+          return {
+            missionId: request.missionId,
+            missionTitle: definition.title || request.missionId,
+            missingKnowledge,
+            knowledge,
+            target,
+            axis: "research",
+            baseWeight: Math.max(8, Number(definition.priority) || 0),
+            requestedAt: Number(request.requestedAt) || 0
+          };
+        })
+        .filter(Boolean);
+    }
+
+    pendingExperimentationIntent() {
+      const candidates = this.pendingExperimentalRequests();
+      if (!candidates.length) return null;
+      const options = candidates.map((candidate) => ({
+        id: `pending-experiment:${candidate.missionId}`,
+        axis: "research",
+        baseWeight: candidate.baseWeight,
+        candidate
+      }));
+      const selected = BF.BAC?.weightedPick?.(options)?.candidate ||
+        candidates.sort((left, right) =>
+          right.baseWeight - left.baseWeight || left.requestedAt - right.requestedAt
+        )[0];
+      if (!selected) return null;
+      const knowledgeId = selected.missingKnowledge[0] || null;
+      const experiment = knowledgeId
+        ? BF.Research?.experimentationForKnowledge?.(knowledgeId) || null
+        : null;
+      return {
+        missionId: selected.missionId,
+        missionTitle: selected.missionTitle,
+        axis: "research",
+        target: selected.target,
+        knowledgeId,
+        knowledgeLabel: experiment?.knowledge?.label || knowledgeId,
+        experimentThemeId: experiment?.theme?.id || null,
+        experimentThemeLabel: experiment?.theme?.label || null,
+        requiredStage: Number(experiment?.stage?.stage) || null,
+        reason: selected.target === "workbench"
+          ? `Une expérimentation avancée à l’établi est nécessaire avant « ${selected.missionTitle} ».`
+          : `Une expérimentation au Camp est nécessaire avant « ${selected.missionTitle} ».`
+      };
+    }
+
+    pendingExperimentCatalogEntries() {
+      return this.pendingExperimentalRequests().map((request) => {
+        const lifecycle = this.ensureLifecycle(request.missionId, "hidden");
+        const knowledgeId = request.missingKnowledge[0] || null;
+        const experiment = knowledgeId
+          ? BF.Research?.experimentationForKnowledge?.(knowledgeId) || null
+          : null;
+        const stage = Number(experiment?.stage?.stage) || null;
+        const location = stage >= 4 ? "l’établi" : "le Camp";
+        const knowledgeLabel = experiment?.knowledge?.label || knowledgeId || "connaissance expérimentale";
+        return {
+          missionId: request.missionId,
+          title: request.missionTitle,
+          status: "available",
+          scope: this.definition(request.missionId)?.scope || "global",
+          progress: 0,
+          pendingExperimental: true,
+          waitingFor: [...(lifecycle.waitingFor || [])],
+          journalIntro: `Prérequis expérimental : obtenir « ${knowledgeLabel} » depuis Recherche, près de ${location}.`,
+          unlockHint: `Lancer les expérimentations ${experiment?.theme?.label || "scientifiques"} jusqu’au niveau ${stage || "requis"}.`
+        };
+      });
+    }
+
     reevaluatePendingActivations() {
       this.wakeIdleRetry();
       const ready = Object.values(this.memory.state.pendingActivations || {})
         .filter((request) =>
-          request.prerequisites.every((id) =>
+          (request.prerequisites || []).every((id) =>
             this.ensureLifecycle(id).status === "completed"
+          ) &&
+          (request.experimentalPrerequisites || []).every((id) =>
+            BF.bibleRuntime?.isResearchRewardUnlocked?.(id) === true
           )
         )
         .sort((left, right) => {
@@ -1711,7 +1823,8 @@
           available: [],
           tree: null,
           missions: [],
-          catalog: [],
+          catalog: this.pendingExperimentCatalogEntries(),
+          pendingExperimentationIntent: this.pendingExperimentationIntent(),
           inventory: { ...(BF.getProgressionState?.().inventory || {}) }
         };
       }
@@ -1769,7 +1882,8 @@
               `Cette mission est apparue lorsque ma progression a atteint un nouveau seuil. Je veux maintenant vérifier méthodiquement ce que ces découvertes rendent possible.`,
             discoveryReason: this.memory.state.missionLifecycle[id].discoveryReason,
             waitingFor: [...(this.memory.state.missionLifecycle[id].waitingFor || [])]
-          })),
+          })).concat(this.pendingExperimentCatalogEntries()),
+        pendingExperimentationIntent: this.pendingExperimentationIntent(),
         inventory: {
           ...(BF.getProgressionState?.().inventory || {})
         }

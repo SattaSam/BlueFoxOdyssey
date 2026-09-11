@@ -2573,6 +2573,7 @@
     if (!research?.list) return;
     const mapId = currentMapId(panel);
     const entries = research.list({ unlockedOnly: true });
+    const experimentStates = research.experimentationList?.() || [];
     const constructionEntries = entries.filter((entry) => entry.type === "research.blueprint");
     const states = constructionEntries.map((entry) => [
       entry.id,
@@ -2588,10 +2589,14 @@
       mapId,
       entries: entries.map((entry) => entry.id),
       states: states.map(([id, state]) => [id, state?.allowed, state?.active, state?.completed, state?.reason]),
-      craftStates
+      craftStates,
+      experiments: experimentStates.map((entry) => [
+        entry.id, entry.count, entry.canRun, entry.locationReady, entry.resourcesReady,
+        entry.nextStage?.stage || 0, entry.reason
+      ])
     });
     let section = panel.querySelector(".bluefox-research-runtime");
-    if (!entries.length) {
+    if (!entries.length && !experimentStates.length) {
       if (section) section.hidden = true;
       return;
     }
@@ -2607,13 +2612,52 @@
     section.replaceChildren();
     ensureResearchEnhancementStyles();
 
-    const heading = document.createElement("span");
-    heading.textContent = "PLANS ET RECETTES DÉBLOQUÉS";
-    const grid = document.createElement("div");
-    grid.className = "bluefox-research-grid";
-    section.append(heading, grid);
+    if (experimentStates.length) {
+      const experimentHeading = document.createElement("span");
+      experimentHeading.textContent = "EXPÉRIMENTATIONS SCIENTIFIQUES";
+      const experimentGrid = document.createElement("div");
+      experimentGrid.className = "bluefox-research-grid bluefox-experiment-grid";
+      section.append(experimentHeading, experimentGrid);
 
-    entries.forEach((entry) => {
+      experimentStates.forEach((state) => {
+        const card = document.createElement("article");
+        card.className = "bluefox-research-card bluefox-experiment-card";
+        const title = document.createElement("h3");
+        title.textContent = `${state.label} · ${state.count}/5`;
+        const description = document.createElement("p");
+        description.textContent = state.completed
+          ? "Axe expérimental maîtrisé."
+          : state.nextStage?.title || "Expérimentation terminée.";
+        const requirements = document.createElement("small");
+        requirements.textContent = (state.nextStage?.requirements || [])
+          .map((item) => `${item.quantity || 0} ${item.inventoryKey || item.inventoryKeys?.join("/") || "ressource"}`)
+          .join(" · ");
+        requirements.hidden = !requirements.textContent;
+        const status = document.createElement("small");
+        status.textContent = state.reason || "";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = state.completed
+          ? "Maîtrisé"
+          : "Lancer une expérimentation";
+        button.disabled = state.canRun !== true;
+        button.addEventListener("click", () => {
+          if (research.runExperiment?.(state.id, { source: "research-menu" }) !== true) return;
+          requestResearchRefresh();
+        });
+        card.append(title, description, requirements, status, button);
+        experimentGrid.appendChild(card);
+      });
+    }
+
+    if (entries.length) {
+      const heading = document.createElement("span");
+      heading.textContent = "PLANS ET RECETTES DÉBLOQUÉS";
+      const grid = document.createElement("div");
+      grid.className = "bluefox-research-grid";
+      section.append(heading, grid);
+
+      entries.forEach((entry) => {
       const card = document.createElement("article");
       card.className = "bluefox-research-card";
       const title = document.createElement("h3");
@@ -2656,9 +2700,10 @@
           requestResearchRefresh();
         });
       }
-      card.append(title, description, status, button);
-      grid.appendChild(card);
-    });
+        card.append(title, description, status, button);
+        grid.appendChild(card);
+      });
+    }
     renderDroneConsole(section);
 
   }

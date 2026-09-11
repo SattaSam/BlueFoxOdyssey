@@ -1095,6 +1095,9 @@
           runtimeCounters: Array.isArray(mission.runtimeCounters)
             ? clone(mission.runtimeCounters)
             : null,
+          experimentalPrerequisites: Array.isArray(mission.experimentalPrerequisites)
+            ? clone(mission.experimentalPrerequisites)
+            : null,
           sequence: Array.isArray(mission.sequence)
             ? clone(mission.sequence)
             : null,
@@ -1204,6 +1207,9 @@
           mission.allowsAutonomousRationCraft === true,
         runtimeCounters: Array.isArray(mission.runtimeCounters)
           ? clone(mission.runtimeCounters)
+          : null,
+        experimentalPrerequisites: Array.isArray(mission.experimentalPrerequisites)
+          ? clone(mission.experimentalPrerequisites)
           : null,
         sequence: Array.isArray(mission.sequence)
           ? clone(mission.sequence)
@@ -1912,6 +1918,10 @@
         this.missionLifecycle(missionId).completed
       );
       if (!missionPrerequisites) return false;
+      const experimentalPrerequisites = asArray(mission?.experimentalPrerequisites).every((knowledgeId) =>
+        this.isResearchRewardUnlocked(knowledgeId)
+      );
+      if (!experimentalPrerequisites) return false;
       const memory = this.manager()?.memory;
       return asArray(mission?.requiredFacts).every((factKey) =>
         Boolean(memory?.getFact?.(factKey, false))
@@ -2453,6 +2463,7 @@
             primary: mission.primaryOnActivation === true,
             autoPrimaryEligible: mission.autoPrimaryEligible === true,
             prerequisites: asArray(mission.prerequisites),
+            experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
             reason: `Déclencheur Bible V0.1 : ${event.type || "event"}`
           }) === true;
@@ -2600,10 +2611,14 @@
             !this.missionLifecycle(missionId).completed
           );
 
+          const missingExperimentalPrerequisites = asArray(mission.experimentalPrerequisites)
+            .filter((knowledgeId) => !this.isResearchRewardUnlocked(knowledgeId));
+
           // Les pendingActivations de MissionManager portent les dépendances de
-          // lifecycle. Un requiredFact manquant, sans prérequis missionnel manquant,
-          // reste donc simplement en attente de son prochain événement causal.
-          if (!missingMissionPrerequisites.length) continue;
+          // lifecycle et les connaissances expérimentales. Un requiredFact manquant,
+          // sans prérequis missionnel ni expérimental manquant, reste simplement en
+          // attente de son prochain événement causal.
+          if (!missingMissionPrerequisites.length && !missingExperimentalPrerequisites.length) continue;
 
           const required = Math.max(1, Number(mission.trigger?.count) || 1);
           const completedTriggerMissionId = event.type === "progression.mission_completed"
@@ -2627,6 +2642,7 @@
             primary: mission.primaryOnActivation === true,
             autoPrimaryEligible: mission.autoPrimaryEligible === true,
             prerequisites: missionPrerequisites,
+            experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
             reason: `Déclencheur Bible V0.1 acquis avant prérequis : ${event.type || "event"}`
           });
@@ -4896,6 +4912,179 @@
         .find((entry) => entry.id === key) || null;
     }
 
+    experimentDefinitions() {
+      return Array.isArray(BF.BibleExperiments) ? BF.BibleExperiments : [];
+    }
+
+    experimentDefinition(themeId) {
+      const key = lower(themeId);
+      return this.experimentDefinitions().find((entry) => lower(entry?.id) === key) || null;
+    }
+
+    experimentMemory() {
+      const memory = this.ensureResearchMemory();
+      if (!memory) return null;
+      memory.state.researchExperiments = memory.state.researchExperiments || {};
+      return memory.state.researchExperiments;
+    }
+
+    experimentKnowledgeDefinition(knowledgeId) {
+      const key = String(knowledgeId || "");
+      for (const theme of this.experimentDefinitions()) {
+        for (const stage of asArray(theme?.stages)) {
+          if (String(stage?.knowledge?.id || "") === key) {
+            return { theme, stage, knowledge: stage.knowledge };
+          }
+        }
+      }
+      return null;
+    }
+
+    experimentRequirementsReady(stage) {
+      const consumes = asArray(stage?.requirements).map((requirement) => ({
+        type: "inventory.consume",
+        ...requirement
+      }));
+      return consumes.length > 0 && this.inventoryConsumptionPlan(consumes).ready;
+    }
+
+    experimentLocationReady(stage) {
+      if (stage?.location === "workbench") {
+        return this.canAccessWorkbench(BF.currentEngine?.currentMapId) === true;
+      }
+      return BF.canAccessCampInventory?.() === true;
+    }
+
+    experimentState(themeId) {
+      const theme = this.experimentDefinition(themeId);
+      if (!theme) return null;
+      const memory = this.experimentMemory() || {};
+      const record = memory[theme.id] || {};
+      const count = Math.max(0, Math.min(5, Number(record.count) || 0));
+      const nextStage = asArray(theme.stages).find((stage) => Number(stage.stage) === count + 1) || null;
+      const locationReady = nextStage ? this.experimentLocationReady(nextStage) : false;
+      const resourcesReady = nextStage ? this.experimentRequirementsReady(nextStage) : false;
+      let reason = count >= 5
+        ? "Axe expérimental maîtrisé."
+        : "Expérimentation disponible.";
+      if (nextStage && !locationReady) {
+        reason = nextStage.location === "workbench"
+          ? "J’ai besoin d’un établi à proximité pour contrôler ce test."
+          : "Je dois être près du Camp, du Refuge ou de la Base pour préparer ce test.";
+      } else if (nextStage && !resourcesReady) {
+        reason = "Il me manque encore certains échantillons pour tenter cette expérience.";
+      }
+      return {
+        id: theme.id,
+        label: theme.label,
+        axis: theme.axis || "research",
+        count,
+        completed: count >= 5,
+        nextStage: nextStage ? clone(nextStage) : null,
+        locationReady,
+        resourcesReady,
+        canRun: Boolean(nextStage && locationReady && resourcesReady),
+        reason
+      };
+    }
+
+    experimentEntries() {
+      return this.experimentDefinitions().map((theme) => this.experimentState(theme.id)).filter(Boolean);
+    }
+
+    unlockExperimentKnowledge(theme, stage) {
+      const knowledge = stage?.knowledge;
+      if (!knowledge?.id) return false;
+      const memory = this.ensureResearchMemory();
+      if (!memory || memory.state.researchUnlocks[knowledge.id]) return false;
+      memory.state.researchUnlocks[knowledge.id] = {
+        id: knowledge.id,
+        type: "research.knowledge",
+        category: theme.id,
+        label: knowledge.label || knowledge.id,
+        missionId: null,
+        source: "scientific-experiment",
+        experimentTheme: theme.id,
+        experimentStage: Number(stage.stage) || null,
+        unlockedAt: Date.now()
+      };
+      memory.save?.();
+      global.dispatchEvent?.(new CustomEvent("bluefox:research-unlocked", {
+        detail: {
+          id: knowledge.id,
+          type: "research.knowledge",
+          missionId: null,
+          source: "scientific-experiment",
+          experimentTheme: theme.id
+        }
+      }));
+      return true;
+    }
+
+    consumeExperimentRequirements(stage) {
+      if (!this.experimentRequirementsReady(stage)) return false;
+      for (const requirement of asArray(stage?.requirements)) {
+        const keys = this.inventoryKeysForRequirement(requirement);
+        const quantity = Math.max(0, Number(requirement.quantity) || 0);
+        if (!keys.length || !quantity) return false;
+        const removed = BF.consumeInventoryPool?.(keys, quantity) || 0;
+        if (removed !== quantity) return false;
+      }
+      return true;
+    }
+
+    runExperiment(themeId, options = {}) {
+      const theme = this.experimentDefinition(themeId);
+      const state = this.experimentState(themeId);
+      if (!theme || !state?.nextStage || !state.canRun) return false;
+      const stage = state.nextStage;
+      if (!this.consumeExperimentRequirements(stage)) return false;
+
+      const memory = this.ensureResearchMemory();
+      const experiments = this.experimentMemory();
+      if (!memory || !experiments) return false;
+      const previous = experiments[theme.id] || {};
+      experiments[theme.id] = {
+        ...previous,
+        count: Number(stage.stage),
+        completedStages: [...new Set([...(previous.completedStages || []), Number(stage.stage)])],
+        updatedAt: Date.now()
+      };
+      memory.save?.();
+      this.unlockExperimentKnowledge(theme, stage);
+
+      const lines = asArray(stage.narratives).filter(Boolean);
+      const text = lines.length
+        ? lines[Math.floor(Math.random() * lines.length)]
+        : `L'expérimentation ${theme.label} progresse.`;
+      this.queueNarrativeLine({
+        id: `experiment:${theme.id}:${stage.stage}:${Date.now()}`,
+        title: `Expérimentation — ${theme.label}`,
+        text,
+        mapId: BF.currentEngine?.currentMapId || null,
+        zoneId: BF.currentEngine?.currentZoneIndex ?? null,
+        important: Boolean(stage.knowledge)
+      });
+      BF.currentEngine?.callbacks?.onStatus?.(
+        stage.knowledge?.label
+          ? `Connaissance acquise : ${stage.knowledge.label}.`
+          : `${theme.label} : expérimentation ${stage.stage}/5 validée.`
+      );
+      this.manager()?.reevaluatePendingActivations?.();
+      this.manager()?.catalogController?.schedule?.();
+      this.manager()?.publish?.();
+      global.dispatchEvent?.(new CustomEvent("bluefox:experiment-completed", {
+        detail: {
+          themeId: theme.id,
+          stage: Number(stage.stage),
+          knowledgeId: stage.knowledge?.id || null,
+          source: options.source || "research-menu",
+          at: Date.now()
+        }
+      }));
+      return true;
+    }
+
     ensureResearchMemory() {
       const memory = this.manager()?.memory;
       if (!memory) return null;
@@ -5439,7 +5628,12 @@
     resumePlacement: (missionId) =>
       runtime.resumeConstructionPlacement(missionId),
     cancelPlacement: () => runtime.cleanupPlacement(),
-    canAccessWorkbench: (mapId) => runtime.canAccessWorkbench(mapId)
+    canAccessWorkbench: (mapId) => runtime.canAccessWorkbench(mapId),
+    experimentationList: () => runtime.experimentEntries(),
+    experimentationState: (themeId) => runtime.experimentState(themeId),
+    experimentationForKnowledge: (knowledgeId) => runtime.experimentKnowledgeDefinition(knowledgeId),
+    hasKnowledge: (knowledgeId) => runtime.isResearchRewardUnlocked(knowledgeId),
+    runExperiment: (themeId, options) => runtime.runExperiment(themeId, options)
   });
   BF.getResearchEntries = (options) =>
     runtime.researchEntries(options);
