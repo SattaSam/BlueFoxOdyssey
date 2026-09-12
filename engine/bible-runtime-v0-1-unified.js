@@ -1935,6 +1935,36 @@
       return Number(this.state.triggerCounts[key]) || 0;
     }
 
+    siteDistanceGateSatisfied(mission, mapId = BF.currentEngine?.currentMapId) {
+      const gate = mission?.siteDistanceGate;
+      if (!gate) return true;
+      const targetMapId = String(mapId || "");
+      if (!targetMapId) return false;
+      const topology = BF.currentEngine?.worldTopology;
+      const target = topology?.coordinateOf?.(targetMapId);
+      if (!target) return false;
+      const kinds = new Set(asArray(gate.kinds || ["camp", "refuge", "base"]).map(lower));
+      const minimumExclusive = Math.max(0, Number(gate.minimumExclusive) || 0);
+      const siteProgression = this.manager()?.memory?.state?.siteProgression || {};
+      let nearest = Infinity;
+      Object.entries(siteProgression).forEach(([siteMapId, raw]) => {
+        const sites = raw?.sites && typeof raw.sites === "object"
+          ? raw.sites
+          : { [raw?.kind]: raw };
+        const hasRelevantSite = Object.entries(sites).some(([kind, site]) =>
+          Boolean(site) && kinds.has(lower(kind))
+        );
+        if (!hasRelevantSite) return;
+        const point = topology.coordinateOf?.(siteMapId);
+        if (!point) return;
+        const distance =
+          Math.abs(Number(target.x) - Number(point.x)) +
+          Math.abs(Number(target.y) - Number(point.y));
+        if (Number.isFinite(distance)) nearest = Math.min(nearest, distance);
+      });
+      return nearest > minimumExclusive;
+    }
+
     prerequisitesSatisfied(mission) {
       const missionPrerequisites = asArray(mission?.prerequisites).every((missionId) =>
         this.missionLifecycle(missionId).completed
@@ -3201,6 +3231,10 @@
       for (const mission of this.catalog) {
         if (mission?.localMission) continue;
         if (!this.eventMatchesTrigger(mission.trigger, event)) continue;
+        if (!this.siteDistanceGateSatisfied(
+          mission,
+          event.mapId || event.toMapId || BF.currentEngine?.currentMapId
+        )) continue;
 
         const lifecycleState = this.missionLifecycle(mission.id);
         if (lifecycleState.completed || lifecycleState.active) continue;

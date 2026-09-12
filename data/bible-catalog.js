@@ -9709,6 +9709,265 @@
     })
   });
 
+
+  const ANN04 = Object.freeze({
+    id: "ANN-04",
+    title: "Cycles sous surveillance",
+    description: "Après le tutoriel, rejoindre un nouveau territoire vers l’Ouest et observer plusieurs manifestations climatiques avant d’en tirer une première lecture cohérente.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "west", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["T13"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 214,
+    passivePriorityAxis: "research",
+    ponderation: 0.9,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 38,
+    narrativeAxis: "NATURALISTE",
+    reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-LOCAL-STORM-001", persistent: true, spawnOnce: true, contextRole: "annClimateStorm" })]),
+      requiredObjects: Object.freeze([Object.freeze({ type: "fog_bank", count: 1, contextRole: "annClimateFog" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "storm", title: "S’approcher de la tempête et observer le phénomène", action: "observe", target: 1, params: Object.freeze({ cuoType: "electrostatic_storm", microSceneId: "MSC-LOCAL-STORM-001", requiredMapFact: "bibleActivation:ANN-04", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "fog", title: "Observer une nappe de brume sur le même territoire", action: "observe", target: 1, requires: Object.freeze(["storm"]), params: Object.freeze({ cuoType: "fog_bank", requiredMapFact: "bibleActivation:ANN-04", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "climateReading", title: "Mettre en relation pression, hygrométrie, froid nocturne et rythme jour/nuit", action: "research", target: 1, requires: Object.freeze(["fog"]), params: Object.freeze({ requiredMapFact: "bibleActivation:ANN-04", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette pluie ne ressemble pas à celle de chez moi… et la pression bouge beaucoup trop vite. Je vais suivre ça de près."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "fog", atCount: 1, text: "La brume retombe déjà, et la température chute avec la nuit. Ici, le climat change de rythme en quelques heures." })
+      ]),
+      completed: Object.freeze(["Pression, humidité, froid nocturne, tempêtes… ce monde respire beaucoup plus vite que le mien. J’ai enfin un cycle cohérent."])
+    })
+  });
+
+  const ANN06 = Object.freeze({
+    id: "ANN-06",
+    title: "Repaire improvisé",
+    description: "À plus de dix maps de toute infrastructure existante, réunir dix bois et dix fibres puis installer manuellement un nouveau Camp logistique.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ANN-04"]),
+    bindActivationMap: true,
+    targetMapFact: "bibleActivation:ANN-06",
+    targetMapField: "mapId",
+    triggerOnly: true,
+    activationSource: "player",
+    siteDistanceGate: Object.freeze({ kinds: Object.freeze(["camp", "refuge", "base"]), minimumExclusive: 10 }),
+    priority: 213,
+    passivePriorityAxis: "survival",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 52,
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-NOCTURNAL-DEN-001", persistent: true, spawnOnce: true, contextRole: "ann06FaunaContext" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "wood", title: "Réunir 10 bois pour la structure", action: "collect", target: 10, params: Object.freeze({ kind: "wood", requiredMapFact: "bibleActivation:ANN-06", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "fiber", title: "Réunir 10 fibres pour la toile", action: "collect", target: 10, requires: Object.freeze([]), params: Object.freeze({ kind: "fiber", requiredMapFact: "bibleActivation:ANN-06", requiredMapField: "mapId" }) })
+    ]),
+    activationInventoryCredits: Object.freeze([
+      Object.freeze({ slot: "wood", inventoryKey: "wood", maximum: 10 }),
+      Object.freeze({ slot: "fiber", inventoryKey: "fiber", maximum: 10 })
+    ]),
+    completionGate: Object.freeze({ type: "proximity.shelter", shelterKinds: Object.freeze(["camp"]), radius: 9999, scope: "current-map" }),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "wood", quantity: 10 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 10 }),
+      Object.freeze({ type: "site.establish", kind: "camp", microSceneId: "MSC-CUSTOM-SMART-CAMP", stage: 1, placement: Object.freeze({ mode: "player" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["À cette distance, rentrer jusqu’au dernier camp pour chaque pause devient absurde. Il me faut un vrai point d’appui ici."]),
+      progress: Object.freeze([Object.freeze({ slot: "fiber", atCount: 1, text: "Dix morceaux de bois pour la structure, un peu de fibre pour la toile… ça devrait suffire pour faire quelque chose de solide." })]),
+      completed: Object.freeze(["Voilà. Pas vraiment chez moi, mais assez sûr pour dormir, stocker du matériel et repartir plus loin."])
+    })
+  });
+
+  const ANN03 = Object.freeze({
+    id: "ANN-03",
+    title: "Épave ciblée",
+    description: "Après le nouveau Camp, découvrir un territoire au Sud, inspecter l’épave et récupérer un composant technologique encore exploitable.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "south", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ANN-06"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 212,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 58,
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-EPAVE-1DRONE", persistent: true, spawnOnce: true, contextRole: "annWreck" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "wreck", title: "Observer la structure principale de l’épave", action: "observe", target: 1, params: Object.freeze({ cuoTypes: Object.freeze(["abandoned_drone", "ancient_machine_wreck"]), microSceneId: "MSC-CUSTOM-EPAVE-1DRONE", requiredMapFact: "bibleActivation:ANN-03", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "components", title: "Inspecter deux éléments technologiques distincts", action: "analyze", target: 2, requires: Object.freeze(["wreck"]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block", "pulse_core", "memory_capsule", "logic_prism"]), microSceneId: "MSC-CUSTOM-EPAVE-1DRONE", distinctBy: "objectId", requiredMapFact: "bibleActivation:ANN-03", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "salvage", title: "Récupérer un composant exploitable de l’épave", action: "collect", target: 1, requires: Object.freeze(["components"]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block", "pulse_core", "memory_capsule", "logic_prism"]), microSceneId: "MSC-CUSTOM-EPAVE-1DRONE", requiredMapFact: "bibleActivation:ANN-03", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Il y a quelque chose dans cette épave qui grésille encore. Si une partie fonctionne toujours, je veux savoir laquelle."]),
+      progress: Object.freeze([Object.freeze({ slot: "components", atCount: 1, text: "Ces composants ont survécu au choc… certains pourraient encore servir." })]),
+      completed: Object.freeze(["J’ai récupéré ce qui était exploitable. Ce vieux morceau d’épave vient peut-être de me donner une technologie de moins à réinventer."])
+    })
+  });
+
+  const ANN02 = Object.freeze({
+    id: "ANN-02",
+    title: "Botanique quantique",
+    description: "Sur un nouveau territoire vers l’Ouest, étudier puis collecter vingt-cinq Thermosèves et réaliser une expérimentation consommant six Thermosèves et deux minerais connus.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "west", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ANN-03"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 211,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 62,
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-ECO-THERM-001", persistent: true, spawnOnce: true })]), requiredObjects: Object.freeze([Object.freeze({ type: "thermosap_moss", count: 25 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "study", title: "Observer la réaction thermique de la Thermosève", action: "observe", target: 1, params: Object.freeze({ cuoType: "thermosap_moss", requiredMapFact: "bibleActivation:ANN-02", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "collect", title: "Collecter 25 Thermosèves", action: "collect", target: 25, requires: Object.freeze(["study"]), params: Object.freeze({ cuoType: "thermosap_moss", requiredMapFact: "bibleActivation:ANN-02", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "experiment", title: "Mener l’expérimentation avec 6 Thermosèves et 2 minerais connus", action: "research", target: 1, requires: Object.freeze(["collect"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "biocapital", quantity: 6 }),
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium"]), quantity: 2 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette sève réagit à la chaleur… presque comme si la plante régulait elle-même sa température."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "collect", atCount: 25, text: "Vingt-cinq échantillons, ça suffit. Maintenant je peux comparer sans vider toute la population locale." }),
+        Object.freeze({ slot: "experiment", atCount: 1, text: "Six Thermosèves, deux minerais connus… je peux enfin voir si la réaction tient quand je change le support." })
+      ]),
+      completed: Object.freeze(["La Thermosève réagit bien avec des minéraux connus. Ce n’est pas juste une curiosité végétale : il y a un mécanisme derrière."])
+    })
+  });
+
+  const ANN05 = Object.freeze({
+    id: "ANN-05",
+    title: "Curiosités géologiques",
+    description: "Sur un nouveau territoire vers l’Est, analyser trois types de minéraux différents, collecter quatre exemplaires de chacun puis consommer les douze échantillons lors de l’expérimentation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "east", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ANN-02"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 210,
+    passivePriorityAxis: "research",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 60,
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-BASALT-RIFT", persistent: true, spawnOnce: true, contextRole: "annGeologyRift" })]),
+      requiredObjects: Object.freeze([Object.freeze({ type: "resonant_basalt", count: 4 }), Object.freeze({ type: "magnetic_ore", count: 4 }), Object.freeze({ type: "crystal", count: 4 })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "analyze", title: "Analyser trois types de minéraux différents", action: "analyze", target: 3, params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "magnetic_ore", "crystal"]), distinctBy: "objectId", requiredMapFact: "bibleActivation:ANN-05", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "basalt", title: "Collecter 4 basaltes résonants", action: "collect", target: 4, requires: Object.freeze(["analyze"]), params: Object.freeze({ cuoType: "resonant_basalt", requiredMapFact: "bibleActivation:ANN-05", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "magnetic", title: "Collecter 4 minerais magnétiques", action: "collect", target: 4, requires: Object.freeze(["analyze"]), params: Object.freeze({ cuoType: "magnetic_ore", requiredMapFact: "bibleActivation:ANN-05", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "crystal", title: "Collecter 4 cristaux", action: "collect", target: 4, requires: Object.freeze(["analyze"]), params: Object.freeze({ cuoType: "crystal", requiredMapFact: "bibleActivation:ANN-05", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "experiment", title: "Comparer les 12 échantillons lors de l’expérimentation", action: "research", target: 1, requires: Object.freeze(["basalt", "magnetic", "crystal"]), params: Object.freeze({}) })
+    ]),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKey: "resonant_basalt", quantity: 4 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "magnetic_ore", quantity: 4 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "crystal", quantity: 4 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Trois roches différentes… et trois façons de résonner. Ce n’est probablement pas le vent qui joue avec moi."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "crystal", atCount: 4, text: "Quatre échantillons de chaque type. Assez pour les comparer sans transformer la faille en carrière." }),
+        Object.freeze({ slot: "experiment", atCount: 1, text: "Les douze échantillons réagissent différemment. Ce n’est plus une impression : la composition change vraiment la réponse de la roche." })
+      ]),
+      completed: Object.freeze(["Les douze échantillons ont parlé : la composition change la résonance. Cette géologie a sa propre signature."])
+    })
+  });
+
+  const ANN01 = Object.freeze({
+    id: "ANN-01",
+    title: "Écho de la balise",
+    description: "Sur un nouveau territoire au Sud, progresser par trois jalons d’exploration avant d’atteindre le relais, observer trois de ses éléments puis récupérer un composant.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "south", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["ANN-05"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 209,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 68,
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-TECH-RELAY-001", persistent: true, spawnOnce: true, contextRole: "annRelay" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "signal10", title: "Explorer 10 % de la map pour accrocher le signal", action: "explore-zone", target: 10, params: Object.freeze({ metric: "surfacePercent", threshold: 10, scope: "map", requiredMapFact: "bibleActivation:ANN-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "signal25", title: "Explorer 25 % de la map pour préciser la direction", action: "explore-zone", target: 25, requires: Object.freeze(["signal10"]), params: Object.freeze({ metric: "surfacePercent", threshold: 25, scope: "map", requiredMapFact: "bibleActivation:ANN-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "signal60", title: "Explorer 60 % de la map pour localiser le relais", action: "explore-zone", target: 60, requires: Object.freeze(["signal25"]), params: Object.freeze({ metric: "surfacePercent", threshold: 60, scope: "map", requiredMapFact: "bibleActivation:ANN-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "relayStudy", title: "Observer trois éléments distincts du relais", action: "observe", target: 3, requires: Object.freeze(["signal60"]), params: Object.freeze({ cuoTypes: Object.freeze(["survey_beacon", "relay_block", "pulse_core", "memory_capsule"]), microSceneId: "MSC-TECH-RELAY-001", distinctBy: "objectId", requiredMapFact: "bibleActivation:ANN-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "component", title: "Récupérer un composant du relais", action: "collect", target: 1, requires: Object.freeze(["relayStudy"]), params: Object.freeze({ cuoTypes: Object.freeze(["relay_block", "pulse_core", "memory_capsule"]), microSceneId: "MSC-TECH-RELAY-001", requiredMapFact: "bibleActivation:ANN-01", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le signal est là, quelque part. Pas question de foncer droit dessus : je veux comprendre le terrain avant de m’en approcher."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "signal10", atCount: 10, text: "Faible, mais stable. Je tiens la bonne direction." }),
+        Object.freeze({ slot: "signal25", atCount: 25, text: "Le signal se précise. Quelque chose le relaie vraiment sur cette map." }),
+        Object.freeze({ slot: "signal60", atCount: 60, text: "Là, je peux le localiser. Le relais doit être tout près." })
+      ]),
+      completed: Object.freeze(["Trois éléments concordent, et ce composant appartient bien au relais. Ce signal n’était pas un simple écho."])
+    })
+  });
+
+  const ANN07 = Object.freeze({
+    id: "ANN-07",
+    title: "Premier catalogue du vivant",
+    description: "Exploiter l’historique réel des observations afin de confirmer au moins une espèce nocturne et ouvrir une branche persistante de catalogue Faune/Nature dans le journal.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ANN-01", count: 1 }),
+    prerequisites: Object.freeze(["ANN-01"]),
+    priority: 208,
+    passivePriorityAxis: "research",
+    ponderation: 0.9,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 48,
+    runtimeCounters: Object.freeze([Object.freeze({ slot: "nocturnal", source: "observations.historical", cuoType: "nocturnal_animal", baselineOnActivation: false })]),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "fallbackTravel", title: "Explorer jusqu’à trois nouvelles maps si aucune espèce nocturne n’est encore connue", action: "travel", target: 3, optional: true, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", mapGenerationOnCount: Object.freeze({ 3: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-NOCTURNAL-DEN-001", persistent: true, spawnOnce: true, contextRole: "ann07NocturnalFallback" })]) }) }) }) }),
+      Object.freeze({ slot: "nocturnal", title: "Avoir observé au moins une créature nocturne", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["J’ai déjà croisé assez de formes de vie pour arrêter de les appeler simplement “les bestioles d’ici”. Il est temps de tenir un vrai catalogue."]),
+      progress: Object.freeze([Object.freeze({ slot: "nocturnal", atCount: 1, text: "Une espèce nocturne aussi… parfait. Le monde change quand la lumière tombe, et mon inventaire doit en tenir compte." })]),
+      completed: Object.freeze([
+        "Première base du catalogue terminée. Désormais, chaque nouvelle créature aura sa place dans mes notes.",
+        Object.freeze({ route: "journal", text: "Je commence un catalogue des créatures de cette planète. Première base posée : désormais, chaque nouvelle espèce observée aura sa place dans mes notes Faune/Nature." })
+      ])
+    })
+  });
+
   BF.BibleCatalog = Object.freeze([
     T01,
     T02,
@@ -9878,6 +10137,13 @@
     SUR05,
     SUR06,
     SUR07,
+    ANN04,
+    ANN06,
+    ANN03,
+    ANN02,
+    ANN05,
+    ANN01,
+    ANN07,
     SURPLUS01,
     SURPLUS02_MINERAL,
     SURPLUS02_CRYSTAL,
