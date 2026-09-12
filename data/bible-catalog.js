@@ -8797,6 +8797,173 @@
     npcEncounters: contactSecondaryNpcEntries("contact15", { cause: "contact-initiative", behaviors: ["calm","curiosity"], autoContact: true, contactMode: "symbols-only", contactSlot: "study", postContactReaction: "contact-friendly", postContactBehaviors: ["calm","curiosity"] })
   });
 
+
+  const diplomacyDialogueEncounters = (id, options = {}) => Object.freeze([
+    Object.freeze({
+      id: `${id}-rocky-dialogue`,
+      cuoType: "npc_rocky",
+      requiresSlotComplete: options.rockyRequires || null,
+      speech: options.rockySpeech || "⟁ … territoire … eau … prudence …",
+      speechTriggerDistance: 8,
+      emitDialogue: true
+    }),
+    Object.freeze({
+      id: `${id}-translucent-dialogue`,
+      cuoType: "npc_translucent",
+      requiresSlotComplete: options.translucentRequires || null,
+      speech: options.translucentSpeech || "⋔ … eau … survie … passage …",
+      speechTriggerDistance: 8,
+      emitDialogue: true
+    })
+  ]);
+
+  const DIP01 = Object.freeze({
+    id: "DIP-01",
+    title: "L’eau qui divise",
+    description: "Écouter séparément les deux civilisations afin d’identifier le besoin d’eau des Translucides et les inquiétudes territoriales des Rocky avant toute médiation.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-15", count: 1 }),
+    prerequisites: Object.freeze(["CONTACT-15"]),
+    relationPrerequisites: Object.freeze([
+      Object.freeze({ civilizationId: "rocky", ranks: Object.freeze(["friendly", "honored"]) }),
+      Object.freeze({ civilizationId: "translucent", ranks: Object.freeze(["friendly", "honored"]) })
+    ]),
+    priority: 225,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 78,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "rockyContact", title: "Engager volontairement un échange avec un Rocky", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "rockyDialogue", title: "Écouter les inquiétudes Rocky sur le territoire", action: "observe", target: 1, requires: Object.freeze(["rockyContact"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentContact", title: "Engager volontairement un échange avec un Translucide", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentDialogue", title: "Écouter le besoin d’eau des Translucides", action: "observe", target: 1, requires: Object.freeze(["translucentContact"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    worldEventRequirements: Object.freeze([
+      Object.freeze({ slot: "rockyContact", target: 1, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "rocky", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "rockyDialogue", target: 1, distinctBy: "instanceId", civilizationId: "rocky", relationScoreOnSatisfied: 1, sinceSlotComplete: "rockyContact", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "rocky" }) }),
+      Object.freeze({ slot: "translucentContact", target: 1, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "translucent", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "translucentDialogue", target: 1, distinctBy: "instanceId", civilizationId: "translucent", relationScoreOnSatisfied: 1, sinceSlotComplete: "translucentContact", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "translucent" }) })
+    ]),
+    npcEncounters: diplomacyDialogueEncounters("dip01", {
+      rockyRequires: "rockyContact",
+      translucentRequires: "translucentContact",
+      rockySpeech: "⟁ … eau … frontière … déplacement … protéger les nôtres …",
+      translucentSpeech: "⋔ … sécheresse … eau … survie … accès nécessaire …"
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les deux peuples me font confiance, mais leur désaccord n’est pas abstrait : l’un manque d’eau, l’autre craint de perdre son territoire. Je dois comprendre les deux avant de proposer quoi que ce soit."]),
+      completed: Object.freeze(["Le problème est clair : besoin vital d’un côté, sécurité territoriale de l’autre. Je peux maintenant tenter une médiation sans réduire l’un des deux récits."])
+    })
+  });
+
+  const GAME_CONTACT_FIRST = Object.freeze({
+    id: "GAME-contact_first",
+    title: "Comprendre avant de convaincre",
+    description: "Échanger réellement avec au moins un Rocky et un Translucide distincts afin de comparer leurs récits du conflit.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "DIP-01", count: 1 }),
+    prerequisites: Object.freeze(["DIP-01"]),
+    priority: 224,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 55,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "rockyContact", title: "Reprendre volontairement contact avec un Rocky", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "rockyDialogue", title: "Comparer le récit Rocky", action: "observe", target: 1, requires: Object.freeze(["rockyContact"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentContact", title: "Reprendre volontairement contact avec un Translucide", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentDialogue", title: "Comparer le récit Translucide", action: "observe", target: 1, requires: Object.freeze(["translucentContact"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    worldEventRequirements: Object.freeze([
+      Object.freeze({ slot: "rockyContact", target: 1, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "rocky", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "rockyDialogue", target: 1, distinctBy: "instanceId", civilizationId: "rocky", relationScoreOnSatisfied: 1, sinceSlotComplete: "rockyContact", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "rocky" }) }),
+      Object.freeze({ slot: "translucentContact", target: 1, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "translucent", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "translucentDialogue", target: 1, distinctBy: "instanceId", civilizationId: "translucent", relationScoreOnSatisfied: 1, sinceSlotComplete: "translucentContact", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "translucent" }) })
+    ]),
+    npcEncounters: diplomacyDialogueEncounters("game-contact-first", {
+      rockyRequires: "rockyContact",
+      translucentRequires: "translucentContact",
+      rockySpeech: "⟁ … nous gardons l’accès … peur du déplacement …",
+      translucentSpeech: "⋔ … l’eau recule … nous cherchons un passage …"
+    }),
+    narrative: Object.freeze({ completed: Object.freeze(["Les deux récits ne s’annulent pas. Ils décrivent la même crise depuis deux positions légitimes."]) })
+  });
+
+  const GAME_CONTACT_CAUTIOUS = Object.freeze({
+    id: "GAME-contact_cautious",
+    title: "Installer la confiance",
+    description: "Multiplier les échanges volontaires avec des membres distincts des deux peuples, puis vérifier leurs préoccupations avant de formuler une proposition de médiation crédible.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-contact_first", count: 1 }),
+    prerequisites: Object.freeze(["GAME-contact_first"]),
+    priority: 223,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 68,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "rockyContacts", title: "Échanger volontairement avec trois Rocky distincts", action: "observe", target: 3, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "rockyDialogue", title: "Faire préciser les préoccupations Rocky", action: "observe", target: 1, requires: Object.freeze(["rockyContacts"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentContacts", title: "Échanger volontairement avec trois Translucides distincts", action: "observe", target: 3, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentDialogue", title: "Faire préciser les besoins Translucides", action: "observe", target: 1, requires: Object.freeze(["translucentContacts"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    worldEventRequirements: Object.freeze([
+      Object.freeze({ slot: "rockyContacts", target: 3, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "rocky", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "rockyDialogue", target: 1, distinctBy: "instanceId", civilizationId: "rocky", relationScoreOnSatisfied: 1, sinceSlotComplete: "rockyContacts", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "rocky" }) }),
+      Object.freeze({ slot: "translucentContacts", target: 3, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "translucent", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "translucentDialogue", target: 1, distinctBy: "instanceId", civilizationId: "translucent", relationScoreOnSatisfied: 1, sinceSlotComplete: "translucentContacts", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "translucent" }) })
+    ]),
+    npcEncounters: diplomacyDialogueEncounters("game-contact-cautious", {
+      rockyRequires: "rockyContacts",
+      translucentRequires: "translucentContacts",
+      rockySpeech: "⟁ … frontières sûres … pas d’expulsion … coopération possible …",
+      translucentSpeech: "⋔ … accès durable à l’eau … pas de conquête … coopération …"
+    }),
+    narrative: Object.freeze({ completed: Object.freeze(["Les inquiétudes se répètent avec des nuances, mais une proposition commune devient crédible : préserver le territoire tout en garantissant l’accès à l’eau."]) })
+  });
+
+  const GAME_CONTACT_AMBASSADOR = Object.freeze({
+    id: "GAME-contact_ambassador",
+    title: "Porter la paix",
+    description: "Obtenir une réaction positive de cinq Rocky et cinq Translucides distincts afin que la coopération soit soutenue dans les deux camps.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-contact_cautious", count: 1 }),
+    prerequisites: Object.freeze(["GAME-contact_cautious"]),
+    priority: 222,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 86,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "rocky", title: "Obtenir le soutien de cinq Rocky distincts", action: "observe", target: 5, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucent", title: "Obtenir le soutien de cinq Translucides distincts", action: "observe", target: 5, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    worldEventRequirements: Object.freeze([
+      Object.freeze({
+        slot: "rocky", target: 5, distinctBy: "instanceId", civilizationId: "rocky", relationScoreOnSatisfied: 1,
+        criteria: Object.freeze({ type: "NPC_REACTION", civilizationId: "rocky", reactionAny: Object.freeze(["cautious_approach", "curiosity", "calm", "observation", "interaction"]) })
+      }),
+      Object.freeze({
+        slot: "translucent", target: 5, distinctBy: "instanceId", civilizationId: "translucent", relationScoreOnSatisfied: 1,
+        criteria: Object.freeze({ type: "NPC_REACTION", civilizationId: "translucent", reactionAny: Object.freeze(["cautious_approach", "curiosity", "calm", "observation", "interaction"]) })
+      })
+    ]),
+    narrative: Object.freeze({ completed: Object.freeze(["Les deux camps ont assez de voix favorables pour tenter une coopération réelle. La médiation n’est plus seulement mon idée : elle est acceptée des deux côtés."]) })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -8988,6 +9155,7 @@
     ARCH40,
     CONTACT01, CONTACT02, CONTACT03, CONTACT04, CONTACT05, CONTACT06, CONTACT07, CONTACT08, CONTACT09,
     CONTACT10, CONTACT11, CONTACT12, CONTACT13, CONTACT14, CONTACT15,
+    DIP01, GAME_CONTACT_FIRST, GAME_CONTACT_CAUTIOUS, GAME_CONTACT_AMBASSADOR,
     BAL01,
     BAL02,
     BAL03,

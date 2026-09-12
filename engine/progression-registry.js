@@ -45,6 +45,10 @@
       global: 0
     },
     milestones: {},
+    worldEvents: {
+      sequence: 0,
+      facts: {}
+    },
     migrations: {
       legacyInventoryImported: false,
       legacyOfflineReconciled: false
@@ -87,6 +91,12 @@
         ...(saved.expertise || {})
       },
       milestones: { ...(saved.milestones || {}) },
+      worldEvents: {
+        ...base.worldEvents,
+        ...(saved.worldEvents || {}),
+        sequence: Math.max(0, Number(saved?.worldEvents?.sequence) || 0),
+        facts: { ...(saved?.worldEvents?.facts || {}) }
+      },
       migrations: {
         ...base.migrations,
         ...(saved.migrations || {})
@@ -301,17 +311,23 @@
     }
 
     incrementScopes(event, amount) {
+      const detail = event?.detail || {};
+      const civilizationId = detail.civilizationId || event.factionId || null;
       const keys = [
         event.type,
         event.family ? `${event.type}:${event.family}` : null,
-        event.objectId ? `${event.type}:object:${event.objectId}` : null
+        event.objectId ? `${event.type}:object:${event.objectId}` : null,
+        civilizationId ? `${event.type}:civilization:${civilizationId}` : null,
+        detail.cuoType ? `${event.type}:cuo:${detail.cuoType}` : null,
+        detail.cause ? `${event.type}:cause:${detail.cause}` : null,
+        (detail.reaction || detail.state) ? `${event.type}:reaction:${detail.reaction || detail.state}` : null
       ].filter(Boolean);
       const scopes = [
         ["global", "global"],
         ["planets", event.planetId],
         ["maps", event.mapId],
         ["zones", event.mapId != null && event.zoneId != null ? `${event.mapId}:${event.zoneId}` : null],
-        ["factions", event.factionId],
+        ["factions", civilizationId],
         ["missions", event.missionId]
       ];
       scopes.forEach(([scope, id]) => {
@@ -319,6 +335,139 @@
         const bucket = this.scopedBucket(scope, id);
         keys.forEach((key) => this.increment(bucket, key, amount));
       });
+    }
+
+    worldEventRecord(event = {}) {
+      const detail = event?.detail || {};
+      const lower = (value) => String(value ?? "").trim().toLowerCase();
+      const clean = (value) => {
+        const text = String(value ?? "").trim();
+        return text || null;
+      };
+      return {
+        type: clean(event.type),
+        civilizationId: lower(detail.civilizationId || event.factionId) || null,
+        factionId: lower(event.factionId || detail.factionId || detail.civilizationId) || null,
+        instanceId: clean(event.instanceId),
+        objectId: clean(event.objectId),
+        cuoType: lower(detail.cuoType) || null,
+        cause: lower(detail.cause) || null,
+        reaction: lower(detail.reaction || detail.state) || null,
+        state: lower(detail.state || event.state) || null,
+        mapId: clean(event.mapId || detail.mapId),
+        missionId: clean(event.missionId || detail.missionId),
+        encounterId: detail.encounterId == null ? null : String(detail.encounterId),
+        contactMode: lower(detail.contactMode) || null,
+        interactionSource: lower(detail.interactionSource) || null,
+        npcRole: lower(detail.npcRole) || null,
+        tags: [...new Set([
+          ...(Array.isArray(event.tags) ? event.tags : []),
+          ...(Array.isArray(detail.tags) ? detail.tags : [])
+        ].map(lower).filter(Boolean))]
+      };
+    }
+
+    worldEventFingerprint(record = {}) {
+      return JSON.stringify([
+        record.type || "",
+        record.civilizationId || "",
+        record.factionId || "",
+        record.instanceId || "",
+        record.objectId || "",
+        record.cuoType || "",
+        record.cause || "",
+        record.reaction || "",
+        record.state || "",
+        record.mapId || "",
+        record.missionId || "",
+        record.encounterId || "",
+        record.contactMode || "",
+        record.interactionSource || "",
+        record.npcRole || "",
+        ...(record.tags || []).slice().sort()
+      ]);
+    }
+
+    rememberWorldEvent(event = {}) {
+      if (!event?.type) return false;
+      const world = this.state.worldEvents || (this.state.worldEvents = { sequence: 0, facts: {} });
+      world.facts = world.facts || {};
+      const sequence = Math.max(0, Number(world.sequence) || 0) + 1;
+      world.sequence = sequence;
+      const record = this.worldEventRecord(event);
+      // Les compteurs numériques couvrent déjà tous les événements. L’index
+      // distinct persistant n’est créé que pour les événements contextualisés
+      // par une faction/civilisation, afin de ne pas dupliquer chaque objet vu.
+      if (!record.civilizationId && !record.factionId) return sequence;
+      const fingerprint = this.worldEventFingerprint(record);
+      const previous = world.facts[fingerprint] || null;
+      world.facts[fingerprint] = {
+        ...record,
+        firstSequence: previous?.firstSequence || sequence,
+        lastSequence: sequence,
+        firstAt: previous?.firstAt || event.at || Date.now(),
+        lastAt: event.at || Date.now(),
+        count: Math.max(0, Number(previous?.count) || 0) + Math.max(1, Number(event.quantity) || 1)
+      };
+      return sequence;
+    }
+
+    worldEventCursor() {
+      return Math.max(0, Number(this.state.worldEvents?.sequence) || 0);
+    }
+
+    historicalEventMatches(criteria = {}, fact = {}) {
+      const lower = (value) => String(value ?? "").trim().toLowerCase();
+      const list = (value) =>
+        (Array.isArray(value) ? value : value == null ? [] : [value])
+          .map(lower)
+          .filter(Boolean);
+      const exact = [
+        "type", "civilizationId", "factionId", "instanceId", "objectId",
+        "cuoType", "cause", "reaction", "state", "mapId", "missionId",
+        "encounterId", "contactMode", "interactionSource", "npcRole"
+      ];
+      for (const key of exact) {
+        if (criteria[key] != null && lower(criteria[key]) !== lower(fact[key])) return false;
+      }
+      for (const [criteriaKey, factKey] of [
+        ["causeAny", "cause"], ["reactionAny", "reaction"],
+        ["stateAny", "state"], ["civilizationAny", "civilizationId"]
+      ]) {
+        const expected = list(criteria[criteriaKey]);
+        if (expected.length && !expected.includes(lower(fact[factKey]))) return false;
+      }
+      const tags = new Set(list(fact.tags));
+      const tagsAny = list(criteria.tagsAny);
+      if (tagsAny.length && !tagsAny.some((tag) => tags.has(tag))) return false;
+      const tagsAll = list(criteria.tagsAll);
+      if (tagsAll.length && !tagsAll.every((tag) => tags.has(tag))) return false;
+      const sinceSequence = Math.max(0, Number(criteria.sinceSequence) || 0);
+      if (sinceSequence && Math.max(0, Number(fact.lastSequence) || 0) <= sinceSequence) return false;
+      const sinceAt = Math.max(0, Number(criteria.sinceAt) || 0);
+      if (sinceAt && Math.max(0, Number(fact.lastAt) || 0) < sinceAt) return false;
+      return true;
+    }
+
+    historicalEventCount(criteria = {}) {
+      const matching = Object.values(this.state.worldEvents?.facts || {})
+        .filter((fact) => this.historicalEventMatches(criteria, fact));
+      const distinctBy = String(criteria.distinctBy || "").trim();
+      if (distinctBy) {
+        return new Set(
+          matching
+            .map((fact) => fact?.[distinctBy])
+            .filter((value) => value != null && String(value) !== "")
+            .map(String)
+        ).size;
+      }
+      // Les totaux absolus sont exacts. Les fenêtres `since*` sont destinées
+      // aux requêtes distinctes : un fait agrégé peut avoir commencé avant la
+      // fenêtre tout en ayant reçu de nouveaux événements après celle-ci.
+      if (criteria.sinceSequence != null || criteria.sinceAt != null) {
+        return matching.reduce((total, fact) => total + (Number(fact.lastSequence) > Number(criteria.sinceSequence || 0) ? 1 : 0), 0);
+      }
+      return matching.reduce((total, fact) => total + Math.max(0, Number(fact.count) || 0), 0);
     }
 
     historicalCollectionDefinition(objectId) {
@@ -619,6 +768,7 @@
 
       const quantity = Math.max(0, Number(event.quantity) || 0);
       this.incrementScopes(event, quantity || 1);
+      this.rememberWorldEvent(event);
 
       if ([
         BF.ObjectEvents?.types.RESOURCE_COLLECTED,
@@ -695,6 +845,8 @@
   BF.getProgressionState = () => registry.snapshot();
   BF.getHistoricalCollectionTotal = (criteria) =>
     registry.historicalCollectionTotal(criteria);
+  BF.getWorldEventCursor = () => registry.worldEventCursor();
+  BF.getHistoricalEventCount = (criteria) => registry.historicalEventCount(criteria);
   BF.grantInventory = (key, amount, detail) => registry.grantInventory(key, amount, detail);
   BF.grantCampStorage = (key, amount, detail) => registry.grantCampStorage(key, amount, detail);
   BF.consumeInventory = (key, amount) => registry.consumeInventory(key, amount);

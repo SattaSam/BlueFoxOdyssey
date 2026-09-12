@@ -78,6 +78,7 @@
       this.localSiteProgressionReconciling = false;
       this.environmentReconciling = false;
       this.civilizationContactReconciling = false;
+      this.worldEventReconciling = false;
       this.pendingConstructionResourceMissions = new Set();
       this.constructionResourceSignatures = new Map();
       this.boundProgressionChanged = (event) =>
@@ -1101,6 +1102,12 @@
           runtimeCounters: Array.isArray(mission.runtimeCounters)
             ? clone(mission.runtimeCounters)
             : null,
+          worldEventRequirements: Array.isArray(mission.worldEventRequirements)
+            ? clone(mission.worldEventRequirements)
+            : null,
+          relationPrerequisites: Array.isArray(mission.relationPrerequisites)
+            ? clone(mission.relationPrerequisites)
+            : null,
           experimentalPrerequisites: Array.isArray(mission.experimentalPrerequisites)
             ? clone(mission.experimentalPrerequisites)
             : null,
@@ -1213,6 +1220,12 @@
           mission.allowsAutonomousRationCraft === true,
         runtimeCounters: Array.isArray(mission.runtimeCounters)
           ? clone(mission.runtimeCounters)
+          : null,
+        worldEventRequirements: Array.isArray(mission.worldEventRequirements)
+          ? clone(mission.worldEventRequirements)
+          : null,
+        relationPrerequisites: Array.isArray(mission.relationPrerequisites)
+          ? clone(mission.relationPrerequisites)
           : null,
         experimentalPrerequisites: Array.isArray(mission.experimentalPrerequisites)
           ? clone(mission.experimentalPrerequisites)
@@ -1928,6 +1941,16 @@
         this.isResearchRewardUnlocked(knowledgeId)
       );
       if (!experimentalPrerequisites) return false;
+      const controller = this.manager()?.catalogController;
+      const relationPrerequisites = asArray(mission?.relationPrerequisites).every((requirement) => {
+        const civilizationId = String(requirement?.civilizationId || "").trim().toLowerCase();
+        if (!civilizationId) return true;
+        const rank = String(controller?.getRelation?.(civilizationId)?.rank || "neutral").toLowerCase();
+        const ranks = asArray(requirement?.ranks || ["friendly", "honored"])
+          .map((value) => String(value || "").toLowerCase());
+        return ranks.includes(rank);
+      });
+      if (!relationPrerequisites) return false;
       const memory = this.manager()?.memory;
       return asArray(mission?.requiredFacts).every((factKey) =>
         Boolean(memory?.getFact?.(factKey, false))
@@ -2061,6 +2084,141 @@
         manager.publish?.();
       }
       return changed;
+    }
+
+    worldEventBaselineKey(missionId) {
+      return `worldEventBaseline:${String(missionId || "")}`;
+    }
+
+    worldEventRequirementBaselineKey(missionId, slot) {
+      return `worldEventRequirementBaseline:${String(missionId || "")}:${String(slot || "")}`;
+    }
+
+    ensureWorldEventRequirementBaseline(mission, requirement, tree, missionBaseline) {
+      const requiredSlot = String(
+        requirement?.sinceSlotComplete || requirement?.requiresSlotComplete || ""
+      ).trim();
+      if (!requiredSlot) return missionBaseline;
+      const requiredNode = tree?.find?.(`${mission.id}:${requiredSlot}`);
+      if (!requiredNode?.isComplete) return null;
+      const manager = this.manager();
+      const key = this.worldEventRequirementBaselineKey(mission.id, requirement?.slot);
+      const existing = manager?.memory?.getFact?.(key, null);
+      if (existing && Number.isFinite(Number(existing.sequence))) return existing;
+      const baseline = {
+        sequence: Math.max(0, Number(BF.getWorldEventCursor?.()) || 0),
+        at: Date.now(),
+        afterSlot: requiredSlot
+      };
+      manager?.memory?.setFact?.(key, baseline);
+      manager?.memory?.save?.();
+      return baseline;
+    }
+
+    ensureWorldEventBaseline(mission) {
+      const manager = this.manager();
+      if (!manager?.memory || !mission?.id) return null;
+      const key = this.worldEventBaselineKey(mission.id);
+      const existing = manager.memory.getFact?.(key, null);
+      if (existing && Number.isFinite(Number(existing.sequence))) return existing;
+      const baseline = {
+        sequence: Math.max(0, Number(BF.getWorldEventCursor?.()) || 0),
+        at: Date.now()
+      };
+      manager.memory.setFact?.(key, baseline);
+      manager.memory.save?.();
+      return baseline;
+    }
+
+    applyWorldEventRelationEffect(mission, requirement) {
+      const delta = Number(requirement?.relationScoreOnSatisfied) || 0;
+      const civilizationId = String(
+        requirement?.civilizationId || requirement?.criteria?.civilizationId || ""
+      ).trim().toLowerCase();
+      if (!delta || !civilizationId) return false;
+      const manager = this.manager();
+      const receiptKey = `worldEventRelationApplied:${mission.id}:${requirement.slot}:${civilizationId}`;
+      if (manager?.memory?.getFact?.(receiptKey, false)) return false;
+      const controller = manager?.catalogController;
+      const previous = controller?.getRelation?.(civilizationId);
+      if (!previous?.rank || typeof controller?.setRelation !== "function") return false;
+      const updated = controller.setRelation(civilizationId, previous.rank, {
+        score: Number(previous.score || 0) + delta
+      });
+      if (!updated) return false;
+      manager.memory.setFact?.(receiptKey, {
+        appliedAt: Date.now(),
+        delta,
+        score: updated.score
+      });
+      manager.memory.save?.();
+      return true;
+    }
+
+    reconcileWorldEventRequirements() {
+      if (this.worldEventReconciling || typeof BF.getHistoricalEventCount !== "function") return false;
+      const manager = this.manager();
+      if (!manager?.trees?.size) return false;
+      this.worldEventReconciling = true;
+      try {
+        let changed = false;
+        let treeChanged = false;
+        for (const mission of this.allMissions()) {
+          const requirements = asArray(mission?.worldEventRequirements);
+          if (!requirements.length) continue;
+          const lifecycle = manager.memory?.state?.missionLifecycle?.[mission.id];
+          if (lifecycle?.status !== "active") continue;
+          const tree = manager.trees.get(mission.id);
+          if (!tree) continue;
+          const missionBaseline = this.ensureWorldEventBaseline(mission);
+          if (!missionBaseline) continue;
+          let missionTreeChanged = false;
+          for (const requirement of requirements) {
+            const slot = String(requirement?.slot || "");
+            const node = tree.find?.(`${mission.id}:${slot}`);
+            if (!node) continue;
+            const baseline = this.ensureWorldEventRequirementBaseline(
+              mission, requirement, tree, missionBaseline
+            );
+            if (!baseline) continue;
+            const target = Math.max(1, Number(requirement.target ?? node.target) || 1);
+            const criteria = {
+              ...(requirement.criteria || {}),
+              distinctBy: requirement.distinctBy || requirement.criteria?.distinctBy || null,
+              sinceSequence: Math.max(0, Number(baseline.sequence) || 0)
+            };
+            const count = Math.max(0, Number(BF.getHistoricalEventCount(criteria)) || 0);
+            const desired = Math.min(target, count);
+            const delta = desired - Math.max(0, Number(node.progress) || 0);
+            if (
+              delta > 0 &&
+              !node.isComplete &&
+              tree.availableLeaves?.().includes?.(node) &&
+              node.increment?.(delta)
+            ) {
+              missionTreeChanged = true;
+              changed = true;
+            }
+            if (desired >= target) {
+              changed = this.applyWorldEventRelationEffect(mission, requirement) || changed;
+            }
+          }
+          if (missionTreeChanged) {
+            tree.refresh?.();
+            manager.memory.saveTree?.(tree);
+            treeChanged = true;
+          }
+        }
+        if (treeChanged) {
+          manager.syncLifecycleFromTrees?.();
+          manager.reevaluatePendingActivations?.();
+          manager.catalogController?.schedule?.();
+          manager.publish?.();
+        }
+        return changed;
+      } finally {
+        this.worldEventReconciling = false;
+      }
     }
 
     progressRuntimeValidationSlot(missionId, slot, amount = 1) {
@@ -3304,14 +3462,18 @@
         }
         if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-friendly") return false;
         if (this.manager()?.memory?.getFact?.(`civilization:contact-friendly:${mission.id}`, false) !== true) return false;
-        // Le contexte de la civilisation suivante est préparé AVANT la complétion
-        // afin que le publish/sync causal puisse réconcilier la suite sans polling.
+        // Le contexte de la civilisation suivante ET la relation finale sont
+        // établis AVANT la complétion. Ainsi le trigger mission_completed voit
+        // immédiatement tous les prérequis relationnels de la mission suivante.
         this.ensureNextCivilizationContactContext(mission, selected);
-        const changed = this.progressRuntimeValidationSlot(mission.id, slot, 1);
         const controller = this.manager()?.catalogController;
         const relation = controller?.getRelation?.(selected);
-        if (changed && relation) controller.setRelation?.(selected, "friendly", { score: Math.max(1, Number(relation.score || 0) + 3) });
-        return changed;
+        if (relation && !["friendly", "honored"].includes(lower(relation.rank))) {
+          controller.setRelation?.(selected, "friendly", {
+            score: Math.max(1, Number(relation.score || 0) + 3)
+          });
+        }
+        return this.progressRuntimeValidationSlot(mission.id, slot, 1);
       }
       return false;
     }
@@ -4721,6 +4883,9 @@
 
     onProgressionChanged(detail = {}) {
       let changed = false;
+      if (String(detail.reason || "") === "event-consumed") {
+        changed = this.reconcileWorldEventRequirements() || changed;
+      }
       if (this.progressionChangeAffectsInventory(detail)) {
         changed = this.reconcileStockBackedMissions() || changed;
         changed = this.reviewRepeatableOpportunities() || changed;
@@ -5967,6 +6132,7 @@
       }
 
       this.reconcileMissionCompletionTriggers();
+      this.reconcileWorldEventRequirements();
       this.migrateLegacyRationUnlock();
       this.activateNextDroneRepairMission();
       this.reconcileRuntimeCounters();
