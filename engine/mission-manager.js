@@ -1395,6 +1395,10 @@
     pendingExperimentalRequests() {
       return Object.values(this.memory.state.pendingActivations || {})
         .map((request) => {
+          const missionPrerequisitesReady = (request.prerequisites || []).every((id) =>
+            this.memory.state.missionLifecycle?.[id]?.status === "completed"
+          );
+          if (!missionPrerequisitesReady) return null;
           const missingKnowledge = (request.experimentalPrerequisites || []).filter((id) =>
             BF.bibleRuntime?.isResearchRewardUnlocked?.(id) !== true
           );

@@ -438,12 +438,51 @@
     return row;
   }
 
+  function missionHudLeafNodes(mission) {
+    const root = mission?.tree?.root;
+    if (!root) return [];
+    const leaves = [];
+    const visit = (node) => {
+      const children = Array.isArray(node?.children) ? node.children : [];
+      if (!children.length) {
+        leaves.push(node);
+        return;
+      }
+      children.forEach(visit);
+    };
+    visit(root);
+    return leaves;
+  }
+
+  function isStrictCumulativeHudMission(mission, definition) {
+    const leaves = missionHudLeafNodes(mission);
+    if (!leaves.length) return false;
+
+    // Les paliers de collecte historique ne déclenchent aucune action locale :
+    // ils reflètent uniquement le compteur monde porté par ProgressionRegistry.
+    if (leaves.every((node) => node?.params?.historicalCollection === true)) {
+      return true;
+    }
+
+    // Les paliers d'exploration 60/100 sont des compteurs cumulatifs par map.
+    // T10 utilise également EXPLORE_SCOPE, mais n'est pas instanceScope=map :
+    // il reste donc visible comme mission tutorielle normale.
+    if (definition?.instanceScope === "map" && leaves.every((node) =>
+      String(node?.params?.biblePattern || "") === "EXPLORE_SCOPE"
+    )) {
+      return true;
+    }
+
+    return false;
+  }
+
   function isBackgroundHudMission(mission) {
     const missionId = String(mission?.missionId || mission?.id || "");
     const definition = BF.Missions?.getDefinition?.(missionId) ||
       (BF.BibleCatalog || []).find?.((entry) => entry?.id === missionId) ||
       null;
-    return definition?.backgroundHud === true;
+    return definition?.backgroundHud === true ||
+      isStrictCumulativeHudMission(mission, definition);
   }
 
   function render(state) {

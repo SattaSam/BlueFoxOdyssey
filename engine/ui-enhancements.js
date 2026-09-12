@@ -2313,6 +2313,28 @@
     }
   }
 
+  const researchResourceLabel = (inventoryKey) => {
+    const key = String(inventoryKey || "").trim();
+    if (!key) return "ressource";
+    const definition = global.BlueFox3D?.ObjectLibrary?.list?.().find(
+      (item) => item.resource?.inventoryKey === key
+    );
+    const human = definition?.label || definition?.name || definition?.title;
+    if (human) return String(human);
+    return key
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase("fr"));
+  };
+
+  const researchRequirementLabel = (requirement = {}) => {
+    const keys = Array.isArray(requirement.inventoryKeys)
+      ? requirement.inventoryKeys.filter(Boolean)
+      : [requirement.inventoryKey || requirement.resource].filter(Boolean);
+    return keys.length
+      ? keys.map(researchResourceLabel).join(" / ")
+      : "ressource";
+  };
+
   function ensureResearchEnhancementStyles() {
     if (document.getElementById("bluefox-research-enhancement-styles")) return;
     const style = document.createElement("style");
@@ -2321,10 +2343,15 @@
       .bluefox-research-runtime { margin:12px 0; padding:10px; border:1px solid rgba(92,220,255,.28); border-radius:12px; background:rgba(4,22,38,.76); }
       .bluefox-research-runtime > span { display:block; margin-bottom:8px; color:#77dff7; font-size:9px; font-weight:800; letter-spacing:.1em; }
       .bluefox-research-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+      .bluefox-experiment-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
       .bluefox-research-card { grid-column:span 2; display:flex; min-width:0; min-height:108px; flex-direction:column; gap:5px; padding:9px; border:1px solid rgba(124,226,255,.2); border-radius:10px; background:rgba(4,18,32,.72); }
+      .bluefox-experiment-card { grid-column:span 1; min-height:124px; padding:12px; gap:7px; }
       .bluefox-research-card h3 { margin:0; overflow-wrap:anywhere; font-size:12px; line-height:1.2; }
       .bluefox-research-card p { margin:0; overflow-wrap:anywhere; color:rgba(225,242,246,.78); font-size:10px; line-height:1.25; }
       .bluefox-research-card small { overflow-wrap:anywhere; color:rgba(180,220,228,.7); font-size:9px; line-height:1.2; }
+      .bluefox-experiment-card h3 { font-size:14px; line-height:1.25; }
+      .bluefox-experiment-card p { font-size:11.5px; line-height:1.35; }
+      .bluefox-experiment-card small { font-size:10px; line-height:1.3; }
       .bluefox-research-card button { margin-top:auto; padding:6px 8px; border:1px solid rgba(96,224,255,.45); border-radius:999px; color:#eafcff; background:rgba(12,64,82,.82); font-size:10px; cursor:pointer; }
       .bluefox-research-card button:disabled { opacity:.42; cursor:not-allowed; filter:grayscale(.4); }
       .bluefox-drone-console { grid-column:1/-1; margin-top:10px; padding:10px; border:1px solid rgba(171,110,255,.3); border-radius:12px; background:rgba(20,10,38,.62); }
@@ -2334,7 +2361,9 @@
       .bluefox-drone-slot select,.bluefox-drone-slot button { width:100%; margin-top:6px; }
       @media (max-width:650px) {
         .bluefox-research-grid { gap:5px; }
+        .bluefox-experiment-grid { grid-template-columns:minmax(0,1fr); }
         .bluefox-research-card { min-height:100px; padding:7px 6px; }
+        .bluefox-experiment-card { grid-column:span 1; padding:10px 8px; }
       }
     `;
     document.head.appendChild(style);
@@ -2463,7 +2492,7 @@
       failures.forEach((failure) => {
         const line = document.createElement("p");
         const needs = Object.entries(failure.requirements || {})
-          .map(([key, amount]) => `${amount} ${key}`)
+          .map(([key, amount]) => `${amount} ${researchResourceLabel(key)}`)
           .join(" · ");
         line.textContent = `PANNE · ${failure.droneType === "scout_drone" ? "Scout" : failure.droneId} · ${failure.mapId}${needs ? ` · Réparation : ${needs}` : ""}`;
         alert.append(line);
@@ -2514,7 +2543,7 @@
       (drone.priorities || ["collect_all"]).forEach((key) => {
         const option = document.createElement("option");
         option.value = key;
-        option.textContent = key === "collect_all" ? "Collecter tout" : key;
+        option.textContent = key === "collect_all" ? "Collecter tout" : researchResourceLabel(key);
         option.selected = String(drone.priority || "collect_all") === key;
         select.append(option);
       });
@@ -2630,7 +2659,7 @@
           : state.nextStage?.title || "Expérimentation terminée.";
         const requirements = document.createElement("small");
         requirements.textContent = (state.nextStage?.requirements || [])
-          .map((item) => `${item.quantity || 0} ${item.inventoryKey || item.inventoryKeys?.join("/") || "ressource"}`)
+          .map((item) => `${item.quantity || 0} ${researchRequirementLabel(item)}`)
           .join(" · ");
         requirements.hidden = !requirements.textContent;
         const status = document.createElement("small");
@@ -2689,7 +2718,7 @@
         });
       } else {
         const requirements = (entry.requirements || [])
-          .map((item) => `${item.quantity || 0} ${item.inventoryKey || item.resource || "ressource"}`)
+          .map((item) => `${item.quantity || 0} ${researchRequirementLabel(item)}`)
           .join(" · ");
         status.textContent = requirements;
         status.hidden = !requirements;
