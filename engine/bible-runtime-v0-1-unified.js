@@ -79,6 +79,7 @@
       this.environmentReconciling = false;
       this.civilizationContactReconciling = false;
       this.worldEventReconciling = false;
+      this.persistentWorldSceneReconciling = false;
       this.pendingConstructionResourceMissions = new Set();
       this.constructionResourceSignatures = new Map();
       this.boundProgressionChanged = (event) =>
@@ -2095,12 +2096,13 @@
     }
 
     ensureWorldEventRequirementBaseline(mission, requirement, tree, missionBaseline) {
-      const requiredSlot = String(
-        requirement?.sinceSlotComplete || requirement?.requiresSlotComplete || ""
-      ).trim();
-      if (!requiredSlot) return missionBaseline;
-      const requiredNode = tree?.find?.(`${mission.id}:${requiredSlot}`);
-      if (!requiredNode?.isComplete) return null;
+      const requiredSlots = asArray(
+        requirement?.sinceSlotsComplete ||
+        requirement?.sinceSlotComplete ||
+        requirement?.requiresSlotComplete
+      ).map((slot) => String(slot || "").trim()).filter(Boolean);
+      if (!requiredSlots.length) return missionBaseline;
+      if (requiredSlots.some((slot) => !tree?.find?.(`${mission.id}:${slot}`)?.isComplete)) return null;
       const manager = this.manager();
       const key = this.worldEventRequirementBaselineKey(mission.id, requirement?.slot);
       const existing = manager?.memory?.getFact?.(key, null);
@@ -2108,7 +2110,7 @@
       const baseline = {
         sequence: Math.max(0, Number(BF.getWorldEventCursor?.()) || 0),
         at: Date.now(),
-        afterSlot: requiredSlot
+        afterSlots: requiredSlots.slice()
       };
       manager?.memory?.setFact?.(key, baseline);
       manager?.memory?.save?.();
@@ -2218,6 +2220,84 @@
         return changed;
       } finally {
         this.worldEventReconciling = false;
+      }
+    }
+
+    persistentWorldSceneMap(mapId) {
+      const id = String(mapId || "");
+      if (!id) return null;
+      return BF.maps?.[id] ||
+        (Array.isArray(global.BlueFoxCustomMaps)
+          ? global.BlueFoxCustomMaps.find((entry) => String(entry?.id || "") === id)
+          : null) ||
+        null;
+    }
+
+    persistentWorldSceneRecord(definition, spec) {
+      const instanceId = String(spec?.instanceId || "");
+      const records = BF.PersistentMicroScenes?.list?.(definition) || [];
+      if (instanceId) {
+        return records.find((record) => String(record?.instanceId || "") === instanceId) || null;
+      }
+      return records.find((record) =>
+        String(record?.missionId || "") === String(spec?.missionId || "") &&
+        String(record?.microSceneId || "") === String(spec?.microSceneId || "")
+      ) || null;
+    }
+
+    reconcilePersistentWorldScenes() {
+      if (this.persistentWorldSceneReconciling || !BF.PersistentMicroScenes?.ensure) return false;
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      this.persistentWorldSceneReconciling = true;
+      try {
+        let changed = false;
+        for (const mission of this.allMissions()) {
+          const specs = asArray(mission?.persistentWorldScenes);
+          if (!specs.length || !this.missionLifecycle(mission.id).active) continue;
+          const tree = manager.trees?.get?.(mission.id);
+          if (!tree) continue;
+          for (const rawSpec of specs) {
+            const requiredSlots = asArray(rawSpec?.requiresSlotsComplete || rawSpec?.requiresSlotComplete)
+              .map(String)
+              .filter(Boolean);
+            if (requiredSlots.some((slot) => !tree.find?.(`${mission.id}:${slot}`)?.isComplete)) continue;
+            const definition = this.persistentWorldSceneMap(rawSpec?.mapId);
+            if (!definition || !rawSpec?.microSceneId) continue;
+            if (rawSpec.mapFact) {
+              const factKey = String(rawSpec.mapFact);
+              const existingMapFact = manager.memory.getFact?.(factKey, null);
+              if (String(existingMapFact?.mapId || "") !== String(rawSpec.mapId || "")) {
+                manager.memory.setFact?.(factKey, {
+                  mapId: String(rawSpec.mapId),
+                  missionId: mission.id,
+                  updatedAt: Date.now()
+                });
+                manager.memory.save?.();
+                changed = true;
+              }
+            }
+            const spec = {
+              ...rawSpec,
+              missionId: mission.id,
+              persistent: rawSpec.persistent !== false,
+              spawnOnce: rawSpec.spawnOnce !== false
+            };
+            const before = this.persistentWorldSceneRecord(definition, spec);
+            const ensured = BF.PersistentMicroScenes.ensure(definition, spec);
+            if (!before && ensured) changed = true;
+            const record = this.persistentWorldSceneRecord(definition, spec) || ensured;
+            if (!record?.resolvedAt || !rawSpec.progressSlotWhenResolved) continue;
+            changed = this.progressRuntimeValidationSlot(
+              mission.id,
+              String(rawSpec.progressSlotWhenResolved),
+              1
+            ) || changed;
+          }
+        }
+        return changed;
+      } finally {
+        this.persistentWorldSceneReconciling = false;
       }
     }
 
@@ -3690,6 +3770,7 @@
       // La transition est émise après chargement de la map courante.
       this.captureObservationMap(BF.currentEngine);
       this.reconcileEnvironmentAll(detail.toMapId || detail.mapId || BF.currentEngine?.currentMapId);
+      this.reconcilePersistentWorldScenes();
 
       const event = {
         fromMapId: detail.fromMapId || null,
@@ -5015,6 +5096,36 @@
       };
     }
 
+    applyCompletionRelationEffects(mission) {
+      const effects = asArray(mission?.completionRelationEffects);
+      if (!effects.length) return true;
+      const manager = this.manager();
+      const memory = manager?.memory;
+      const controller = manager?.catalogController;
+      if (!memory || !controller) return false;
+      for (const effect of effects) {
+        const civilizationId = String(effect?.civilizationId || "").trim().toLowerCase();
+        const delta = Number(effect?.delta) || 0;
+        if (!civilizationId || !delta) return false;
+        const receiptId = `${mission.id}:completion-relation:${civilizationId}:v1`;
+        if (memory.hasEffectReceipt?.(receiptId)) continue;
+        const previous = controller.getRelation?.(civilizationId);
+        if (!previous?.rank || typeof controller.setRelation !== "function") return false;
+        const updated = controller.setRelation(civilizationId, previous.rank, {
+          score: Number(previous.score || 0) + delta
+        });
+        if (!updated) return false;
+        memory.recordEffectReceipt?.(receiptId, {
+          missionId: mission.id,
+          civilizationId,
+          delta,
+          at: Date.now()
+        });
+        memory.save?.();
+      }
+      return true;
+    }
+
     applyEffects(mission, options = {}) {
       const effects = mission.effects || [];
       if (!effects.length) return true;
@@ -6133,6 +6244,7 @@
 
       this.reconcileMissionCompletionTriggers();
       this.reconcileWorldEventRequirements();
+      this.reconcilePersistentWorldScenes();
       this.migrateLegacyRationUnlock();
       this.activateNextDroneRepairMission();
       this.reconcileRuntimeCounters();
@@ -6178,6 +6290,7 @@
           }
         }
         if (!effectsReady) continue;
+        if (!this.applyCompletionRelationEffects(mission)) continue;
 
         if (mission.repeatable === true && mission.repeatableCondition) {
           const stock = this.repeatableStockSnapshot(mission.repeatableCondition);

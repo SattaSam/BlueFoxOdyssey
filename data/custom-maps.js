@@ -649,10 +649,11 @@ window.BlueFoxCustomMaps = [
     "createdAt": "2026-09-03T18:08:59.658Z"
   },
   {
-    "id": "custom-map-32-temple-magnet",
-    "number": 32,
-    "index": "32-temple-magnet",
-    "name": "TEMPLE_MAGNET",
+    "id": "custom-map-33-temple-magnet",
+    "number": 33,
+    "index": "33-temple-magnet",
+    "name": "TEMPLE-Magnet-OK",
+    "slug": "temple-magnet-ok",
     "plateauCount": 1,
     "profile": "desert",
     "terrainUrls": [
@@ -666,7 +667,7 @@ window.BlueFoxCustomMaps = [
       "accent": 16760181
     },
     "populationBudget": {
-      "targetObjects": 6,
+      "targetObjects": 24,
       "resources": 2,
       "allowCustomRange": true
     },
@@ -682,24 +683,24 @@ window.BlueFoxCustomMaps = [
     ],
     "editor": {
       "baseTemplateId": "map-14",
-      "densityMultiplier": 0.25,
+      "densityMultiplier": 0.35,
       "randomTextures": false
     },
     "customMicroScenes": [
       {
         "id": "MSC-CUSTOM-HUGE-TEMPLE",
         "position": [
-          -12.7034,
+          -10.3094,
           0,
-          -0.1095
+          5.9948
         ],
         "rotation": [
           0,
-          6.544985,
+          0.785398,
           0
         ]
       }
     ],
-    "createdAt": "2026-09-03T19:21:10.628Z"
+    "createdAt": "2026-09-12T13:10:55.339Z"
   }
 ];

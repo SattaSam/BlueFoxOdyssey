@@ -8964,6 +8964,214 @@
     narrative: Object.freeze({ completed: Object.freeze(["Les deux camps ont assez de voix favorables pour tenter une coopération réelle. La médiation n’est plus seulement mon idée : elle est acceptée des deux côtés."]) })
   });
 
+  const DIP02 = Object.freeze({
+    id: "DIP-02",
+    title: "Faire circuler l’eau, faire circuler la confiance",
+    description: "Faire naître une coopération concrète entre Rocky et Translucides : visites croisées, étude des formes d’eau et des îlots suspendus, puis installation d’un dispositif commun dans les deux villes.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-contact_ambassador", count: 1 }),
+    prerequisites: Object.freeze(["GAME-contact_ambassador"]),
+    priority: 221,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 92,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "visitRockyCity",
+        title: "Observer un visiteur Translucide dans la ville Rocky",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "npc_translucent",
+          microSceneId: "MSC-NPC-TRANSLUCENT-001",
+          distinctBy: "instanceId",
+          requiredMapFact: "dip02:rocky-city",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "visitTranslucentCity",
+        title: "Observer un visiteur Rocky dans Tiny City",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "npc_rocky",
+          microSceneId: "MSC-NPC-ROCKY-001",
+          distinctBy: "instanceId",
+          requiredMapFact: "dip02:translucent-city",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "islets",
+        title: "Observer trois îlots mobiles distincts",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["visitRockyCity", "visitTranslucentCity"]),
+        params: Object.freeze({ cuoType: "mobile_islet", distinctBy: "instanceId" })
+      }),
+      Object.freeze({
+        slot: "pools",
+        title: "Observer cinq bassins distincts",
+        action: "observe",
+        target: 5,
+        requires: Object.freeze(["islets"]),
+        params: Object.freeze({ cuoType: "pool", distinctBy: "instanceId" })
+      }),
+      Object.freeze({
+        slot: "watercourses",
+        title: "Approcher deux cours d’eau distincts à moins de 2,5 m",
+        action: "observe",
+        target: 2,
+        requires: Object.freeze(["pools"]),
+        params: Object.freeze({
+          kind: "watercourse",
+          cuoType: "watercourse",
+          distinctBy: "instanceId",
+          proximityOnly: true,
+          proximityRadius: 2.5
+        })
+      }),
+      Object.freeze({
+        slot: "hypothesis",
+        title: "Relier magnétisme, îlots et circulation de l’eau",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["watercourses"]),
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "rockyInstallation",
+        title: "Constater l’installation commune dans la ville Rocky",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["hypothesis"]),
+        params: Object.freeze({
+          cuoType: "mobile_islet",
+          microSceneId: "MSC-CUSTOM-ILES-SUSPENDUES2",
+          requiredMapFact: "dip02:rocky-city",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "translucentInstallation",
+        title: "Constater l’installation commune dans Tiny City",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["hypothesis"]),
+        params: Object.freeze({
+          cuoType: "mobile_islet",
+          microSceneId: "MSC-CUSTOM-ILES-SUSPENDUES2",
+          requiredMapFact: "dip02:translucent-city",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    worldEventRequirements: Object.freeze([
+      Object.freeze({
+        slot: "islets",
+        target: 3,
+        distinctBy: "instanceId",
+        sinceSlotsComplete: Object.freeze(["visitRockyCity", "visitTranslucentCity"]),
+        criteria: Object.freeze({
+          type: "PHENOMENON_OBSERVED",
+          cuoType: "mobile_islet",
+          interactionSource: "mission"
+        })
+      }),
+      Object.freeze({
+        slot: "pools",
+        target: 5,
+        distinctBy: "instanceId",
+        sinceSlotComplete: "islets",
+        criteria: Object.freeze({
+          type: "PHENOMENON_OBSERVED",
+          cuoType: "pool",
+          interactionSource: "mission"
+        })
+      }),
+      Object.freeze({
+        slot: "watercourses",
+        target: 2,
+        distinctBy: "instanceId",
+        sinceSlotComplete: "pools",
+        criteria: Object.freeze({
+          type: "OBJECT_SEEN",
+          cuoType: "watercourse",
+          interactionSource: "mission-proximity"
+        })
+      })
+    ]),
+    persistentWorldScenes: Object.freeze([
+      Object.freeze({
+        mapId: "custom-map-32-rock-village",
+        mapFact: "dip02:rocky-city",
+        instanceId: "DIP-02:visitor:translucent:rocky-city",
+        microSceneId: "MSC-NPC-TRANSLUCENT-001",
+        contextRole: "dip02CrossCivilizationVisitor",
+        persistent: true, spawnOnce: true
+      }),
+      Object.freeze({
+        mapId: "custom-map-31-tinycity",
+        mapFact: "dip02:translucent-city",
+        instanceId: "DIP-02:visitor:rocky:translucent-city",
+        microSceneId: "MSC-NPC-ROCKY-001",
+        contextRole: "dip02CrossCivilizationVisitor",
+        persistent: true, spawnOnce: true
+      }),
+      Object.freeze({
+        mapId: "custom-map-32-rock-village",
+        instanceId: "DIP-02:growth:rocky-city",
+        microSceneId: "MSC-CUSTOM-HOUSE",
+        contextRole: "dip02CityCooperationGrowth",
+        requiresSlotsComplete: Object.freeze(["visitRockyCity", "visitTranslucentCity"]),
+        persistent: true, spawnOnce: true
+      }),
+      Object.freeze({
+        mapId: "custom-map-31-tinycity",
+        instanceId: "DIP-02:growth:translucent-city",
+        microSceneId: "MSC-CUSTOM-HOUSE",
+        contextRole: "dip02CityCooperationGrowth",
+        requiresSlotsComplete: Object.freeze(["visitRockyCity", "visitTranslucentCity"]),
+        persistent: true, spawnOnce: true
+      }),
+      Object.freeze({
+        mapId: "custom-map-32-rock-village",
+        instanceId: "DIP-02:water-installation:rocky-city",
+        microSceneId: "MSC-CUSTOM-ILES-SUSPENDUES2",
+        contextRole: "dip02SharedWaterInstallation",
+        requiresSlotComplete: "hypothesis",
+        persistent: true, spawnOnce: true
+      }),
+      Object.freeze({
+        mapId: "custom-map-31-tinycity",
+        instanceId: "DIP-02:water-installation:translucent-city",
+        microSceneId: "MSC-CUSTOM-ILES-SUSPENDUES2",
+        contextRole: "dip02SharedWaterInstallation",
+        requiresSlotComplete: "hypothesis",
+        persistent: true, spawnOnce: true
+      })
+    ]),
+    completionRelationEffects: Object.freeze([
+      Object.freeze({ civilizationId: "rocky", delta: 5 }),
+      Object.freeze({ civilizationId: "translucent", delta: 5 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "La médiation est acceptée. Il faut maintenant la rendre visible : que les deux peuples circulent, que leurs villes changent, et que l’eau devienne un problème étudié ensemble plutôt qu’un motif de rupture."
+      ]),
+      completed: Object.freeze([
+        "Les deux villes portent désormais la même solution. Les îlots magnétiques ne sont plus seulement un phénomène à observer : ils servent de point commun entre les besoins des deux peuples."
+      ])
+    })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -9155,7 +9363,7 @@
     ARCH40,
     CONTACT01, CONTACT02, CONTACT03, CONTACT04, CONTACT05, CONTACT06, CONTACT07, CONTACT08, CONTACT09,
     CONTACT10, CONTACT11, CONTACT12, CONTACT13, CONTACT14, CONTACT15,
-    DIP01, GAME_CONTACT_FIRST, GAME_CONTACT_CAUTIOUS, GAME_CONTACT_AMBASSADOR,
+    DIP01, GAME_CONTACT_FIRST, GAME_CONTACT_CAUTIOUS, GAME_CONTACT_AMBASSADOR, DIP02,
     BAL01,
     BAL02,
     BAL03,

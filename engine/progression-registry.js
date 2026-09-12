@@ -396,9 +396,10 @@
       world.sequence = sequence;
       const record = this.worldEventRecord(event);
       // Les compteurs numériques couvrent déjà tous les événements. L’index
-      // distinct persistant n’est créé que pour les événements contextualisés
-      // par une faction/civilisation, afin de ne pas dupliquer chaque objet vu.
-      if (!record.civilizationId && !record.factionId) return sequence;
+      // distinct persistant reste ciblé : événements de civilisation/faction
+      // ou événements explicitement rattachés à une mission. On évite ainsi
+      // de dupliquer chaque objet vu dans le monde hors contexte missionnel.
+      if (!record.civilizationId && !record.factionId && !record.missionId) return sequence;
       const fingerprint = this.worldEventFingerprint(record);
       const previous = world.facts[fingerprint] || null;
       world.facts[fingerprint] = {

@@ -1,4 +1,4 @@
-﻿(function (global) {
+(function (global) {
   "use strict";
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
@@ -164,20 +164,114 @@
         case Missions.ActionType.ANALYZE:
         case Missions.ActionType.OBSERVE: {
           const candidates = engine.currentMap.interactables
-            .filter((object) =>
-              object.userData.active &&
-              (
-                !action.params.kind ||
-                object.userData.kind === action.params.kind ||
-                object.userData.functional?.type === action.params.kind ||
-                object.userData.functional?.resource?.inventoryKey === action.params.kind
-              )
-            )
+            .filter((object) => {
+              if (!object?.userData?.active) return false;
+              const anchor = object.userData.worldAnchor || object;
+              const objectData = object.userData || {};
+              const anchorData = anchor?.userData || {};
+              const definition =
+                objectData.functional ||
+                anchorData.functional ||
+                BF.ObjectLibrary?.getById?.(objectData.catalogId || anchorData.catalogId) ||
+                BF.ObjectLibrary?.get?.(objectData.libraryType || anchorData.objectType || objectData.kind);
+              const kindAliases = new Set([
+                objectData.kind,
+                definition?.type,
+                definition?.resource?.inventoryKey,
+                anchorData.kind,
+                anchorData.objectType
+              ].filter((value) => value != null).map((value) => String(value)));
+              const actualCuoType =
+                definition?.type ||
+                objectData.libraryType ||
+                anchorData.objectType ||
+                objectData.kind ||
+                null;
+              const actualMicroSceneId =
+                objectData.microSceneId ||
+                anchorData.microSceneId ||
+                objectData.contextMicroSceneId ||
+                anchorData.contextMicroSceneId ||
+                null;
+              const actualPersistentMicroSceneId =
+                objectData.persistentMicroSceneId ||
+                anchorData.persistentMicroSceneId ||
+                null;
+
+              if (action.params?.kind && !kindAliases.has(String(action.params.kind))) return false;
+              if (action.params?.cuoType && String(actualCuoType) !== String(action.params.cuoType)) return false;
+              if (action.params?.microSceneId && String(actualMicroSceneId) !== String(action.params.microSceneId)) return false;
+              if (
+                action.params?.persistentMicroSceneId &&
+                String(actualPersistentMicroSceneId) !== String(action.params.persistentMicroSceneId)
+              ) return false;
+              return true;
+            })
             .sort((left, right) =>
               engine.character.root.position.distanceTo(left.position) -
               engine.character.root.position.distanceTo(right.position)
             );
           if (!candidates.length) return false;
+
+          if (action.params?.proximityOnly === true) {
+            const target = candidates[0];
+            const radius = Math.max(0.5, Number(action.params.proximityRadius) || 2.5);
+            const point = engine.interactionWorldPosition?.(target) || target.position;
+            if (!point) return false;
+            const player = engine.character.root.position;
+            const distance = player.distanceTo
+              ? player.distanceTo(point)
+              : Math.hypot(
+                  Number(player.x) - Number(point.x),
+                  Number(player.z) - Number(point.z)
+                );
+
+            if (distance <= radius) {
+              const definition = target.userData.functional ||
+                BF.ObjectLibrary?.get?.(target.userData.libraryType) ||
+                BF.ObjectLibrary?.get?.(target.userData.kind);
+              BF.ObjectEvents?.emit?.(
+                BF.ObjectEvents?.types?.OBJECT_SEEN || "OBJECT_SEEN",
+                target,
+                {
+                  mapId: engine.currentMapId,
+                  zoneId: engine.currentZoneIndex,
+                  missionId: action.missionId || null,
+                  missionNodeId: action.nodeId || null,
+                  cuoType: definition?.type || target.userData.kind || null,
+                  subject: action.params?.subject || definition?.category || definition?.type || null,
+                  interactionSource: "mission-proximity",
+                  proximityRadius: radius,
+                  proximityDistance: distance
+                }
+              );
+              target.userData.lastInteractionAt = performance.now();
+              return true;
+            }
+
+            const destination = point.clone
+              ? point.clone()
+              : new engine.THREE.Vector3(Number(point.x) || 0, Number(point.y) || 0, Number(point.z) || 0);
+            if (distance > 0.001) {
+              const offset = radius * 0.8;
+              const dx = Number(player.x) - Number(point.x);
+              const dz = Number(player.z) - Number(point.z);
+              const length = Math.hypot(dx, dz) || 1;
+              destination.x = Number(point.x) + (dx / length) * offset;
+              destination.z = Number(point.z) + (dz / length) * offset;
+            }
+            const accepted = engine.character.setTarget(
+              destination,
+              action.params?.movementMode || "auto"
+            );
+            if (accepted === false) return false;
+            engine.showWorldMarker?.(destination);
+            engine.callbacks?.onStatus?.(
+              `Mission : BlueFox s’approche à moins de ${radius.toFixed(1)} m de ${(target.userData.functional?.label || "la cible").toLowerCase()}.`
+            );
+            return true;
+          }
+
           candidates[0].userData.requestedInteraction = action.type;
           candidates[0].userData.requestedInteractionSource = "mission";
           candidates[0].userData.missionSubject = action.params?.subject || null;
