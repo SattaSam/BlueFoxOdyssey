@@ -1,5 +1,58 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Session du 13 septembre 2026 — ANN-01→07 / synchronisation exhaustive Bible
+
+### Base et commit validé
+- Parent technique : `9034f1bb86c78a8b42bbf4e83a0db212feb80260` — `SUR-07`.
+- Commit validé : `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` — `ANN 01-07`.
+- Le commit est directement au-dessus du parent attendu et contient uniquement le lot ANN validé.
+
+### Chaîne ANN industrialisée
+Ordre canonique : `ANN-04 → ANN-06 → ANN-03 → ANN-02 → ANN-05 → ANN-01 → ANN-07`.
+
+Acquis à préserver :
+- ANN-04 : après T13, nouvelle map Ouest, observation réelle d'une tempête et d'une nappe de brume puis synthèse climatique ;
+- ANN-06 : Camp logistique réel via `site.establish(kind:"camp")`, `MSC-CUSTOM-SMART-CAMP`, placement manuel joueur, coût 10 bois + 10 fibres, distance strictement >10 maps du Camp/Refuge/Base le plus proche ;
+- `MSC-NOCTURNAL-DEN-001` reste un contexte faune distinct du Camp ;
+- ANN-03 : épave réelle `MSC-CUSTOM-EPAVE-1DRONE`, étude d'éléments technologiques distincts puis récupération physique d'un composant ;
+- ANN-02 : 25 Thermosèves puis expérimentation consommant réellement 6 Thermosèves + 2 minerais connus ;
+- ANN-05 : trois types de minerais, quatre échantillons de chaque, consommation réelle des 12 ;
+- ANN-01 : suppression de l'ancienne valeur `signal_strength = 44`, remplacée par 10 % → 25 % → 60 % d'exploration réelle avant l'approche de `MSC-TECH-RELAY-001`, puis trois observations et collecte d'un composant ;
+- ANN-07 : historique réel `observations.historical` de `nocturnal_animal`, aucune réobservation artificielle, fallback optionnel jusqu'à trois nouvelles maps et entrée Journal Faune/Nature.
+
+Les bulles BlueFox des sept missions ont été réécrites pour être spécifiques au vécu et aux étapes réellement franchies.
+
+### Propriétaires / extensions
+- aucune couche ou runtime ANN parallèle ;
+- catalogue missionnel dans `data/bible-catalog.js` ;
+- SMART-CAMP ajouté aux données MSC custom ;
+- BibleRuntime reçoit uniquement l'extension générique nécessaire à la contrainte de distance au site le plus proche ;
+- topologie existante `currentEngine.worldTopology.coordinateOf()` réutilisée ;
+- consommations via les propriétaires d'inventaire existants ;
+- historique faune via les compteurs canoniques existants.
+
+### Validation du commit
+Le SHA `ca619120…` a été vérifié après commit :
+- parent exact `9034f1bb…` ;
+- un seul commit ;
+- cinq fichiers, exactement ceux du ZIP validé ;
+- blobs Git 5/5 identiques aux fichiers livrés ;
+- aucun fichier parasite ou modification hors périmètre détecté.
+
+### Synchronisation Bible / catalogue
+Confrontation exhaustive de la Bible documentaire au catalogue moteur du HEAD : **255 définitions moteur / 255 représentées / 255 cochées**.
+
+Missions moteur qui étaient absentes de la Bible et sont désormais ajoutées :
+- `GAME-civilization_1→5` ;
+- `CONTACT-10→15` ;
+- `FAU-01A`, `FAU-03A`, `FAU-05A`, `FAU-11A`.
+
+Sous-missions présentes mais non cochées avant synchronisation : `ENE-15-A`, `ENE-15-B`, `ENE-15-C`.
+
+Les projets documentaires sans définition moteur restent sans coche.
+
+---
+
 ## Session du 12 septembre 2026 — R-HEALTH / assainissement de la lecture du HEAD
 
 ### Base auditée

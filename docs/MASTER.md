@@ -2,14 +2,15 @@
 
 ## État de référence
 
-Dernière mise à jour : **12 septembre 2026**
+Dernière mise à jour : **13 septembre 2026**
 
 ### Version de travail
-- Base moteur auditée avant mise à jour documentaire : commit `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — `fix Save`.
-- Le HEAD GitHub courant reste la seule base technique de reprise ; les commits documentaires postérieurs ne modifient pas le moteur audité.
+- HEAD missionnel/documentaire courant vérifié : commit `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` — `ANN 01-07`.
+- Checkpoint moteur R-HEALTH sain conservé : commit `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — `fix Save`.
+- Le HEAD GitHub courant reste la seule base technique de reprise ; le checkpoint R-HEALTH sert de référence de santé, jamais de base de codage à la place du HEAD.
 - Les recovery checkpoints existants restent historiques et ne priment pas sur le HEAD courant.
 - `ROADMAP_TODO.md` reste la seule TODO active.
-- Le DOCX Bible présent dans `docs/` est une source documentaire de contenu, pas un document de gouvernance technique maintenu par cette mise à jour.
+- Le DOCX Bible présent dans `docs/` est une source documentaire de contenu ; il doit rester synchronisé avec les définitions moteur effectivement confirmées.
 
 ## Gouvernance documentaire officielle
 
@@ -141,33 +142,51 @@ La sauvegarde doit préserver :
 
 Les états différés doivent être flushés avant snapshot.
 
-Depuis le HEAD `560249…`, MissionManager protège aussi l'hydratation différée d'une sauvegarde : si une mission sauvegardée est connue dans l'état mais que sa définition n'est pas encore chargée, la restauration attend la disponibilité de la définition au lieu d'écraser prématurément l'état sauvegardé. Cette protection reste dans le propriétaire canonique du lifecycle ; aucun second moteur de restauration missionnelle n'est créé.
+Depuis le checkpoint `560249…`, MissionManager protège aussi l'hydratation différée d'une sauvegarde : si une mission sauvegardée est connue dans l'état mais que sa définition n'est pas encore chargée, la restauration attend la disponibilité de la définition au lieu d'écraser prématurément l'état sauvegardé. Cette protection reste dans le propriétaire canonique du lifecycle ; aucun second moteur de restauration missionnelle n'est créé.
 
 Aucune propagation ou migration artificielle rejetée par le runtime ne doit être réintroduite.
 
 ## Industrialisation missionnelle acquise
 
-Lots intégrés au HEAD audité et à préserver :
+Lots intégrés au HEAD `ca619120…` et à préserver :
 - T01→T13 ;
 - FLO-01→07 ;
 - GEO-01→07 ;
 - paliers COL et missions ENV ;
-- LOC ;
-- SUR ;
-- GAME R1/R2 ;
-- FAU-01→12 puis extensions FAUNA validées ;
-- ENE-01→15 ;
+- LOC-01→17 ;
+- SUR-01/02/03/05/06/07 + SURPLUS et missions de site associées ;
+- GAME R1/R2 et missions GAME complémentaires ;
 - GAME-civilization_1→5 ;
-- GAME-engineering_3→6 et GAME-fire ;
+- FAU-01→12 + templates répétables par espèce `FAU-01A`, `FAU-03A`, `FAU-05A`, `FAU-11A` ;
+- ENE-01→14 + sous-branche ENE-15-A/B/C ;
+- GAME-engineering_1→6 et GAME-fire ;
 - chaîne balise `BAL-01→03` ;
-- chaîne drones `DRN-01→04` ;
-- cinq missions GAME supplémentaires : `GAME-collection_samples`, `GAME-collection_variety`, `GAME-travel_biomes`, `GAME-travel_short`, `GAME-travel_long` ;
+- chaîne drones `DRN-01→05` ;
 - ARCH-01→40 ;
 - CONTACT-01→15 ;
 - DIP-01→03 ;
-- chaîne GAME contact : `GAME_CONTACT_FIRST`, `GAME_CONTACT_CAUTIOUS`, `GAME_CONTACT_AMBASSADOR`.
+- chaîne GAME contact : `GAME-contact_first`, `GAME-contact_cautious`, `GAME-contact_ambassador` ;
+- chaîne ANN industrialisée au commit `ca619120…` : `ANN-04 → ANN-06 → ANN-03 → ANN-02 → ANN-05 → ANN-01 → ANN-07`.
+
+La Bible documentaire synchronisée avec ce HEAD représente désormais **255/255 définitions moteur du catalogue** avec une coche ✅. Les projets documentaires sans définition moteur restent volontairement sans coche.
 
 La présence au catalogue ne dispense jamais de vérifier le raccord runtime, les prérequis et les consommateurs lorsqu'un nouveau chantier touche ces branches.
+
+## Lot ANN — contrat acquis
+
+Commit de référence : `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` — `ANN 01-07`.
+
+Acquis à préserver :
+- ANN-04 s'ouvre après T13 sur une nouvelle map Ouest et réutilise les phénomènes météo existants ;
+- ANN-06 établit un **Camp** réel via le mécanisme générique de site/placement joueur, avec `MSC-CUSTOM-SMART-CAMP`, coût 10 bois + 10 fibres et distance strictement >10 maps du Camp/Refuge/Base le plus proche ;
+- `MSC-NOCTURNAL-DEN-001` reste un contexte faune distinct du Camp ;
+- ANN-03 utilise l'épave réelle et ses composants physiques ;
+- ANN-02 collecte 25 Thermosèves puis consomme réellement 6 plantes + 2 minerais connus ;
+- ANN-05 analyse 3 types minéraux, collecte 4 de chacun et consomme réellement les 12 échantillons ;
+- ANN-01 remplace tout ancien `signal_strength = 44` par trois seuils d'exploration réels 10 % → 25 % → 60 %, puis observation de 3 éléments du relais et collecte d'un composant réel ;
+- ANN-07 consomme l'historique réel `OBJECT_SEEN` / `observations.historical` pour la faune nocturne et n'impose pas de réobservation artificielle ;
+- les bulles BlueFox sont spécifiques aux étapes vécues et persistées par les mécanismes existants ;
+- aucune couche ANN parallèle n'a été créée.
 
 ## Relations / civilisations
 
@@ -177,20 +196,21 @@ Le moteur relationnel a dépassé le simple enchaînement de missions CONTACT :
 - une approche lente/stable peut permettre une progression prudente ;
 - un dialogue/contact déjà engagé reste protégé contre une fuite automatique concurrente ;
 - réputation, commerce et déblocages de recherche utilisent les propriétaires canoniques ;
-- les coûts de commerce consomment le stock physique et les récompenses produisent des connaissances/blueprints réels.
+- les coûts de commerce consomment le stock physique et les récompenses produisent des connaissances/blueprints réels ;
+- CONTACT-10→15 constitue la minisérie de la seconde civilisation, avec sélection persistante et reprise vers CONTACT-10 en cas d'échec relationnel significatif.
 
-Le raccord CONTACT-10→CONTACT-11 reste un défaut local connu traité par le lot missionnel dédié ; il ne constitue pas une panne systémique du sous-système relationnel.
+Le raccord CONTACT-10→CONTACT-11 précédemment signalé comme défaut local n'est plus une TODO documentaire générale : les deux définitions sont présentes au HEAD actuel. Toute anomalie future doit être reproduite au runtime avant correction.
 
 ## Énergie / balise / drones
 
 ### ENE
-ENE-11→15 est désormais présente au HEAD audité. Les mécanismes continuent de réutiliser l'établi, les accumulateurs, les machines/objets et les propriétaires existants plutôt que de créer un second moteur énergétique.
+La chaîne énergétique présente au catalogue va de ENE-01 à ENE-14, puis se prolonge par `ENE-15-A`, `ENE-15-B`, `ENE-15-C`. Les mécanismes continuent de réutiliser l'établi, les accumulateurs, les machines/objets et les propriétaires existants plutôt que de créer un second moteur énergétique.
 
 ### Balise et drones
 - la balise déployée appartient au runtime d'objets spéciaux existant ;
 - le Kit d'expédition sait transporter les objets concernés sans devenir leur propriétaire métier ;
 - `BAL-01→03` formalise analyse, fabrication/déploiement et usage de la balise ;
-- `DRN-01→04` formalise les Blueprints Scout/Harvest, la récolte distante et le pilotage du réseau depuis Recherche ;
+- `DRN-01→05` couvre Scout/Harvest, récolte distante, réseau et dépannage terrain ;
 - les observations du Scout utilisent le chemin canonique `OBJECT_SEEN` pour l'historique global, sans produire d'observations missionnelles ordinaires non demandées.
 
 ## Journal évolutif
@@ -203,13 +223,15 @@ Le Journal est lazy et persistant :
 - seules les évolutions significatives enrichissent la synthèse ;
 - aucun polling n'a été ajouté.
 
+ANN-07 ajoute un jalon documentaire à la branche Faune/Nature du Journal lorsqu'un premier catalogue du vivant est réellement établi.
+
 ## Continuité
 
-- `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` constitue le **checkpoint moteur R-HEALTH sain** de cette interruption de session.
-- Les documents ne doivent plus annoncer ARCH-30 ou ENE-15 comme futurs : ces contenus sont déjà présents au HEAD audité.
-- La prochaine industrialisation doit être choisie depuis la Bible/roadmap réellement restante, confrontée au HEAD courant et à ses propriétaires.
-- Aucun chantier général de réparation moteur n'est ouvert à la suite de R-HEALTH.
-- Les quatre domaines ORANGE sont des zones de validation à compléter quand un chantier les traverse, pas des pannes présumées.
+- `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` reste le **checkpoint moteur R-HEALTH sain** ;
+- `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` est le **HEAD missionnel de référence de cette synchronisation documentaire** ;
+- la prochaine industrialisation doit être choisie parmi les projets réellement encore sans définition moteur dans la Bible synchronisée ;
+- aucun chantier général de réparation moteur n'est ouvert ;
+- les quatre domaines ORANGE restent des zones de validation à compléter quand un chantier les traverse, pas des pannes présumées.
 
 ## Discipline d'industrialisation
 
