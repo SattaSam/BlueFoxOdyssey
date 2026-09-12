@@ -1,5 +1,5 @@
-const fs=require('fs'), vm=require('vm'), assert=require('assert');
-const ROOT='/mnt/data/fau_r3_delivery/CANDIDAT';
+const fs=require('fs'), vm=require('vm'), assert=require('assert'), path=require('path');
+const ROOT=path.resolve(__dirname,'..');
 const storage=new Map();
 const localStorage={getItem:k=>storage.has(k)?storage.get(k):null,setItem:(k,v)=>storage.set(k,String(v)),removeItem:k=>storage.delete(k)};
 const defs={};
@@ -15,8 +15,8 @@ const BF={
 };
 const context={window:null,BlueFox3D:BF,console:{info(){},warn(){},error(){}},localStorage,performance:{now:()=>0},Date,Math,JSON,Set,Map,WeakMap,Object,Array,Number,String,Boolean,Promise,CustomEvent:function(t,o){this.type=t;this.detail=o?.detail},queueMicrotask:fn=>fn(),setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},requestAnimationFrame:()=>0,addEventListener(){},removeEventListener(){},dispatchEvent(){},document:{querySelector:()=>null,querySelectorAll:()=>[]}};context.window=context;
 vm.createContext(context);
-vm.runInContext(fs.readFileSync(ROOT+'/data/bible-catalog.js','utf8'),context,{filename:'bible-catalog.js'});
-vm.runInContext(fs.readFileSync(ROOT+'/engine/bible-runtime-v0-1-unified.js','utf8'),context,{filename:'bible-runtime.js'});
+vm.runInContext(fs.readFileSync(path.join(ROOT,'data/bible-catalog.js'),'utf8'),context,{filename:'bible-catalog.js'});
+vm.runInContext(fs.readFileSync(path.join(ROOT,'engine/bible-runtime-v0-1-unified.js'),'utf8'),context,{filename:'bible-runtime.js'});
 
 class Node {
   constructor(d){this.id=d.id;this.target=d.target||1;this.progress=0;this.status='available';this.params=d.params||{};this.requires=d.requires||[];this.distinctValues=[];this.historyValues=[];}
@@ -45,25 +45,19 @@ function event(type,tags,cuo='brouteur',instance='x',distance=4.2){return {type:
 function complete(id){const t=manager.trees.get(id);assert(t,'tree '+id);for(const n of t.nodes.values()){n.progress=n.target;n.status='completed';}t.refresh();manager.syncLifecycleFromTrees();}
 function evidence(id,ids){const t=manager.trees.get(id);assert(t);const n=[...t.nodes.values()][0];for(const x of ids)n.incrementDistinct(x);t.refresh();manager.syncLifecycleFromTrees();}
 
-// FAU-11 evidence used to demand one additional brouteur.
 manager.trees.set('FAU-11',{root:{walk(fn){for(const id of ['old1','old2','old3'])fn({distinctValues:[id],historyValues:[]})}}});
 assert.strictEqual(rt.reconcileFaunaSpeciesMissions(),true);
 assert.strictEqual(memory.state.missionLifecycle['FAU-11A@brouteur'].status,'active');
 assert.strictEqual(facts['fauna:relationshipLoopUnlocked'],undefined);
-// Other species locked before brouteur terminal resolution.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('cautious_approach',['fauna_behavior','cautious_approach','no_flee'],'sauteur','s1',4.3)),false);
 assert.strictEqual(memory.state.missionLifecycle['FAU-01A@sauteur'],undefined);
-// Old individual cannot validate terminal.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('calm_nearby',['fauna_behavior','calm_nearby'],'brouteur','old2',3)),false);
-// New individual validates brouteur terminal.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('calm_nearby',['fauna_behavior','calm_nearby'],'brouteur','new4',3)),true);
 manager.syncLifecycleFromTrees(); rt.reconcileFaunaSpeciesMissions();
 assert.strictEqual(reps.brouteur,'friendly');
 assert.strictEqual(facts['fauna:relationshipLoopUnlocked'],true);
-// Friendly brouteur cannot reopen chain.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('cautious_approach',['fauna_behavior','cautious_approach','no_flee'],'brouteur','new5',4)),false);
 
-// New species starts only from successful cautious approach <5 m.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('cautious_approach',['fauna_behavior','cautious_approach','no_flee'],'sauteur','s1',5.01)),false);
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('cautious_approach',['fauna_behavior','cautious_approach','no_flee'],'sauteur','s1',4.6)),true);
 assert.strictEqual(memory.state.missionLifecycle['FAU-01A@sauteur'].status,'completed');
@@ -73,13 +67,10 @@ complete('FAU-03A@sauteur'); rt.reconcileFaunaSpeciesMissions();
 assert.strictEqual(memory.state.missionLifecycle['FAU-05A@sauteur'].status,'active');
 evidence('FAU-05A@sauteur',['s2','s3','s4']); rt.reconcileFaunaSpeciesMissions();
 assert.strictEqual(memory.state.missionLifecycle['FAU-11A@sauteur'].status,'active');
-// A FAU-05A individual cannot validate terminal.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('calm_nearby',['fauna_behavior','calm_nearby'],'sauteur','s3',3)),false);
-// Failure -> hostile.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('flee',['fauna_behavior','flee','intrusive_approach'],'sauteur','s5',2.5)),true);
 assert.strictEqual(reps.sauteur,'hostile');
 assert.strictEqual(memory.state.missionLifecycle['FAU-11A@sauteur'].status,'failed');
-// Next successful cautious approach restarts from FAU-01A, not FAU-11A.
 assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('cautious_approach',['fauna_behavior','cautious_approach','no_flee'],'sauteur','s6',4.4)),true);
 assert.strictEqual(memory.state.missionLifecycle['FAU-01A@sauteur'].status,'completed');
 assert.strictEqual(memory.state.missionLifecycle['FAU-11A@sauteur'].status,'failed');
@@ -93,6 +84,5 @@ assert.strictEqual(rt.handleFaunaSpeciesObjectEvent(event('calm_nearby',['fauna_
 manager.syncLifecycleFromTrees();rt.reconcileFaunaSpeciesMissions();
 assert.strictEqual(reps.sauteur,'friendly');
 
-// Dynamic compiled definitions preserve repeatable for MissionManager's generic owner.
 for(const id of ['FAU-01A@sauteur','FAU-03A@sauteur','FAU-05A@sauteur','FAU-11A@sauteur']) assert.strictEqual(defs[id].repeatable,true,id);
 console.log('PASS fau-r3-species-runtime 22 assertions');

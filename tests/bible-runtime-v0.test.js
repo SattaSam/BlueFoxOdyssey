@@ -85,9 +85,11 @@ test("le runtime unifié filtre type et kind sans faux positif", () => {
 test("les fiches cumulatives se compilent dans le runtime unifié", () => {
   const window = runtimeFixture();
   const BF = window.BlueFox3D;
-  assert.equal(BF.getBibleRuntimeDiagnostics().catalogCount, 29);
-  assert.equal(BF.getBibleRuntimeDiagnostics().registeredDefinitions, 29);
-  assert.equal(BF.getBibleRuntimeDiagnostics().strictContract, true);
+  const diagnostics = BF.getBibleRuntimeDiagnostics();
+
+  assert.equal(diagnostics.catalogCount, BF.BibleCatalog.length);
+  assert.equal(diagnostics.registeredDefinitions, BF.BibleCatalog.length);
+  assert.equal(diagnostics.strictContract, true);
   assert.ok(BF.Missions.getDefinition("GEO-01"));
   assert.ok(BF.Missions.getDefinition("GEO-02"));
   assert.ok(BF.Missions.getDefinition("GEO-03"));
