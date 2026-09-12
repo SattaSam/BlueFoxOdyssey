@@ -346,13 +346,42 @@
           engine.callbacks.onStatus("Mission : BlueFox cartographie un secteur encore incomplet.");
           return true;
         }
-        case Missions.ActionType.RESEARCH:
+        case Missions.ActionType.RESEARCH: {
+          if (action.params?.requiresShelter === true && BF.canAccessCampInventory?.() !== true) {
+            return false;
+          }
+          const consumes = Array.isArray(action.params?.inventoryConsume)
+            ? action.params.inventoryConsume
+            : [];
+          if (consumes.length) {
+            const plan = consumes.map((entry) => ({
+              inventoryKey: String(entry?.inventoryKey || ""),
+              quantity: Math.max(0, Number(entry?.quantity) || 0)
+            }));
+            if (plan.some((entry) =>
+              !entry.inventoryKey ||
+              !entry.quantity ||
+              Number(BF.progression?.availableInventory?.([entry.inventoryKey])) < entry.quantity
+            )) {
+              return false;
+            }
+            for (const [index, entry] of plan.entries()) {
+              const transactionId = `${action.missionId || "mission"}:${action.nodeId || "research"}:inventory-consume:${index}`;
+              const removed = BF.consumeInventoryPoolOnce?.(
+                transactionId,
+                [entry.inventoryKey],
+                entry.quantity
+              );
+              if (removed !== entry.quantity) return false;
+            }
+          }
           engine.startRoutine(
             "research",
             now,
             Math.max(1500, Number(action.params.duration) || 6500)
           );
           return true;
+        }
         case Missions.ActionType.REST:
           engine.startRoutine("rest", now, Number(action.params.duration) || 7200);
           return true;

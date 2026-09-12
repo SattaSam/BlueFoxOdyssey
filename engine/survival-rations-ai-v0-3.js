@@ -4,6 +4,7 @@
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const VERSION = "survival-rations-ai-v0.3";
   const RECIPE_ID = "ration-basic-v2";
+  const CONSERVATION_KNOWLEDGE_ID = "ration_conservation_mastery";
 
   const POLICY = Object.freeze({
     criticalMax: 3,
@@ -464,6 +465,20 @@
     )[0] || null;
   };
 
+
+  const conservationPreferenceUnlocked = () =>
+    BF.Research?.isUnlocked?.(CONSERVATION_KNOWLEDGE_ID) === true;
+
+  const resourceYield = (object) => {
+    const data = object?.userData || {};
+    const definition =
+      data.functional ||
+      BF.ObjectLibrary?.get?.(data.libraryType) ||
+      BF.ObjectLibrary?.get?.(data.kind) ||
+      {};
+    return Math.max(0, Number(definition?.resource?.quantity) || 0);
+  };
+
   const acquisitionAction = (object) => {
     const data = object?.userData || {};
     const definition =
@@ -544,7 +559,22 @@
     if (!availableDeficits.length) return null;
 
     const selectedDeficit = availableDeficits[0];
-    const object = nearest(engine, selectedDeficit.objects);
+    let candidateObjects = selectedDeficit.objects;
+    if (
+      selectedDeficit.key === "adaptive_biomass" &&
+      conservationPreferenceUnlocked()
+    ) {
+      const richestYield = candidateObjects.reduce(
+        (maximum, object) => Math.max(maximum, resourceYield(object)),
+        0
+      );
+      if (richestYield > 0) {
+        candidateObjects = candidateObjects.filter(
+          (object) => resourceYield(object) === richestYield
+        );
+      }
+    }
+    const object = nearest(engine, candidateObjects);
     if (!object) return null;
 
     const action = acquisitionAction(object);

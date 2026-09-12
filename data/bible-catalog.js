@@ -6,7 +6,7 @@
     Object.freeze({
       id: "biology", label: "Biologie", axis: "research",
       stages: Object.freeze([
-        Object.freeze({ stage: 1, location: "camp", title: "Comparer des échantillons biologiques", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 10 }), Object.freeze({ inventoryKey: "fiber", quantity: 5 })]), narratives: Object.freeze(["Les tissus réagissent différemment. Je garde la comparaison, même si le résultat reste imparfait.", "Cette combinaison est plus stable que prévu. J'ai une base biologique exploitable."]) }),
+        Object.freeze({ stage: 1, location: "camp", title: "Comparer des échantillons biologiques", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 10 }), Object.freeze({ inventoryKey: "fiber", quantity: 5 })]), knowledge: Object.freeze({ id: "biology_experimented", label: "Expérimentation biologique menée" }), narratives: Object.freeze(["Les tissus réagissent différemment. Je garde la comparaison, même si le résultat reste imparfait.", "Cette combinaison est plus stable que prévu. J'ai une base biologique exploitable."]) }),
         Object.freeze({ stage: 2, location: "camp", title: "Tester conservation et compatibilité", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 12 }), Object.freeze({ inventoryKey: "fiber", quantity: 2 })]), narratives: Object.freeze(["La conservation modifie la réponse des tissus. C'est utile, même sans résultat parfait.", "La compatibilité tient assez longtemps pour être mesurée proprement."]) }),
         Object.freeze({ stage: 3, location: "camp", title: "Stabiliser une association biologique", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 15 })]), knowledge: Object.freeze({ id: "biology_applied", label: "Biologie appliquée" }), narratives: Object.freeze(["Trois essais cohérents : je comprends mieux comment stabiliser ces ressources vivantes.", "Cette fois la logique biologique est assez claire pour guider une préparation réelle."]) }),
         Object.freeze({ stage: 4, location: "workbench", title: "Mesurer un échange vivant-minéral", requirements: Object.freeze([Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 6 }), Object.freeze({ inventoryKey: "crystal", quantity: 4 }), Object.freeze({ inventoryKey: "parts", quantity: 2 })]), narratives: Object.freeze(["L'échange existe, mais il reste instable. L'établi me permet enfin de le mesurer.", "Le vivant et le cristal ne réagissent pas au hasard. Il y a une signature reproductible."]) }),
@@ -6341,6 +6341,134 @@
   });
 
 
+  const SUR07 = Object.freeze({
+    id: "SUR-07",
+    title: "Ration d’expédition améliorée",
+    description:
+      "Comparer trois ressources alimentaires, réunir les échantillons nécessaires, mener un essai de conservation au camp puis fabriquer trois rations.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({
+      type: "progression.mission_completed",
+      missionId: "SUR-06",
+      count: 1
+    }),
+    prerequisites: Object.freeze(["SUR-06"]),
+    experimentalPrerequisites: Object.freeze(["biology_experimented"]),
+    priority: 187,
+    passivePriorityAxis: "survival",
+    theme: "Flore",
+    allowsAutonomousRationCraft: true,
+    ponderation: 1,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 28,
+    narrativeAxis: "NATURALISTE",
+    runtimeCounters: Object.freeze([
+      Object.freeze({
+        slot: "craftRations",
+        source: "rations.craftedTotal",
+        baselineOnActivation: true
+      })
+    ]),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "observeAdaptivePlant",
+        title: "Observer une plante adaptative",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "adaptive_plant", subject: "flora" })
+      }),
+      Object.freeze({
+        slot: "observeBiologicalResource",
+        title: "Observer une ressource biologique",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "rare_biological_resource", subject: "flora" })
+      }),
+      Object.freeze({
+        slot: "observeGiantMushroom",
+        title: "Observer un champignon géant",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ cuoType: "giant_mushroom", subject: "flora" })
+      }),
+      Object.freeze({
+        slot: "collectBiomass",
+        title: "Réunir douze unités végétales pour l’essai",
+        action: "collect",
+        target: 12,
+        requires: Object.freeze([
+          "observeAdaptivePlant",
+          "observeBiologicalResource",
+          "observeGiantMushroom"
+        ]),
+        params: Object.freeze({ kind: "adaptive_biomass", subject: "flora" })
+      }),
+      Object.freeze({
+        slot: "collectFiber",
+        title: "Réunir quatre fibres pour l’essai",
+        action: "collect",
+        target: 4,
+        requires: Object.freeze(["collectBiomass"]),
+        params: Object.freeze({ kind: "fiber" })
+      }),
+      Object.freeze({
+        slot: "experimentConservation",
+        title: "Mener l’expérimentation de conservation au camp",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["collectFiber"]),
+        params: Object.freeze({
+          requiresShelter: true,
+          inventoryConsume: Object.freeze([
+            Object.freeze({ inventoryKey: "adaptive_biomass", quantity: 12 }),
+            Object.freeze({ inventoryKey: "fiber", quantity: 4 })
+          ])
+        })
+      }),
+      Object.freeze({
+        slot: "craftRations",
+        title: "Fabriquer trois rations après l’essai",
+        action: "craft",
+        target: 3,
+        requires: Object.freeze(["experimentConservation"]),
+        params: Object.freeze({
+          eventDriven: true,
+          recipeId: "ration-basic-v2"
+        })
+      })
+    ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.knowledge",
+        id: "ration_conservation_mastery",
+        category: "survival",
+        label: "Maîtrise de la conservation",
+        description:
+          "Les champignons géants et les ressources biologiques sont des sources de biomasse plus riches ; BlueFox les privilégie lorsqu’il cherche de quoi préparer des rations."
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze([
+        "Je connais déjà les bases biologiques. Je veux comparer les ressources alimentaires et vérifier au camp ce qui permet de préparer mes réserves plus efficacement."
+      ]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "experimentConservation",
+          atCount: 1,
+          text: "L’essai est concluant : certaines ressources biologiques concentrent nettement plus de biomasse que les plantes adaptatives."
+        })
+      ]),
+      completed: Object.freeze([
+        "Pour mes futures rations, je retiens les champignons géants et les ressources biologiques quand ils sont disponibles : leur biomasse est plus riche."
+      ])
+    })
+  });
+
+
   // Missions de consommation — transformer des surplus réels en entretien ou recherche.
   // Les effets restent portés par inventory.consume ; aucune seconde économie n'est créée.
   const SURPLUS01 = Object.freeze({
@@ -9749,6 +9877,7 @@
     SUR03,
     SUR05,
     SUR06,
+    SUR07,
     SURPLUS01,
     SURPLUS02_MINERAL,
     SURPLUS02_CRYSTAL,
