@@ -64,6 +64,7 @@
   let startupReady = false;
   let startupPromise = null;
   let newGameResetInProgress = false;
+  let restoreInProgress = false;
   let introInProgress = false;
   let introOverlay = null;
   let firstLaunchGate = null;
@@ -309,6 +310,7 @@
     if (!snapshot) return false;
 
     await createRecoverySnapshot();
+    restoreInProgress = true;
     applySnapshot(snapshot, slot);
     writeLocalCache(slot, snapshot);
     if (String(slot) === "auto") {
@@ -358,7 +360,12 @@
   };
 
   const flush = async () => {
-    if (!startupReady || newGameResetInProgress || firstLaunchGateActive) {
+    if (
+      !startupReady ||
+      newGameResetInProgress ||
+      restoreInProgress ||
+      firstLaunchGateActive
+    ) {
       return false;
     }
     const now = Date.now();
