@@ -8586,19 +8586,24 @@
   });
 
 
-  const contactNpcEntries = (id, options = {}) => Object.freeze([
-    Object.freeze({ id: `${id}-rocky`, cuoType: "npc_rocky", selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "rocky", triggerDistance: options.triggerDistance || 8, rearmDistance: options.rearmDistance || 12, behaviors: Object.freeze(options.behaviors || ["curiosity","calm","vigilance"]), cause: options.cause || "contact-initiative", autoContact: options.autoContact === true, contactMode: options.contactMode || null, contactSlot: options.contactSlot || null, postContactReaction: options.postContactReaction || null, postContactBehaviors: Object.freeze(options.postContactBehaviors || ["curiosity","calm"]), speech: options.speech || null, speechTriggerDistance: options.speechTriggerDistance || null, emitDialogue: options.emitDialogue === true, spatialDecision: options.spatialDecision === true, spatialChoices: Object.freeze(options.spatialChoices || ["approach","hold","retreat"]), spatialStepDistance: options.spatialStepDistance || 1.2, requiresSlotComplete: options.requiresSlotComplete || null }),
-    Object.freeze({ id: `${id}-translucent`, cuoType: "npc_translucent", selectionFact: "civilization:arch-selected", selectionField: "civilizationId", selectionValue: "translucent", triggerDistance: options.triggerDistance || 8, rearmDistance: options.rearmDistance || 12, behaviors: Object.freeze(options.behaviors || ["curiosity","calm","vigilance"]), cause: options.cause || "contact-initiative", autoContact: options.autoContact === true, contactMode: options.contactMode || null, contactSlot: options.contactSlot || null, postContactReaction: options.postContactReaction || null, postContactBehaviors: Object.freeze(options.postContactBehaviors || ["curiosity","calm"]), speech: options.speech || null, speechTriggerDistance: options.speechTriggerDistance || null, emitDialogue: options.emitDialogue === true, spatialDecision: options.spatialDecision === true, spatialChoices: Object.freeze(options.spatialChoices || ["approach","hold","retreat"]), spatialStepDistance: options.spatialStepDistance || 1.2, requiresSlotComplete: options.requiresSlotComplete || null })
-  ]);
+  const contactNpcEntries = (id, options = {}) => {
+    const selectionFact = String(options.selectionFact || "civilization:arch-selected");
+    const selectionField = String(options.selectionField || "civilizationId");
+    return Object.freeze([
+      Object.freeze({ id: `${id}-rocky`, cuoType: "npc_rocky", selectionFact, selectionField, selectionValue: "rocky", triggerDistance: options.triggerDistance || 8, rearmDistance: options.rearmDistance || 12, behaviors: Object.freeze(options.behaviors || ["curiosity","calm","vigilance"]), cause: options.cause || "contact-initiative", autoContact: options.autoContact === true, contactMode: options.contactMode || null, contactSlot: options.contactSlot || null, postContactReaction: options.postContactReaction || null, postContactBehaviors: Object.freeze(options.postContactBehaviors || ["curiosity","calm"]), speech: options.speech || null, speechTriggerDistance: options.speechTriggerDistance || null, emitDialogue: options.emitDialogue === true, spatialDecision: options.spatialDecision === true, spatialChoices: Object.freeze(options.spatialChoices || ["approach","hold","retreat"]), spatialStepDistance: options.spatialStepDistance || 1.2, requiresSlotComplete: options.requiresSlotComplete || null }),
+      Object.freeze({ id: `${id}-translucent`, cuoType: "npc_translucent", selectionFact, selectionField, selectionValue: "translucent", triggerDistance: options.triggerDistance || 8, rearmDistance: options.rearmDistance || 12, behaviors: Object.freeze(options.behaviors || ["curiosity","calm","vigilance"]), cause: options.cause || "contact-initiative", autoContact: options.autoContact === true, contactMode: options.contactMode || null, contactSlot: options.contactSlot || null, postContactReaction: options.postContactReaction || null, postContactBehaviors: Object.freeze(options.postContactBehaviors || ["curiosity","calm"]), speech: options.speech || null, speechTriggerDistance: options.speechTriggerDistance || null, emitDialogue: options.emitDialogue === true, spatialDecision: options.spatialDecision === true, spatialChoices: Object.freeze(options.spatialChoices || ["approach","hold","retreat"]), spatialStepDistance: options.spatialStepDistance || 1.2, requiresSlotComplete: options.requiresSlotComplete || null })
+    ]);
+  };
 
-  const contactSelectedNpcRequirement = Object.freeze({
-    selectionFact: "civilization:arch-selected",
+  const contactNpcRequirement = (selectionFact = "civilization:arch-selected") => Object.freeze({
+    selectionFact,
     selectionField: "civilizationId",
     choices: Object.freeze({
       rocky: Object.freeze({ type: "npc_rocky", count: 1 }),
       translucent: Object.freeze({ type: "npc_translucent", count: 1 })
     })
   });
+  const contactSelectedNpcRequirement = contactNpcRequirement();
   const contactSelectedNpcMapGeneration = Object.freeze({
     requiredObjects: Object.freeze([contactSelectedNpcRequirement])
   });
@@ -8704,10 +8709,93 @@
     slots: Object.freeze({}),
     mapGeneration: contactSelectedNpcMapGeneration,
     sequence: Object.freeze([Object.freeze({ slot: "contact", title: "Être reconnu comme ami", action: "observe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) })]),
-    runtimeValidation: Object.freeze({ type: "civilization-contact", phase: "friendly", slot: "contact" }),
+    runtimeValidation: Object.freeze({
+      type: "civilization-contact", phase: "friendly", slot: "contact",
+      nextContactMissionId: "CONTACT-10",
+      nextContactSelectionFact: "civilization:contact-secondary"
+    }),
     npcEncounters: contactNpcEntries("contact09", { cause: "contact-initiative", behaviors: ["calm","curiosity"], autoContact: true, contactMode: "symbols-only", contactSlot: "contact", postContactReaction: "contact-friendly", postContactBehaviors: ["calm","curiosity"] })
   });
 
+  const contactSecondaryArcIds = Object.freeze([
+    "CONTACT-10", "CONTACT-11", "CONTACT-12",
+    "CONTACT-13", "CONTACT-14", "CONTACT-15"
+  ]);
+  const contactSecondarySelectionFact = "civilization:contact-secondary";
+  const contactSecondaryValidation = (phase, slot = "contact") => Object.freeze({
+    type: "civilization-contact",
+    phase,
+    slot,
+    selectionFact: contactSecondarySelectionFact,
+    selectionField: "civilizationId",
+    resetMissionIds: contactSecondaryArcIds,
+    resetStartMissionId: "CONTACT-10",
+    resetPrerequisites: Object.freeze(["CONTACT-09"])
+  });
+  const contactSecondaryNpcEntries = (id, options = {}) => contactNpcEntries(id, {
+    ...options,
+    selectionFact: contactSecondarySelectionFact
+  });
+
+  const CONTACT10 = Object.freeze({
+    id: "CONTACT-10", title: "L’autre peuple, à bonne distance",
+    description: "Approcher l’autre civilisation avec la même prudence, sans supposer que ses codes sont identiques.",
+    pattern: "OBSERVE_TARGET", trigger: Object.freeze({ type: "manual", count: 1 }), prerequisites: Object.freeze(["CONTACT-09"]), priority: 231, passivePriorityAxis: "relations",
+    targetMapFact: contactSecondarySelectionFact, targetMapField: "mapId",
+    slots: Object.freeze({ study: Object.freeze({ title: "Trouver une distance acceptable", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }) }),
+    runtimeValidation: contactSecondaryValidation("approach", "study"),
+    npcEncounters: contactSecondaryNpcEntries("contact10", { cause: "contact-initiative", behaviors: ["vigilance","curiosity","calm"] })
+  });
+
+  const CONTACT11 = Object.freeze({
+    id: "CONTACT-11", title: "Attendre leur initiative",
+    description: "Laisser ce peuple choisir comment réduire la distance avant de répondre.",
+    pattern: "OBSERVE_TARGET", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-10", count: 1 }), prerequisites: Object.freeze(["CONTACT-10"]), priority: 230, passivePriorityAxis: "relations",
+    targetMapFact: contactSecondarySelectionFact, targetMapField: "mapId",
+    slots: Object.freeze({ study: Object.freeze({ title: "Laisser venir le premier signe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }) }),
+    runtimeValidation: contactSecondaryValidation("initiative", "study"),
+    npcEncounters: contactSecondaryNpcEntries("contact11", { cause: "contact-initiative", spatialDecision: true, spatialChoices: ["hold","approach","retreat"] })
+  });
+
+  const CONTACT12 = Object.freeze({
+    id: "CONTACT-12", title: "Des signes différents, une intention lisible",
+    description: "Comprendre un indice contextuel propre à l’autre civilisation sans supposer une langue commune.",
+    pattern: "OBSERVE_TARGET", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-11", count: 1 }), prerequisites: Object.freeze(["CONTACT-11"]), priority: 229, passivePriorityAxis: "relations",
+    targetMapFact: contactSecondarySelectionFact, targetMapField: "mapId",
+    slots: Object.freeze({ study: Object.freeze({ title: "Comprendre un indice contextuel", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }) }),
+    runtimeValidation: contactSecondaryValidation("dialogue", "study"),
+    npcEncounters: contactSecondaryNpcEntries("contact12", { speech: "⟁ ⋔ … ici … ⧖", speechTriggerDistance: 8, emitDialogue: true, cause: "contact-dialogue", behaviors: ["calm","observation"] })
+  });
+
+  const CONTACT13 = Object.freeze({
+    id: "CONTACT-13", title: "Répondre sans copier les premiers codes",
+    description: "Répondre à l’autre civilisation avec un geste simple puis attendre sa réaction réelle, sans supposer que les premiers codes s’appliquent à elle.",
+    pattern: "OBSERVE_TARGET", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-12", count: 1 }), prerequisites: Object.freeze(["CONTACT-12"]), priority: 228, passivePriorityAxis: "relations",
+    targetMapFact: contactSecondarySelectionFact, targetMapField: "mapId",
+    slots: Object.freeze({ study: Object.freeze({ title: "Répondre à leur signe", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }) }),
+    runtimeValidation: contactSecondaryValidation("response", "study"),
+    npcEncounters: contactSecondaryNpcEntries("contact13", { cause: "contact-initiative", behaviors: ["curiosity","calm"], autoContact: true, contactMode: "symbols-only", contactSlot: "study", postContactReaction: "contact-response", postContactBehaviors: ["curiosity","calm"] })
+  });
+
+  const CONTACT14 = Object.freeze({
+    id: "CONTACT-14", title: "Revenir sans être rejeté",
+    description: "Revenir lors d’une rencontre distincte avec l’autre civilisation et vérifier que la relation reste stable.",
+    pattern: "OBSERVE_TARGET", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-13", count: 1 }), prerequisites: Object.freeze(["CONTACT-13"]), priority: 227, passivePriorityAxis: "relations",
+    targetMapFact: contactSecondarySelectionFact, targetMapField: "mapId",
+    slots: Object.freeze({ study: Object.freeze({ title: "Être reconnu lors d’une nouvelle rencontre", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }) }),
+    runtimeValidation: contactSecondaryValidation("return", "study"),
+    npcEncounters: contactSecondaryNpcEntries("contact14", { cause: "contact-return", behaviors: ["curiosity","calm","observation"] })
+  });
+
+  const CONTACT15 = Object.freeze({
+    id: "CONTACT-15", title: "Reconnu par l’autre peuple",
+    description: "Revenir après les premiers échanges et obtenir une reconnaissance amicale persistante de la seconde civilisation.",
+    pattern: "OBSERVE_TARGET", trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CONTACT-14", count: 1 }), prerequisites: Object.freeze(["CONTACT-14"]), priority: 226, passivePriorityAxis: "relations",
+    targetMapFact: contactSecondarySelectionFact, targetMapField: "mapId",
+    slots: Object.freeze({ study: Object.freeze({ title: "Être reconnu comme ami", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }) }),
+    runtimeValidation: contactSecondaryValidation("friendly", "study"),
+    npcEncounters: contactSecondaryNpcEntries("contact15", { cause: "contact-initiative", behaviors: ["calm","curiosity"], autoContact: true, contactMode: "symbols-only", contactSlot: "study", postContactReaction: "contact-friendly", postContactBehaviors: ["calm","curiosity"] })
+  });
 
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
@@ -8899,6 +8987,7 @@
     ARCH39,
     ARCH40,
     CONTACT01, CONTACT02, CONTACT03, CONTACT04, CONTACT05, CONTACT06, CONTACT07, CONTACT08, CONTACT09,
+    CONTACT10, CONTACT11, CONTACT12, CONTACT13, CONTACT14, CONTACT15,
     BAL01,
     BAL02,
     BAL03,

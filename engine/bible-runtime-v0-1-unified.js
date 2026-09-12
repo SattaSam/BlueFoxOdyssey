@@ -45,6 +45,11 @@
       this.unsubscribeObjectEvents = null;
       this.activationEventIds = new Set();
       this.activationEventMissionIds = new Map();
+      // Cache runtime uniquement : observe les transitions lifecycle sans
+      // backfill au chargement. MissionManager reste propriétaire du statut ;
+      // BibleRuntime traduit seulement une transition réelle -> completed en
+      // événement de trigger Bible canonique.
+      this.missionLifecycleStatuses = new Map();
       // Cache strictement runtime : reconstruit une seule fois pour chaque
       // instance de map chargée. La mémoire persistante reste dans MissionMemory.
       this.observationResolvers = new WeakMap();
@@ -72,6 +77,7 @@
       this.localExplorationAwaitingPostArrival = null;
       this.localSiteProgressionReconciling = false;
       this.environmentReconciling = false;
+      this.civilizationContactReconciling = false;
       this.pendingConstructionResourceMissions = new Set();
       this.constructionResourceSignatures = new Map();
       this.boundProgressionChanged = (event) =>
@@ -3026,9 +3032,26 @@
       return changed;
     }
 
-    selectedCivilization() {
-      const selected = this.manager()?.memory?.getFact?.("civilization:arch-selected", null);
-      return lower(selected?.civilizationId || "");
+    civilizationContactSelection(mission = null) {
+      const validation = mission?.runtimeValidation || {};
+      const encounter = asArray(mission?.npcEncounters).find((entry) => entry?.selectionFact) || null;
+      const factKey = String(
+        validation.selectionFact ||
+        encounter?.selectionFact ||
+        "civilization:arch-selected"
+      );
+      const field = String(
+        validation.selectionField ||
+        encounter?.selectionField ||
+        "civilizationId"
+      );
+      const selected = this.manager()?.memory?.getFact?.(factKey, null);
+      const civilizationId = lower(selected?.[field] ?? selected ?? "");
+      return Object.freeze({ factKey, field, civilizationId });
+    }
+
+    selectedCivilization(mission = null) {
+      return this.civilizationContactSelection(mission).civilizationId;
     }
 
     activeCivilizationContactMission() {
@@ -3038,29 +3061,123 @@
       ) || null;
     }
 
-    resetCivilizationContactArc(reason = "Rupture relationnelle significative.") {
+    contactArcResetContract(mission) {
+      const validation = mission?.runtimeValidation || {};
+      const configuredIds = asArray(validation.resetMissionIds).map(String).filter(Boolean);
+      const missionIds = configuredIds.length
+        ? configuredIds
+        : Array.from({ length: 9 }, (_, index) => `CONTACT-${String(index + 1).padStart(2, "0")}`);
+      return Object.freeze({
+        missionIds,
+        startMissionId: String(validation.resetStartMissionId || "CONTACT-01"),
+        prerequisites: asArray(validation.resetPrerequisites).length
+          ? asArray(validation.resetPrerequisites).map(String)
+          : ["ARCH-40"]
+      });
+    }
+
+    resetCivilizationContactArc(mission, reason = "Rupture relationnelle significative.") {
       const manager = this.manager();
       if (!manager) return false;
+      const contract = this.contactArcResetContract(mission);
       let changed = false;
-      for (let index = 1; index <= 9; index += 1) {
-        const missionId = `CONTACT-${String(index).padStart(2, "0")}`;
+      contract.missionIds.forEach((missionId) => {
         const lifecycle = this.missionLifecycle(missionId);
-        if (!["active", "paused", "failed", "completed"].includes(lifecycle.status)) continue;
+        if (!["active", "paused", "failed", "completed"].includes(lifecycle.status)) return;
         changed = manager.resetMissionAttempt?.(missionId, {
           source: "civilization-contact",
           reason
         }) === true || changed;
-      }
+      });
       if (changed) {
-        manager.startMission?.("CONTACT-01", {
+        manager.startMission?.(contract.startMissionId, {
           primary: false,
           autoPrimaryEligible: false,
-          prerequisites: ["ARCH-40"],
+          prerequisites: contract.prerequisites,
           source: "civilization-contact",
           reason: "Nouvelle tentative de rapprochement après une rupture."
         });
       }
       return changed;
+    }
+
+    nextCivilizationContactTarget(mission, selectedCivilizationId) {
+      const validation = mission?.runtimeValidation || {};
+      const nextMissionId = String(validation.nextContactMissionId || "");
+      const nextSelectionFact = String(validation.nextContactSelectionFact || "");
+      if (!nextMissionId || !nextSelectionFact) return null;
+
+      const selected = lower(selectedCivilizationId);
+      const entries = asArray(mission?.npcEncounters);
+      const candidateIds = [...new Set(entries.map((entry) => lower(entry?.selectionValue)).filter(Boolean))];
+      const civilizationId = candidateIds.find((id) => id !== selected) || "";
+      if (!civilizationId) return null;
+      const entry = entries.find((candidate) => lower(candidate?.selectionValue) === civilizationId) || null;
+      const city = global.BlueFoxCivilizationCities?.[civilizationId] ||
+        BF.BlueFoxCivilizationCities?.[civilizationId] ||
+        null;
+      return Object.freeze({
+        civilizationId,
+        cuoType: String(entry?.cuoType || ""),
+        mapId: String(city?.mapId || ""),
+        nextMissionId,
+        nextSelectionFact
+      });
+    }
+
+    ensureNextCivilizationContactContext(mission, selectedCivilizationId) {
+      const target = this.nextCivilizationContactTarget(mission, selectedCivilizationId);
+      if (!target) return null;
+      const manager = this.manager();
+      const controller = manager?.catalogController;
+      const relation = controller?.getRelation?.(target.civilizationId);
+      if (relation && ["friendly", "honored"].includes(lower(relation.rank))) {
+        return Object.freeze({ ...target, needed: false });
+      }
+
+      const existing = manager?.memory?.getFact?.(target.nextSelectionFact, null);
+      if (lower(existing?.civilizationId) !== target.civilizationId) {
+        manager?.memory?.setFact?.(target.nextSelectionFact, {
+          civilizationId: target.civilizationId,
+          cuoType: target.cuoType,
+          mapId: target.mapId,
+          selectedAt: Date.now(),
+          sourceMissionId: mission.id
+        });
+        manager?.memory?.save?.();
+      }
+      return Object.freeze({ ...target, needed: true });
+    }
+
+    reconcileCivilizationContactContinuation() {
+      if (this.civilizationContactReconciling) return false;
+      const manager = this.manager();
+      if (!manager) return false;
+      this.civilizationContactReconciling = true;
+      try {
+        let changed = false;
+        for (const mission of this.allMissions()) {
+          const validation = mission?.runtimeValidation || {};
+          if (validation.type !== "civilization-contact" || !validation.nextContactMissionId) continue;
+          if (!this.missionLifecycle(mission.id).completed) continue;
+          const selected = this.selectedCivilization(mission);
+          if (!selected) continue;
+          const target = this.ensureNextCivilizationContactContext(mission, selected);
+          if (!target?.needed) continue;
+          const lifecycle = this.missionLifecycle(target.nextMissionId);
+          if (["active", "completed"].includes(lifecycle.status)) continue;
+          changed = manager.startMission?.(target.nextMissionId, {
+            primary: false,
+            autoPrimaryEligible: false,
+            prerequisites: [mission.id],
+            source: "civilization-contact",
+            reason: `La seconde civilisation (${target.civilizationId}) reste à approcher.`
+          }) === true || changed;
+        }
+        return changed;
+      } finally {
+        this.civilizationContactReconciling = false;
+      }
     }
 
     triggerCivilizationPostContactReaction(mission, civilizationId) {
@@ -3100,7 +3217,7 @@
       const types = BF.ObjectEvents?.types || {};
       const type = String(rawEvent?.type || "");
       const civilizationId = lower(detail.civilizationId);
-      const selected = this.selectedCivilization();
+      const selected = this.selectedCivilization(mission);
       if (!selected || civilizationId && civilizationId !== selected) return false;
 
       const reaction = lower(detail.reaction || detail.state);
@@ -3118,7 +3235,7 @@
         if (relation && !["friendly", "honored"].includes(relation.rank)) {
           controller.setRelation?.(selected, relation.rank, { score: Number(relation.score || 0) - 2 });
         }
-        return this.resetCivilizationContactArc("Le PNJ a fui après une rupture relationnelle significative.");
+        return this.resetCivilizationContactArc(mission, "Le PNJ a fui après une rupture relationnelle significative.");
       }
 
       const phase = String(validation.phase || "");
@@ -3187,6 +3304,9 @@
         }
         if (type !== String(types.NPC_REACTION || "NPC_REACTION") || !positive || cause !== "contact-friendly") return false;
         if (this.manager()?.memory?.getFact?.(`civilization:contact-friendly:${mission.id}`, false) !== true) return false;
+        // Le contexte de la civilisation suivante est préparé AVANT la complétion
+        // afin que le publish/sync causal puisse réconcilier la suite sans polling.
+        this.ensureNextCivilizationContactContext(mission, selected);
         const changed = this.progressRuntimeValidationSlot(mission.id, slot, 1);
         const controller = this.manager()?.catalogController;
         const relation = controller?.getRelation?.(selected);
@@ -5808,6 +5928,34 @@
       return changed;
     }
 
+    reconcileMissionCompletionTriggers() {
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        const missionId = String(mission?.id || "");
+        if (!missionId) continue;
+        const currentStatus = String(this.missionLifecycle(missionId).status || "absent");
+        if (!this.missionLifecycleStatuses.has(missionId)) {
+          // Première observation = baseline. Aucune complétion historique ne
+          // doit être rejouée au chargement/reload.
+          this.missionLifecycleStatuses.set(missionId, currentStatus);
+          continue;
+        }
+        const previousStatus = this.missionLifecycleStatuses.get(missionId);
+        if (previousStatus === currentStatus) continue;
+        this.missionLifecycleStatuses.set(missionId, currentStatus);
+        if (currentStatus !== "completed" || previousStatus === "completed") continue;
+
+        const result = this.consumeTriggerEvent({
+          type: "progression.mission_completed",
+          missionId,
+          amount: 1,
+          mapId: BF.currentEngine?.currentMapId || null
+        });
+        changed = Boolean(result?.activatedMissionId || result?.activatedMissionIds?.length) || changed;
+      }
+      return changed;
+    }
+
     onMissionState(state) {
       if (!this.observationCaptureQueued) {
         this.observationCaptureQueued = true;
@@ -5818,6 +5966,7 @@
         });
       }
 
+      this.reconcileMissionCompletionTriggers();
       this.migrateLegacyRationUnlock();
       this.activateNextDroneRepairMission();
       this.reconcileRuntimeCounters();
@@ -5830,6 +5979,7 @@
       this.restoreLocalMissionDefinitions(state);
       this.reconcileLocalSiteProgression();
       this.reconcileFaunaSpeciesMissions();
+      this.reconcileCivilizationContactContinuation();
       for (const mission of this.missionsForState(state)) {
         const entry = this.findMissionEntry(state, mission.id);
         if (entry) this.emitProgressNarrative(mission, entry);
