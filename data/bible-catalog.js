@@ -2342,6 +2342,9 @@
     })
   });
 
+
+
+
   const BAL01 = Object.freeze({
     id: "BAL-01",
     title: "Comprendre une balise abandonnée",
@@ -9172,6 +9175,172 @@
     })
   });
 
+
+  const DIP03 = Object.freeze({
+    id: "DIP-03",
+    title: "Le grand conseil planétaire — Temple des savoirs",
+    description: "Faire de l’alliance Rocky–Translucide une institution durable : formaliser un lieu commun de connaissance, apporter réellement des ressources à chaque peuple puis ouvrir le Temple des savoirs comme archive partagée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "DIP-02", count: 1 }),
+    prerequisites: Object.freeze(["DIP-02"]),
+    relationPrerequisites: Object.freeze([
+      Object.freeze({ civilizationId: "rocky", ranks: Object.freeze(["friendly", "honored"]) }),
+      Object.freeze({ civilizationId: "translucent", ranks: Object.freeze(["friendly", "honored"]) })
+    ]),
+    priority: 220,
+    passivePriorityAxis: "relations",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 100,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "rockyContact", title: "Proposer l’institution aux Rocky", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "rockyDialogue", title: "Faire préciser ce que les Rocky veulent transmettre", action: "observe", target: 1, requires: Object.freeze(["rockyContact"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentContact", title: "Proposer l’institution aux Translucides", action: "observe", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentDialogue", title: "Faire préciser ce que les Translucides veulent transmettre", action: "observe", target: 1, requires: Object.freeze(["translucentContact"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "rockyContribution", title: "Apporter un lot de construction ou de conservation aux Rocky", action: "research", target: 1, requires: Object.freeze(["rockyDialogue", "translucentDialogue"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "translucentContribution", title: "Apporter un lot de construction ou de conservation aux Translucides", action: "research", target: 1, requires: Object.freeze(["rockyDialogue", "translucentDialogue"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({
+        slot: "templeTravel",
+        title: "Rejoindre la Bibliothèque / Archive commune",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["rockyContribution", "translucentContribution"]),
+        params: Object.freeze({ eventDriven: true, toMapId: "custom-map-33-temple-magnet" })
+      }),
+      Object.freeze({
+        slot: "delegateRocky1",
+        title: "Observer le premier délégué Rocky au Temple",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["templeTravel"]),
+        params: Object.freeze({
+          cuoType: "npc_rocky",
+          persistentMicroSceneId: "DIP-03:delegate:rocky:1",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "delegateRocky2",
+        title: "Observer le second délégué Rocky au Temple",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["templeTravel"]),
+        params: Object.freeze({
+          cuoType: "npc_rocky",
+          persistentMicroSceneId: "DIP-03:delegate:rocky:2",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "delegateTranslucent1",
+        title: "Observer le premier délégué Translucide au Temple",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["templeTravel"]),
+        params: Object.freeze({
+          cuoType: "npc_translucent",
+          persistentMicroSceneId: "DIP-03:delegate:translucent:1",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "delegateTranslucent2",
+        title: "Observer le second délégué Translucide au Temple",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["templeTravel"]),
+        params: Object.freeze({
+          cuoType: "npc_translucent",
+          persistentMicroSceneId: "DIP-03:delegate:translucent:2",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "templeKnowledge",
+        title: "Étudier une archive technologique du Temple",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["delegateRocky1", "delegateRocky2", "delegateTranslucent1", "delegateTranslucent2"]),
+        params: Object.freeze({
+          cuoType: "tech_relic",
+          microSceneId: "MSC-CUSTOM-HUGE-TEMPLE",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      })
+    ]),
+    worldEventRequirements: Object.freeze([
+      Object.freeze({ slot: "rockyContact", target: 1, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "rocky", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "rockyDialogue", target: 1, distinctBy: "instanceId", sinceSlotComplete: "rockyContact", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "rocky" }) }),
+      Object.freeze({ slot: "translucentContact", target: 1, distinctBy: "instanceId", criteria: Object.freeze({ type: "NPC_CONTACTED", civilizationId: "translucent", interactionSource: "manual" }) }),
+      Object.freeze({ slot: "translucentDialogue", target: 1, distinctBy: "instanceId", sinceSlotComplete: "translucentContact", criteria: Object.freeze({ type: "NPC_DIALOGUE", civilizationId: "translucent" }) })
+    ]),
+    npcEncounters: diplomacyDialogueEncounters("dip03", {
+      rockyRequires: "rockyContact",
+      translucentRequires: "translucentContact",
+      rockySpeech: "⟁ … mémoire … pierre … transmettre … lieu commun …",
+      translucentSpeech: "⋔ … archives … lumière … conserver … apprendre ensemble …"
+    }),
+    civilizationTradeRequirements: Object.freeze([
+      Object.freeze({
+        slot: "rockyContribution",
+        civilizationId: "rocky",
+        minimumOfferQuantity: 5,
+        offerKeysAny: Object.freeze(["wood", "fiber", "magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium", "crystal", "parts"])
+      }),
+      Object.freeze({
+        slot: "translucentContribution",
+        civilizationId: "translucent",
+        minimumOfferQuantity: 5,
+        offerKeysAny: Object.freeze(["wood", "fiber", "magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium", "crystal", "parts"])
+      })
+    ]),
+    worldTopologyLinks: Object.freeze([Object.freeze({
+      id: "dip03-temple-link",
+      mapId: "custom-map-33-temple-magnet",
+      mapFact: "dip03:temple-map",
+      anchorMapIds: Object.freeze(["custom-map-32-rock-village", "custom-map-31-tinycity"]),
+      directions: Object.freeze(["north", "east", "south", "west"]),
+      requiresSlotsComplete: Object.freeze(["rockyContribution", "translucentContribution"])
+    })]),
+    persistentWorldScenes: Object.freeze([
+      Object.freeze({ mapId: "custom-map-33-temple-magnet", instanceId: "DIP-03:delegate:rocky:1", microSceneId: "MSC-NPC-ROCKY-001", contextRole: "dip03TempleDelegate", requiresSlotsComplete: Object.freeze(["rockyContribution", "translucentContribution"]), persistent: true, spawnOnce: true }),
+      Object.freeze({ mapId: "custom-map-33-temple-magnet", instanceId: "DIP-03:delegate:rocky:2", microSceneId: "MSC-NPC-ROCKY-001", contextRole: "dip03TempleDelegate", requiresSlotsComplete: Object.freeze(["rockyContribution", "translucentContribution"]), persistent: true, spawnOnce: true }),
+      Object.freeze({ mapId: "custom-map-33-temple-magnet", instanceId: "DIP-03:delegate:translucent:1", microSceneId: "MSC-NPC-TRANSLUCENT-001", contextRole: "dip03TempleDelegate", requiresSlotsComplete: Object.freeze(["rockyContribution", "translucentContribution"]), persistent: true, spawnOnce: true }),
+      Object.freeze({ mapId: "custom-map-33-temple-magnet", instanceId: "DIP-03:delegate:translucent:2", microSceneId: "MSC-NPC-TRANSLUCENT-001", contextRole: "dip03TempleDelegate", requiresSlotsComplete: Object.freeze(["rockyContribution", "translucentContribution"]), persistent: true, spawnOnce: true })
+    ]),
+    slotFactEffects: Object.freeze([Object.freeze({
+      slot: "templeKnowledge",
+      fact: "shared_civilization_knowledge",
+      value: Object.freeze({
+        knowledgeId: "shared_civilization_knowledge",
+        mapId: "custom-map-33-temple-magnet",
+        microSceneId: "MSC-CUSTOM-HUGE-TEMPLE",
+        sourceMissionId: "DIP-03"
+      })
+    })]),
+    completionRelationEffects: Object.freeze([
+      Object.freeze({ civilizationId: "rocky", delta: 5 }),
+      Object.freeze({ civilizationId: "translucent", delta: 5 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Ils ont appris à résoudre un problème ensemble. Si cette alliance doit survivre à la prochaine crise, leurs connaissances doivent pouvoir se rencontrer même quand je ne suis pas là."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "rockyContribution", atCount: 1, text: "Les Rocky ont engagé une contribution réelle. Ce lieu commun commence à exister autrement que dans nos paroles." }),
+        Object.freeze({ slot: "translucentContribution", atCount: 1, text: "Les Translucides apportent à leur tour leur part. Le projet appartient maintenant aux deux peuples." }),
+        Object.freeze({ slot: "templeKnowledge", atCount: 1, text: "Les deux délégations ont bien été observées et l’archive commune répond à leur présence. Le Temple fonctionne comme une institution partagée, pas comme un décor vide." })
+      ]),
+      completed: Object.freeze(["Les archives communes sont ouvertes. Ce savoir appartient désormais à l’alliance Rocky–Translucide et peut être consulté plus tard comme une véritable source de connaissance."])
+    })
+  });
+
   BF.BibleConstructionTemplates = Object.freeze({
     camp: Object.freeze({
       title: "Établir un camp",
@@ -9363,7 +9532,7 @@
     ARCH40,
     CONTACT01, CONTACT02, CONTACT03, CONTACT04, CONTACT05, CONTACT06, CONTACT07, CONTACT08, CONTACT09,
     CONTACT10, CONTACT11, CONTACT12, CONTACT13, CONTACT14, CONTACT15,
-    DIP01, GAME_CONTACT_FIRST, GAME_CONTACT_CAUTIOUS, GAME_CONTACT_AMBASSADOR, DIP02,
+    DIP01, GAME_CONTACT_FIRST, GAME_CONTACT_CAUTIOUS, GAME_CONTACT_AMBASSADOR, DIP02, DIP03,
     BAL01,
     BAL02,
     BAL03,

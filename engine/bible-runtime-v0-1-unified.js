@@ -86,6 +86,8 @@
         this.onProgressionChanged(event.detail || {});
       this.boundSiteEstablished = (event) =>
         this.onSiteEstablished(event.detail || {});
+      this.boundCivilizationTradeCompleted = (event) =>
+        this.onCivilizationTradeCompleted(event.detail || {});
     }
 
     defaultState() {
@@ -2288,17 +2290,190 @@
             if (!before && ensured) changed = true;
             const record = this.persistentWorldSceneRecord(definition, spec) || ensured;
             if (!record?.resolvedAt || !rawSpec.progressSlotWhenResolved) continue;
-            changed = this.progressRuntimeValidationSlot(
-              mission.id,
-              String(rawSpec.progressSlotWhenResolved),
-              1
-            ) || changed;
+            const progressSlot = String(rawSpec.progressSlotWhenResolved);
+            const progressIdentity = String(rawSpec.instanceId || record.instanceId || rawSpec.microSceneId || "scene");
+            const progressReceiptKey = `persistentWorldSceneProgress:${mission.id}:${progressSlot}:${progressIdentity}`;
+            if (manager.memory.getFact?.(progressReceiptKey, false)) continue;
+            const progressed = this.progressRuntimeValidationSlot(mission.id, progressSlot, 1);
+            if (!progressed) continue;
+            manager.memory.setFact?.(progressReceiptKey, {
+              missionId: mission.id,
+              slot: progressSlot,
+              instanceId: progressIdentity,
+              resolvedAt: record.resolvedAt,
+              creditedAt: Date.now()
+            });
+            manager.memory.save?.();
+            changed = true;
           }
         }
         return changed;
       } finally {
         this.persistentWorldSceneReconciling = false;
       }
+    }
+
+    civilizationTradeRequirementMatches(requirement, detail = {}) {
+      const civilizationId = lower(detail.civilizationId);
+      if (!civilizationId || civilizationId !== lower(requirement?.civilizationId)) return false;
+      const offerKey = String(detail.offerKey || "");
+      const allowedKeys = asArray(requirement?.offerKeysAny).map(String).filter(Boolean);
+      if (allowedKeys.length && !allowedKeys.includes(offerKey)) return false;
+      const offered = Math.max(0, Number(detail.offerQuantity) || 0);
+      if (offered < Math.max(1, Number(requirement?.minimumOfferQuantity) || 1)) return false;
+      return true;
+    }
+
+    onCivilizationTradeCompleted(detail = {}) {
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        if (!this.missionLifecycle(mission.id).active) continue;
+        for (const requirement of asArray(mission?.civilizationTradeRequirements)) {
+          if (!requirement?.slot || !this.civilizationTradeRequirementMatches(requirement, detail)) continue;
+          changed = this.progressRuntimeValidationSlot(mission.id, String(requirement.slot), 1) || changed;
+        }
+      }
+      return changed;
+    }
+
+    topologyLinkSlotsSatisfied(mission, spec, tree) {
+      const requiredSlots = asArray(spec?.requiresSlotsComplete || spec?.requiresSlotComplete)
+        .map((slot) => String(slot || "").trim())
+        .filter(Boolean);
+      return requiredSlots.every((slot) => tree?.find?.(`${mission.id}:${slot}`)?.isComplete);
+    }
+
+    reconcileWorldTopologyLinks() {
+      const engine = BF.currentEngine;
+      const topology = engine?.worldTopology;
+      const manager = this.manager();
+      if (!topology || !manager?.memory) return false;
+      let changed = false;
+
+      for (const mission of this.allMissions()) {
+        const specs = asArray(mission?.worldTopologyLinks);
+        if (!specs.length || !this.missionLifecycle(mission.id).active) continue;
+        const tree = manager.trees?.get?.(mission.id);
+        if (!tree) continue;
+
+        for (const spec of specs) {
+          if (!spec?.mapId || !this.topologyLinkSlotsSatisfied(mission, spec, tree)) continue;
+          const targetMapId = String(spec.mapId);
+          if (!BF.maps?.[targetMapId] && !this.persistentWorldSceneMap(targetMapId)) continue;
+          const anchors = asArray(spec.anchorMapIds).map(String).filter(Boolean);
+          const directions = asArray(spec.directions).map((value) => lower(value)).filter(Boolean);
+          const existingReceipt = manager.memory.getFact?.(`worldTopologyLink:${mission.id}:${spec.id || targetMapId}`, null);
+
+          let linked = false;
+          let linkedAnchor = null;
+          let linkedDirection = null;
+          for (const anchorMapId of anchors) {
+            const exits = BF.maps?.[anchorMapId]?.exits || {};
+            for (const direction of directions) {
+              if (String(exits?.[direction]?.targetMap || "") === targetMapId) {
+                linked = true;
+                linkedAnchor = anchorMapId;
+                linkedDirection = direction;
+                break;
+              }
+            }
+            if (linked) break;
+          }
+
+          let topologyChanged = false;
+          if (!linked) {
+            const targetPoint = topology.coordinateOf?.(targetMapId) || null;
+            outer: for (const anchorMapId of anchors) {
+              const anchorPoint = topology.coordinateOf?.(anchorMapId);
+              if (!anchorPoint) continue;
+              for (const direction of directions) {
+                const target = topology.targetFrom?.(anchorMapId, direction) || null;
+                if (!target || !Number.isFinite(Number(target.x)) || !Number.isFinite(Number(target.y))) continue;
+                const x = Number(target.x);
+                const y = Number(target.y);
+                const occupant = target.mapId || topology.mapAt?.(x, y) || null;
+                if (occupant && String(occupant) !== targetMapId) continue;
+                if (targetPoint && (Number(targetPoint.x) !== x || Number(targetPoint.y) !== y)) continue;
+                if (!targetPoint && topology.place?.(targetMapId, x, y, `bible:${mission.id}`) !== true) continue;
+                if (topology.setCanonicalLink?.(anchorMapId, direction, targetMapId) !== true) continue;
+                linked = true;
+                linkedAnchor = anchorMapId;
+                linkedDirection = direction;
+                topologyChanged = true;
+                changed = true;
+                break outer;
+              }
+            }
+          }
+
+          if (!linked) continue;
+          if (topologyChanged) {
+            if (typeof BF.WorldTopology?.reconcile === "function") {
+              BF.WorldTopology.reconcile();
+            } else {
+              topology.reconcileGeneratedExits?.();
+              topology.persist?.();
+            }
+          }
+          const receiptKey = `worldTopologyLink:${mission.id}:${spec.id || targetMapId}`;
+          if (!existingReceipt || existingReceipt.mapId !== targetMapId || existingReceipt.anchorMapId !== linkedAnchor || existingReceipt.direction !== linkedDirection) {
+            manager.memory.setFact?.(receiptKey, {
+              missionId: mission.id,
+              mapId: targetMapId,
+              anchorMapId: linkedAnchor,
+              direction: linkedDirection,
+              linkedAt: Date.now()
+            });
+            changed = true;
+          }
+          if (spec.mapFact) {
+            const current = manager.memory.getFact?.(String(spec.mapFact), null);
+            if (String(current?.mapId || "") !== targetMapId) {
+              manager.memory.setFact?.(String(spec.mapFact), {
+                mapId: targetMapId,
+                anchorMapId: linkedAnchor,
+                direction: linkedDirection,
+                sourceMissionId: mission.id,
+                linkedAt: Date.now()
+              });
+              changed = true;
+            }
+          }
+          if (changed) manager.memory.save?.();
+        }
+      }
+      return changed;
+    }
+
+    reconcileSlotFactEffects() {
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        const effects = asArray(mission?.slotFactEffects);
+        if (!effects.length) continue;
+        const lifecycle = this.missionLifecycle(mission.id);
+        if (!lifecycle.active && !lifecycle.completed) continue;
+        const tree = manager.trees?.get?.(mission.id);
+        if (!tree) continue;
+        for (const effect of effects) {
+          const slot = String(effect?.slot || "");
+          const fact = String(effect?.fact || "");
+          if (!slot || !fact || !tree.find?.(`${mission.id}:${slot}`)?.isComplete) continue;
+          if (manager.memory.getFact?.(fact, null)) continue;
+          const baseValue = effect?.value && typeof effect.value === "object"
+            ? clone(effect.value)
+            : { value: effect?.value ?? true };
+          manager.memory.setFact?.(fact, {
+            ...baseValue,
+            sourceMissionId: baseValue.sourceMissionId || mission.id,
+            acquiredAt: Date.now()
+          });
+          changed = true;
+        }
+      }
+      if (changed) manager.memory.save?.();
+      return changed;
     }
 
     progressRuntimeValidationSlot(missionId, slot, amount = 1) {
@@ -3771,6 +3946,8 @@
       this.captureObservationMap(BF.currentEngine);
       this.reconcileEnvironmentAll(detail.toMapId || detail.mapId || BF.currentEngine?.currentMapId);
       this.reconcilePersistentWorldScenes();
+      this.reconcileWorldTopologyLinks();
+      this.reconcileSlotFactEffects();
 
       const event = {
         fromMapId: detail.fromMapId || null,
@@ -6242,9 +6419,14 @@
         });
       }
 
+      // Les faits acquis par une interaction réelle doivent exister avant la
+      // traduction lifecycle -> mission_completed, afin qu'une mission suivante
+      // puisse les consommer dans le même cycle causal.
+      this.reconcileSlotFactEffects();
       this.reconcileMissionCompletionTriggers();
       this.reconcileWorldEventRequirements();
       this.reconcilePersistentWorldScenes();
+      this.reconcileWorldTopologyLinks();
       this.migrateLegacyRationUnlock();
       this.activateNextDroneRepairMission();
       this.reconcileRuntimeCounters();
@@ -6389,6 +6571,14 @@
       global.addEventListener?.(
         "bluefox:site-established",
         this.boundSiteEstablished
+      );
+      global.removeEventListener?.(
+        "bluefox:civilization-trade-completed",
+        this.boundCivilizationTradeCompleted
+      );
+      global.addEventListener?.(
+        "bluefox:civilization-trade-completed",
+        this.boundCivilizationTradeCompleted
       );
       return Boolean(this.unsubscribeObjectEvents);
     }
