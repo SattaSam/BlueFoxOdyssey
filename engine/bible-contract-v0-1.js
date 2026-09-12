@@ -417,12 +417,36 @@
       }
 
       const staticIdentity = isNonEmptyString(entry.objectId) || isNonEmptyString(entry.type);
+      const declaresConditionalIdentity =
+        entry.selectionFact != null ||
+        entry.selectionField != null ||
+        entry.choices != null;
+      const conditionalChoices = isObject(entry.choices)
+        ? Object.values(entry.choices)
+        : [];
+      const conditionalIdentity = Boolean(
+        isNonEmptyString(entry.selectionFact) &&
+        isNonEmptyString(entry.selectionField) &&
+        conditionalChoices.length &&
+        conditionalChoices.every((choice) =>
+          isObject(choice) &&
+          (isNonEmptyString(choice.objectId) || isNonEmptyString(choice.type)) &&
+          (
+            choice.count == null ||
+            (Number.isInteger(Number(choice.count)) && Number(choice.count) >= 1)
+          )
+        )
+      );
       const sourceSlot = String(entry.sourceSlot || "").trim();
-      if (staticIdentity && sourceSlot) {
-        add(errors, missionId, entryPath, "ne doit pas mélanger identité statique et sourceSlot.");
+      if (declaresConditionalIdentity && !conditionalIdentity) {
+        add(errors, missionId, entryPath, "l’identité conditionnelle exige selectionFact, selectionField et choices valides.");
         return;
       }
-      if (staticIdentity) return;
+      if ((staticIdentity || conditionalIdentity) && sourceSlot) {
+        add(errors, missionId, entryPath, "ne doit pas mélanger identité déclarée et sourceSlot.");
+        return;
+      }
+      if (staticIdentity || conditionalIdentity) return;
 
       if (!sourceSlot || !slotIndexes.has(sourceSlot)) {
         add(errors, missionId, `${entryPath}.sourceSlot`, "doit référencer un slot existant.");
@@ -845,8 +869,15 @@
       1,
       Number(pattern?.minSteps) || 1
     );
+    const runtimeManagedSingleStep = Boolean(
+      steps.length === 1 &&
+      isObject(mission?.runtimeValidation) &&
+      steps[0]?.params?.catalogManaged === true
+    );
     const minimumSteps =
-      mission?.constructionMission === true ? 1 : configuredMinimum;
+      mission?.constructionMission === true || runtimeManagedSingleStep
+        ? 1
+        : configuredMinimum;
 
     if (steps.length < minimumSteps) {
       add(

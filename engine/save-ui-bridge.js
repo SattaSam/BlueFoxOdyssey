@@ -155,7 +155,9 @@
 
   const readLocalSnapshot = (slot) => {
     try {
-      const value = JSON.parse(global.localStorage.getItem(SLOT_KEYS[slot]) || "null");
+      const cacheKey = SLOT_KEYS[slot];
+      if (!cacheKey) return null;
+      const value = JSON.parse(global.localStorage.getItem(cacheKey) || "null");
       if (validSnapshot(value)) return value;
       if (value?.version === 1 && value?.state) {
         return {
@@ -173,15 +175,21 @@
   };
 
   const writeLocalCache = (slot, snapshot) => {
+    const cacheKey = SLOT_KEYS[slot];
+    if (!cacheKey) return false;
     const serialized = JSON.stringify(snapshot);
     if (slot === "auto") {
       const previous = global.localStorage.getItem(SLOT_KEYS.auto);
       if (previous) global.localStorage.setItem(SLOT_KEYS.backup, previous);
     }
-    global.localStorage.setItem(SLOT_KEYS[slot], serialized);
+    global.localStorage.setItem(cacheKey, serialized);
+    global.localStorage.setItem(LAST_SESSION_END_KEY, String(snapshot.savedAt));
+    return true;
+  };
+
+  const markActiveSnapshot = (slot, snapshot) => {
     global.localStorage.setItem(ACTIVE_SLOT_KEY, String(slot));
     global.localStorage.setItem(RESTORED_AT_KEY, String(snapshot.savedAt));
-    global.localStorage.setItem(LAST_SESSION_END_KEY, String(snapshot.savedAt));
   };
 
   const fileRequest = async (path, options = {}) => {
@@ -230,8 +238,7 @@
       }
     });
 
-    global.localStorage.setItem(ACTIVE_SLOT_KEY, String(slot));
-    global.localStorage.setItem(RESTORED_AT_KEY, String(snapshot.savedAt));
+    markActiveSnapshot(slot, snapshot);
   };
 
   const writeSnapshot = async (slot = "auto", options = {}) => {
@@ -324,10 +331,11 @@
   const bootstrapFromFile = async () => {
     if (startupPromise) return startupPromise;
     startupPromise = (async () => {
-      const slot = global.localStorage.getItem(ACTIVE_SLOT_KEY) || "auto";
-      const fileSnapshot =
-        (await readFileSnapshot(slot)) ||
-        (slot !== "auto" ? await readFileSnapshot("auto") : null);
+      const requestedSlot = global.localStorage.getItem(ACTIVE_SLOT_KEY) || "auto";
+      const slot = ["auto", "recovery", "1", "2"].includes(String(requestedSlot))
+        ? String(requestedSlot)
+        : "auto";
+      const fileSnapshot = await readFileSnapshot(slot);
       const localSnapshot =
         readLocalSnapshot(slot) ||
         (slot === "auto" ? readLocalSnapshot("backup") : null);
@@ -346,12 +354,7 @@
         return false;
       }
 
-      const baseline =
-        (slot === "auto" ? fileSnapshot || localSnapshot : null) ||
-        readLocalSnapshot("auto");
-      lastAutoStateSignature = baseline?.state
-        ? stateSignature(baseline.state)
-        : null;
+      lastAutoStateSignature = stateSignature(captureState());
 
       startupReady = true;
       return true;

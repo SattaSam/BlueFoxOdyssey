@@ -2343,6 +2343,8 @@
   });
 
 
+
+
   const ENE15A = Object.freeze({
     id: "ENE-15-A",
     title: "Reconnaître une technologie du réseau",
@@ -2480,7 +2482,6 @@
       completed: Object.freeze(["Le transfert de matière devient techniquement concevable, mais il reste dangereux et verrouillé. Je n’ai débloqué qu’une branche de recherche, pas un téléporteur."])
     })
   });
-
 
 
   const BAL01 = Object.freeze({
@@ -3643,6 +3644,7 @@
     ponderation: 1,
     souvenir: true,
     memoryValence: "positive",
+    scoreTrauma: 34,
     narrativeAxis: "NATURALISTE",
     reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
     slots: Object.freeze({
@@ -3677,6 +3679,7 @@
     ponderation: 1,
     souvenir: true,
     memoryValence: "positive",
+    scoreTrauma: 34,
     narrativeAxis: "NATURALISTE",
     reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
     slots: Object.freeze({
@@ -3709,6 +3712,7 @@
     ponderation: 1,
     souvenir: true,
     memoryValence: "positive",
+    scoreTrauma: 34,
     narrativeAxis: "NATURALISTE",
     reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
     slots: Object.freeze({
@@ -3742,6 +3746,7 @@
     ponderation: 1,
     souvenir: true,
     memoryValence: "positive",
+    scoreTrauma: 34,
     narrativeAxis: "NATURALISTE",
     reinforcesNarrativeAxis: Object.freeze({ axis: "NATURALISTE", weight: 1 }),
     slots: Object.freeze({

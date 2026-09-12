@@ -10,13 +10,29 @@
       this.memory = options.memory || new Missions.MissionMemory();
       this.planner = options.planner || new Missions.MissionPlanner(this.memory);
       this.bridge = options.bridge || new Missions.ActionBridge(this.engine);
-      this.primaryMissionId = this.resolveInitialMission(options.missionId || "");
-      this.activeMissionId = this.primaryMissionId || "";
       const rememberedIds = Array.isArray(this.memory.state.activeMissionIds)
         ? this.memory.state.activeMissionIds
         : [];
+      const lifecycleActiveIds = Object.keys(
+        this.memory.state.missionLifecycle || {}
+      ).filter((id) =>
+        this.memory.state.missionLifecycle?.[id]?.status === "active"
+      );
+      const persistedActiveIds = [...new Set([
+        this.memory.state.primaryMissionId,
+        this.memory.state.activeMissionId,
+        ...rememberedIds,
+        ...lifecycleActiveIds
+      ].filter(Boolean))].filter((id) =>
+        this.memory.state.missionLifecycle?.[id]?.status !== "completed"
+      );
+      this.persistenceHydrationBlocked = persistedActiveIds.some(
+        (id) => !this.definition(id)
+      );
+      this.primaryMissionId = this.resolveInitialMission(options.missionId || "");
+      this.activeMissionId = this.primaryMissionId || "";
       this.activeMissionIds = [...new Set(
-        [this.primaryMissionId, ...rememberedIds]
+        [this.primaryMissionId, ...persistedActiveIds]
           .filter(Boolean)
           .filter((id) => this.definition(id))
           .filter((id) =>
@@ -61,7 +77,7 @@
       this.retryAfter = 0;
       this.idleRetryUntil = 0;
       this.enabled = true;
-      if (!this.hasActivePrimaryMission()) {
+      if (!this.persistenceHydrationBlocked && !this.hasActivePrimaryMission()) {
         this.primaryMissionId = "";
         this.activeMissionId = "";
         this.tree = null;
@@ -83,14 +99,85 @@
       this.publish();
     }
 
+    recoverPersistenceHydration(now = performance.now()) {
+      if (!this.persistenceHydrationBlocked) return true;
+
+      const rememberedIds = Array.isArray(this.memory.state.activeMissionIds)
+        ? this.memory.state.activeMissionIds
+        : [];
+      const lifecycleActiveIds = Object.keys(
+        this.memory.state.missionLifecycle || {}
+      ).filter((id) =>
+        this.memory.state.missionLifecycle?.[id]?.status === "active"
+      );
+      const persistedActiveIds = [...new Set([
+        this.memory.state.primaryMissionId,
+        this.memory.state.activeMissionId,
+        ...rememberedIds,
+        ...lifecycleActiveIds
+      ].filter(Boolean))].filter((id) =>
+        this.memory.state.missionLifecycle?.[id]?.status !== "completed"
+      );
+
+      if (persistedActiveIds.some((id) => !this.definition(id))) return false;
+
+      this.persistenceHydrationBlocked = false;
+      this.primaryMissionId = this.resolveInitialMission("");
+      this.activeMissionId = this.primaryMissionId || "";
+      this.activeMissionIds = persistedActiveIds
+        .filter((id) => this.definition(id))
+        .filter((id) => !this.isLegacyUnscopedSiteMission(id));
+
+      const completedIds = Object.keys(
+        this.memory.state.missionLifecycle || {}
+      ).filter((id) =>
+        this.memory.state.missionLifecycle[id]?.status === "completed" &&
+        this.definition(id) &&
+        this.memory.state.missions?.[id] &&
+        !this.isLegacyUnscopedSiteMission(id)
+      );
+      [...new Set([...this.activeMissionIds, ...completedIds])].forEach((id) => {
+        if (!this.trees.has(id)) {
+          this.trees.set(id, this.planner.restoreOrCreate(id));
+        }
+      });
+
+      this.tree = this.primaryMissionId
+        ? this.trees.get(this.primaryMissionId) || null
+        : null;
+      this.activeMissionIds.forEach((id) => this.ensureLifecycle(id, "active"));
+
+      if (!this.hasActivePrimaryMission()) {
+        this.primaryMissionId = "";
+        this.activeMissionId = "";
+        this.tree = null;
+        this.selectionReason = this.activeMissionIds.length
+          ? "Mission principale restaurée depuis les missions actives."
+          : "Aucune mission active.";
+        this.selectBestPrimary(now, true);
+      } else {
+        this.selectionReason =
+          this.memory.state.missionLifecycle?.[this.primaryMissionId]?.selectionReason ||
+          "Mission reprise depuis la sauvegarde.";
+      }
+
+      this.syncMissionSelection();
+      if (this.tree) this.memory.saveTree(this.tree);
+      this.memory.save?.();
+      this.publish();
+      return true;
+    }
+
     syncMissionSelection() {
+      if (this.persistenceHydrationBlocked) return false;
       this.memory.state.primaryMissionId = this.primaryMissionId;
       this.memory.state.activeMissionId = this.primaryMissionId;
       this.memory.state.activeMissionIds = [...this.activeMissionIds];
-      if (!this.primaryMissionId) return;
+      if (!this.primaryMissionId) return true;
       const lifecycle = this.ensureLifecycle(this.primaryMissionId, "active");
       lifecycle.selectionReason = this.selectionReason || lifecycle.selectionReason || "";
       lifecycle.updatedAt = Date.now();
+      return true;
     }
 
     definition(missionId) {
@@ -1579,6 +1666,12 @@
 
     update(now) {
       if (!this.enabled) return false;
+      if (
+        this.persistenceHydrationBlocked &&
+        !this.recoverPersistenceHydration(now)
+      ) {
+        return false;
+      }
       this.applyPendingTransitions();
       this.ensureMissionTransitionIntent();
       if (
