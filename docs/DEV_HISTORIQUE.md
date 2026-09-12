@@ -1,20 +1,146 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Session du 12 septembre 2026 — R-HEALTH / assainissement de la lecture du HEAD
+
+### Base auditée
+- HEAD moteur : `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46`
+- Commit : `fix Save`
+- Le HEAD GitHub courant reste la seule base technique.
+- Cette mise à jour documentaire ne modifie aucun fichier moteur.
+
+### Objet de la passe
+
+Après plusieurs campagnes de validation montrant plusieurs dizaines de tests rouges préexistants, l'objectif a été déplacé du simple comptage des échecs vers un audit de **santé fonctionnelle** :
+- capacités préservées ;
+- propriétaires encore cohérents ;
+- propagation vers consommateurs ;
+- nouvelles vérités moteur apparues pendant l'industrialisation ;
+- distinction entre dette de tests et panne gameplay réelle.
+
+### Verdict R-HEALTH
+
+Résultat synthétique :
+- 13 domaines **VERT** ;
+- 3 domaines **VERT ÉVOLUÉ** ;
+- 4 domaines **ORANGE** de validation incomplète ;
+- 0 domaine **ROUGE systémique démontré**.
+
+Conclusion : `560249…` est retenu comme **checkpoint moteur sain pour poursuivre l'industrialisation**.
+
+Les domaines ORANGE ne sont pas déclarés cassés :
+- parcours tutoriel T01→T13 complet ;
+- génération/population maps et protections ;
+- UI visuelle réelle ;
+- audio/caméra/déplacement/physique.
+
+### Nouvelle doctrine de validation
+
+Le nombre brut de tests rouges n'est plus utilisé comme mesure directe de santé du moteur.
+
+Avant toute correction liée à un test préexistant, distinguer :
+1. test/API/fixture obsolète ;
+2. harness incomplet ;
+3. contrat historique remplacé par une évolution validée ;
+4. panne runtime/gameplay actuelle réellement reproduite.
+
+Une correction moteur n'est justifiée que par une panne actuelle ou la violation d'un contrat encore valide.
+
+La barrière de non-régression des futurs ZIP devient prioritairement :
+- préservation des capacités R-HEALTH ;
+- absence de nouvelle panne gameplay ;
+- absence de nouveau nom d'échec pertinent ;
+- conformité aux propriétaires et consommateurs actuels.
+
+### Capacités confirmées pendant R-HEALTH
+
+#### ObjectM0 / SAME-INSTANCE / fan-out
+- ObjectM0 reste propriétaire du matching missionnel ;
+- les études dues puis l'acquisition conservent la même instance ;
+- le fan-out vers plusieurs missions compatibles est conservé ;
+- les relations trigger-cible IMI restent à préserver.
+
+#### BAC / expérimentation
+Le modèle actuel est désormais :
+`mission bloquée par prérequis expérimental → intention persistante → candidate BAC pondérée → arbitrage → exécution quand réellement disponible`.
+
+Conséquences :
+- directive joueur persistante prioritaire ;
+- primaire réellement runnable prioritaire ;
+- Survival peut gagner l'arbitrage ;
+- navigation existante utilisée pour rejoindre un site expérimental distant ;
+- aucune expérience fictive si ressources absentes.
+
+Un ancien test exigeant une exécution expérimentale directe peut donc être rouge sans régression moteur.
+
+#### R-STAB
+Les décisions précédemment validées restent compatibles avec le HEAD :
+- active/primary ≠ nécessairement runnable localement ;
+- primaire stérile non exclusive ;
+- transition connue inexécutable ne bloque pas BlueFox ;
+- secondaire locale runnable peut précéder un départ ;
+- retry causal sans polling.
+
+#### Relations / civilisations
+Le runtime relationnel comprend désormais :
+- approche intrusive pouvant provoquer une fuite ;
+- approche lente/stable permettant un comportement prudent ;
+- dialogue actif protégé contre fuite concurrente ;
+- réputation ;
+- commerce consommant le stock physique ;
+- déblocages de connaissances/blueprints réels.
+
+Le raccord CONTACT-10→CONTACT-11 reste un défaut local connu à traiter dans le lot missionnel prévu, et non une panne systémique du système relationnel.
+
+#### Journal
+Le contrat lazy/persistant reste valide :
+- aucune consolidation au scan initial ou à la simple mutation DOM ;
+- une consolidation à l'ouverture ;
+- pas de reconsolidation pendant la même ouverture ;
+- nouvelle consolidation possible à la réouverture ;
+- aucun polling.
+
+#### Save / hydratation
+Le commit `560249…` ajoute une protection de restauration missionnelle :
+- une mission sauvegardée dont la définition n'est pas encore chargée n'est plus écrasée prématurément ;
+- MissionManager conserve la responsabilité de l'hydratation ;
+- la reprise attend la disponibilité de la définition ;
+- aucun moteur parallèle de sauvegarde missionnelle n'est créé.
+
+### État de l'industrialisation visible au HEAD
+
+Les documents précédents étaient devenus en retard. Le HEAD audité contient déjà notamment :
+- ARCH-01→40 ;
+- CONTACT-01→15 ;
+- DIP-01→03 ;
+- `GAME_CONTACT_FIRST`, `GAME_CONTACT_CAUTIOUS`, `GAME_CONTACT_AMBASSADOR` ;
+- ENE-15.
+
+Les anciennes TODO « reprendre à ARCH-30 » et « intégrer ENE-15 » sont donc closes comme objectifs futurs.
+
+### Continuité après interruption
+
+- aucun chantier général de réparation moteur ouvert ;
+- prochaine reprise : choisir le prochain lot réellement restant dans la Bible/roadmap ;
+- confronter ce lot au HEAD courant et aux propriétaires existants ;
+- compléter les domaines ORANGE uniquement lorsqu'un chantier traverse leur périmètre ;
+- ne pas réparer le moteur pour satisfaire artificiellement des tests historiques devenus faux.
+
+---
+
 ## Sessions du 8 au 11 septembre 2026 — ENE, balise/drones, stabilité, Journal et ARCH-01→29
 
-### Base finale de référence
+### Base finale de référence historique
 - HEAD validé pour ARCH-R4 : `296c048c0846198bf6326924ea4d3a9483907f68`
 - Parent : `017d646f6e861840b22a63a0a39e69aa231d5b7c` — `ARCH 13-18`
 - Commit : `/!\ ARCH R4 19-29     /!\ INDEX.HTML`
-- Le correctif ARCH-R4 technique correspond au candidat livré.
-- Le même commit contient une modification utilisateur séparée du DOCX Bible, non traitée comme modification technique ARCH-R4.
+- Cette section est historique ; le checkpoint actuel est désormais `560249…`.
 
 ### ENE-11→14
 Commit structurant : `14304c3b00e423df6ba5165b8efc1b91e27eccbf` — `ENE 11-14`.
 
 Acquis :
-- ENE-11 : prototype d’accumulateur à l’établi, consommation réelle, recette série ;
-- ENE-12 : machine abandonnée, approche puis consommation d’un accumulateur ;
+- ENE-11 : prototype d'accumulateur à l'établi, consommation réelle, recette série ;
+- ENE-12 : machine abandonnée, approche puis consommation d'un accumulateur ;
 - ENE-13 : Scout existant, accumulateur et balayage current-map ;
 - ENE-14 : mesures multi-map, calibration Giant Tree, synthèse Recherche.
 
@@ -27,7 +153,7 @@ Commits structurants :
 
 Acquis durables :
 - BAL-01→03 ;
-- balise déployée portée par le runtime d’objets spéciaux ;
+- balise déployée portée par le runtime d'objets spéciaux ;
 - Kit étendu aux objets transportables concernés sans en devenir propriétaire ;
 - DRN-01→04 : Blueprints Scout/Harvest, Harvest distant, priorité, cargo et console Recherche ;
 - observation Scout vers historique `OBJECT_SEEN`, sans fan-out missionnel ordinaire implicite.
@@ -53,7 +179,7 @@ Décisions validées :
 - généralisation de `missionTransitionIntent` aux contraintes géographiques missionnelles ;
 - secondaire locale perdable : départ différé possible ;
 - secondaire terminée/non-runnable : reprise de la transition primaire ;
-- transition connue sans route exécutable : pas d’exclusivité stérile ;
+- transition connue sans route exécutable : pas d'exclusivité stérile ;
 - completion gate géographique peut fournir une cible de transition ;
 - retry idle réveillable causalement ;
 - pas de polling ajouté.
@@ -62,11 +188,11 @@ Décisions validées :
 Commit `3000d85dc2a0ea595ddecd1f087d97b621880efe` — `Journal persistant`.
 
 Décisions :
-- consolidation uniquement à l’ouverture du Journal ;
+- consolidation uniquement à l'ouverture du Journal ;
 - aucune consolidation répétée par scan/mutation DOM ;
 - briques persistantes ;
 - branche inchangée stable ;
-- enrichissement seulement lors d’évolutions significatives ;
+- enrichissement seulement lors d'évolutions significatives ;
 - aucun polling.
 
 ### ARCH-R1 — ARCH-01→06
@@ -97,7 +223,7 @@ Arbitrages principaux :
 - ARCH-24 : 15 acquisitions de composants/Core ;
 - ARCH-25 : deux nouvelles maps, puis 50 % de la seconde ;
 - ARCH-27 : deux objets distincts dans la même MSC foyer ;
-- ARCH-29 : cinq unités d’habitation réellement garanties sur trois nouvelles maps.
+- ARCH-29 : cinq unités d'habitation réellement garanties sur trois nouvelles maps.
 
 ARCH-29 :
 - les quatre premières unités sont quatre MSC composites distinctes ;
@@ -105,11 +231,6 @@ ARCH-29 :
 - une composition = un objectif ;
 - la cinquième unité est `MSC-CUSTOM-HABITAT-RUINE` seule, volontairement gardée pour la fin ;
 - aucune généralisation moteur de regroupement de MSC.
-
-### Continuité
-- ARCH-01→29 est intégré.
-- prochaine continuité ARCH : audit à partir d’ARCH-30.
-- ENE-15 doit être réévalué : ARCH-17 est désormais disponible, mais les autres prérequis doivent être prouvés au HEAD.
 
 ---
 
@@ -143,7 +264,7 @@ ARCH-29 :
 - Recherche fenêtrée.
 - correction superposition Recherche/Inventaire et écran noir.
 - Kit : position ouverte/fermée persistée.
-- RuntimeBudget reste l’unique système de throttling.
+- RuntimeBudget reste l'unique système de throttling.
 - Survival conserve rest / food / safety séparés.
 
 ### 31 août → 1 septembre 2026 — IMI
@@ -158,7 +279,7 @@ Cycle de preuve à préserver :
 ### 28 août 2026 — propriétaires
 - MissionManager possède le choix missionnel.
 - BAC ne le remplace pas.
-- BibleRuntime n’écrit pas le lifecycle.
+- BibleRuntime n'écrit pas le lifecycle.
 - WorldEngine porte la directive joueur.
 - PathPlanner ne force pas une cible directe sans chemin.
 - sauvegarde après flush des mémoires différées.

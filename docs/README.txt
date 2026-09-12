@@ -8,36 +8,50 @@ Ces fichiers sont les documents de référence officiels maintenus :
 - RECOVERY_CHECKPOINT_2026-09-01.md
 - GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md
 
-Base technique courante au 08/09/2026 :
-- HEAD moteur validé avant mise à jour documentaire : 1f20ba014686f5f6eadac78a22b89077bca8e380
-- commit : /!\ GAME CIVilisation ENINERING + Etabli+feu +fichiers sensibles /!\ GROS LOT
-- parent : 3705d40399437058fcc62a9bc99f2ee96defc75e — Missions FAUNA R2
+Base technique auditée au 12/09/2026 :
+- checkpoint moteur R-HEALTH : 560249fb91ed2d5c719a4aafa5eabe88b6ee1e46
+- commit : fix Save
 - le HEAD GitHub courant reste la seule base technique de reprise ;
+- les commits documentaires postérieurs à ce checkpoint ne modifient pas le moteur audité ;
 - ROADMAP_TODO.md reste la seule TODO active ;
-- aucun nouveau recovery checkpoint n'est créé pour cette mise à jour.
+- aucun nouveau recovery checkpoint séparé n'est créé : le checkpoint R-HEALTH est enregistré dans les documents maintenus.
 
-État validé ajouté à la référence :
-- industrialisation missionnelle réalisée depuis le 2 septembre : FLO, GEO-01→07, COL, ENV, LOC, SUR, GAME R1/R2, FAUNA R1/R2 et ENE-01→10 ;
-- lot GAME Civilisation/Engineering validé au HEAD : GAME-civilization_1→5, GAME-engineering_3→6 et GAME-fire ;
-- réserve abandonnée persistante : 350 fibres + 175 azure_ferrite + 175 magnetic_ore, prélèvement limité par la capacité du sac sans faux RESOURCE_COLLECTED ;
-- GAME-base réconciliée sur le stock physique courant par événements d'inventaire, sans polling ;
-- missions répétables supportées génériquement par MissionManager ; GAME-fire consomme 8 bois et ne force pas un retour au camp ;
-- Blueprint et construction WORKBENCH disponibles uniquement sur Crystal après la Base ; coût réel : 20 magnetic_ore + 20 azure_ferrite + 20 resonant_basalt + 20 stellar_iridium + 25 fiber + 10 parts + 20 wood ;
-- placement joueur de l'établi via l'UI existante ; site WORKBENCH persistant avec anchor/rotation réels ;
-- ProgressionRegistry expose un crédit d'inventaire canonique sans progression historique de collecte artificielle ;
-- FAUNA R2 et ENE-01→10 préservées dans le cumulatif post-commit.
+État R-HEALTH :
+- 13 domaines VERT ;
+- 3 domaines VERT ÉVOLUÉ ;
+- 4 domaines ORANGE de validation incomplète ;
+- 0 domaine ROUGE systémique démontré ;
+- conclusion : base saine pour poursuivre l'industrialisation.
 
-Points explicitement encore ouverts :
-- industrialiser ENE-11→14 maintenant que l'établi existe réellement ;
-- améliorer la console/commande joueur des drones dans Recherche en réutilisant le runtime drone existant ;
-- généraliser le Kit d'expédition aux objets transportables fabriqués (accumulateur, puis futurs objets activables comme une balise) ;
-- rendre le Journal évolutif lazy à l'ouverture et persistant par briques stables, sans reconstruction/recalcul continu ;
-- ENE-15 reste différé tant que ses prérequis documentaires ne sont pas réellement industrialisés ;
-- poursuivre les audits CPU/cadence, autorité missionnelle, Survival et IMI tant qu'une clôture runtime complète n'est pas prouvée.
+VERT ÉVOLUÉ :
+- le comportement actuel peut diverger d'une ancienne attente ;
+- s'il est cohérent avec les propriétaires et les validations plus récentes, il devient une vérité moteur acceptable ;
+- un ancien test contradictoire ne doit pas forcer un retour à l'ancienne implémentation.
+
+Règle de lecture des tests :
+- le nombre brut de tests rouges n'est plus un indicateur suffisant de santé ;
+- avant correction, classer un échec préexistant : test/API/fixture obsolète, harness incomplet, contrat historique remplacé, ou panne runtime actuelle reproduite ;
+- ne corriger le moteur que pour une panne actuelle ou la violation d'un contrat encore valide ;
+- la non-régression des futurs ZIP doit d'abord préserver les capacités R-HEALTH du HEAD et ne pas introduire de nouvelle panne gameplay.
+
+État d'industrialisation déjà visible au checkpoint :
+- ARCH-01→40 ;
+- CONTACT-01→15 ;
+- DIP-01→03 ;
+- GAME_CONTACT_FIRST / GAME_CONTACT_CAUTIOUS / GAME_CONTACT_AMBASSADOR ;
+- ENE-15 ;
+- les anciennes TODO « reprendre à ARCH-30 » et « intégrer ENE-15 » sont donc obsolètes.
+
+Points encore ouverts au moment de l'interruption :
+- choisir le prochain lot depuis les missions réellement restantes dans la Bible documentaire puis le confronter au HEAD ;
+- traiter le raccord CONTACT-10→CONTACT-11 dans le lot missionnel prévu ;
+- compléter les quatre domaines ORANGE uniquement lorsqu'un chantier traverse leur périmètre : tutoriel complet, maps/population, UI visuelle, audio/caméra/déplacement/physique ;
+- poursuivre le profilage CPU global séparément de R-HEALTH ;
+- revalider les scénarios multi-map/reload complexes drones, balise et Save lorsque ces périmètres seront touchés.
 
 Règle de priorité documentaire :
 1. décision utilisateur la plus récente ;
-2. validation runtime en jeu ;
+2. validation runtime en jeu / comportement observable ;
 3. Contrat Gameplay Opérationnel V2 + addendum courant ;
 4. MASTER / ARCHITECTURE / ROADMAP / DEV_HISTORIQUE ;
 5. annexes et documents historiques.
@@ -50,3 +64,10 @@ Règle spécifique trigger/cible missionnelle :
 - ne pas réintroduire de migration automatique de sauvegarde rejetée ;
 - ne déclarer PASS qu'après validation du cycle réel
   chargement → MissionManager → Planner → ObjectM0 → ActionBridge → interaction.
+
+Discipline :
+- HEAD courant seul référentiel technique ;
+- propriétaires existants avant toute nouvelle couche ;
+- BASE partielle exacte limitée au périmètre ;
+- aucun correctif moteur dicté par un test historique sans reproduction de la panne actuelle ;
+- map-registry.js reste protégé.

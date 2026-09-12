@@ -86,3 +86,5 @@ IMI — CONTRAT IA D'INTÉGRATION DES MISSIONS
 
 BlueFox\_Contrat\_Gameplay\_Operationnel\_V2\_Historique\_2026-08-28\_MAJ
 
+R-health 2026-09-12
+
