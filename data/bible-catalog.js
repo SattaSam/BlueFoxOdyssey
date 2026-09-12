@@ -2343,6 +2343,144 @@
   });
 
 
+  const ENE15A = Object.freeze({
+    id: "ENE-15-A",
+    title: "Reconnaître une technologie du réseau",
+    description: "Après la synthèse énergétique, réexaminer une technologie ancienne réellement conservée au Temple des savoirs et reconnaître qu’elle appartient au même réseau planétaire.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "DIP-03", count: 1 }),
+    prerequisites: Object.freeze(["ENE-14", "ARCH-17", "DIP-03"]),
+    requiredFacts: Object.freeze(["shared_civilization_knowledge"]),
+    priority: 294,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 82,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "observeNetworkTechnology",
+        title: "Reconnaître une technologie ancienne du réseau",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoType: "tech_relic",
+          microSceneId: "MSC-CUSTOM-HUGE-TEMPLE",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "analyzeNetworkTechnology",
+        title: "Comparer sa signature au réseau planétaire",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["observeNetworkTechnology"]),
+        params: Object.freeze({
+          cuoType: "tech_relic",
+          microSceneId: "MSC-CUSTOM-HUGE-TEMPLE",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId",
+          relation: Object.freeze({
+            fromSlot: "observeNetworkTechnology",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La relique énergétique n’est plus une curiosité isolée. Avec ce que je sais du réseau et des archives communes, je peux enfin la relire correctement."]),
+      progress: Object.freeze([Object.freeze({ slot: "observeNetworkTechnology", atCount: 1, text: "Cette technologie appartient bien au même langage énergétique que les structures déjà étudiées. Je dois maintenant confronter sa signature au réseau planétaire." })]),
+      completed: Object.freeze(["Sa signature rejoint la trame planétaire : la maîtrise ancienne du réseau n’était pas locale, elle était pensée comme une architecture cohérente."])
+    })
+  });
+
+  const ENE15B = Object.freeze({
+    id: "ENE-15-B",
+    title: "Obtenir la connaissance manquante",
+    description: "Revenir au Temple des savoirs et confronter l’interprétation énergétique de BlueFox à la mémoire vivante de l’alliance Rocky–Translucide.",
+    pattern: "OBSERVE_TARGET",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-15-A", count: 1 }),
+    prerequisites: Object.freeze(["ENE-15-A", "DIP-03"]),
+    requiredFacts: Object.freeze(["shared_civilization_knowledge"]),
+    priority: 293,
+    passivePriorityAxis: "relations",
+    ponderation: 0.8,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 90,
+    slots: Object.freeze({
+      study: Object.freeze({
+        title: "Consulter une délégation au Temple des savoirs",
+        target: 1,
+        params: Object.freeze({
+          cuoType: "npc_rocky",
+          persistentMicroSceneId: "DIP-03:delegate:rocky:1",
+          requiredMapFact: "dip03:temple-map",
+          requiredMapField: "mapId"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je peux suivre les traces des anciens, mais pas deviner tout ce qu’ils savaient. Il me faut une mémoire vivante, pas seulement une relique."]),
+      completed: Object.freeze(["Le savoir partagé donne enfin un sens à l’architecture : ces nœuds n’étaient pas seulement alimentés, ils étaient synchronisés entre eux."])
+    })
+  });
+
+  const ENE15C = Object.freeze({
+    id: "ENE-15-C",
+    title: "Comprendre le transfert de matière",
+    description: "Formaliser la compréhension du transfert de matière comme branche de recherche tardive, sans fabriquer ni débloquer encore de téléporteur opérationnel.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-15-B", count: 1 }),
+    prerequisites: Object.freeze(["ENE-15-B", "ENE-14", "ARCH-17", "DIP-03", "GAME-engineering_6"]),
+    experimentalPrerequisites: Object.freeze(["advanced_engineering"]),
+    requiredFacts: Object.freeze(["shared_civilization_knowledge"]),
+    priority: 292,
+    passivePriorityAxis: "engineering",
+    ponderation: 0.8,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 100,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "nodeSynchronization",
+        title: "Formuler le principe de synchronisation de deux nœuds",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ duration: 6500 })
+      }),
+      Object.freeze({
+        slot: "matterTransferResearch",
+        title: "Formaliser la recherche sur le transfert de matière",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["nodeSynchronization"]),
+        params: Object.freeze({ duration: 6500 })
+      })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "matter_transfer_research",
+      category: "energy",
+      label: "Recherche sur le transfert de matière",
+      description: "Comprendre le principe de synchronisation de nœuds distants et ouvrir une branche de recherche tardive sans débloquer directement la téléportation."
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["L’énergie n’était que la moitié du problème. Les anciens synchronisaient des nœuds avant de déplacer quoi que ce soit."]),
+      progress: Object.freeze([Object.freeze({ slot: "nodeSynchronization", atCount: 1, text: "Je comprends enfin pourquoi certaines structures existent par paires : leur fonction dépend d’un état partagé du réseau." })]),
+      completed: Object.freeze(["Le transfert de matière devient techniquement concevable, mais il reste dangereux et verrouillé. Je n’ai débloqué qu’une branche de recherche, pas un téléporteur."])
+    })
+  });
+
 
 
   const BAL01 = Object.freeze({
@@ -9490,6 +9628,9 @@
     ENE12,
     ENE13,
     ENE14,
+    ENE15A,
+    ENE15B,
+    ENE15C,
     ARCH01,
     ARCH02,
     ARCH03,
