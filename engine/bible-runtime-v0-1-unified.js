@@ -4996,7 +4996,89 @@
           }
         }
       }
-      return null;
+
+      const scene = BF.MicroScenes?.get?.(microSceneId);
+      if (!scene || !engine.currentMap) return null;
+      const sceneRadius = Math.max(2, Number(scene.radius) || 4);
+      const bounds = Number(engine.currentMap.bounds);
+      const fallbackCandidates = [];
+      const addFallback = (x, z, index) => {
+        const angle = Math.atan2(z - Number(origin.z), x - Number(origin.x));
+        fallbackCandidates.push({
+          placement: {
+            anchor: { x, y: Number(origin.y) || 0, z },
+            rotation: [0, angle + Math.PI, 0]
+          },
+          index
+        });
+      };
+      const halton = (index, base) => {
+        let result = 0;
+        let fraction = 1 / base;
+        let value = index;
+        while (value > 0) {
+          result += fraction * (value % base);
+          value = Math.floor(value / base);
+          fraction /= base;
+        }
+        return result;
+      };
+
+      if (Number.isFinite(bounds)) {
+        const limit = bounds - sceneRadius;
+        if (limit < 0) return null;
+        for (let index = 1; index <= 320; index += 1) {
+          addFallback(
+            -limit + 2 * limit * halton(index, 2),
+            -limit + 2 * limit * halton(index, 3),
+            index
+          );
+        }
+      } else {
+        let index = 0;
+        for (const radius of [16, 20, 24, 28, 32, 36, 40]) {
+          for (let step = 0; step < 16; step += 1) {
+            const angle = baseAngle + step * Math.PI / 8;
+            addFallback(
+              Number(origin.x) + Math.cos(angle) * radius,
+              Number(origin.z) + Math.sin(angle) * radius,
+              index += 1
+            );
+          }
+        }
+      }
+
+      const validCandidates = fallbackCandidates.filter(({ placement }) =>
+        this.microScenePlacementValid(microSceneId, placement, engine)
+      );
+      if (!validCandidates.length) return null;
+
+      const colliders = engine.currentMap.colliders || [];
+      const collisionPressure = ({ anchor }) => colliders.reduce((pressure, collider) => {
+        const position = collider?.position;
+        if (!position) return pressure;
+        const clearance = sceneRadius + Math.max(0, Number(collider.radius) || 0) + 0.6;
+        const influence = clearance + Math.max(4, sceneRadius);
+        const distance = Math.hypot(
+          (Number(anchor.x) || 0) - Number(position.x || 0),
+          (Number(anchor.z) || 0) - Number(position.z || 0)
+        );
+        return pressure + Math.max(0, influence - distance) / influence;
+      }, 0);
+      return validCandidates
+        .map((entry) => ({
+          ...entry,
+          pressure: collisionPressure(entry.placement),
+          distance: Math.hypot(
+            Number(entry.placement.anchor.x) - Number(origin.x),
+            Number(entry.placement.anchor.z) - Number(origin.z)
+          )
+        }))
+        .sort((left, right) =>
+          left.pressure - right.pressure ||
+          left.distance - right.distance ||
+          left.index - right.index
+        )[0]?.placement || null;
     }
 
     beginMicroScenePlacement(spec = {}) {

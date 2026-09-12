@@ -37,6 +37,7 @@ test('pendingActivations porte le verrou expérimental sans nouveau lifecycle',(
   assert.equal(projected.pendingExperimental,true);
   assert.match(projected.journalIntro,/Rétro-ingénierie comprise/);
   assert.equal(state.pendingExperimentationIntent.axis,'research');
+  assert.equal(state.pendingExperimentationIntent.baseWeight,292);
   assert.equal(state.pendingExperimentationIntent.target,'camp');
 });
 test('la connaissance débloquée réactive causalement la mission pending',()=>{

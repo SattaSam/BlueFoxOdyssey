@@ -588,6 +588,110 @@
       : Infinity;
   };
 
+  const knownExperimentationSites = (engine, target) => {
+    const progression = engine?.missionManager?.memory?.state?.siteProgression || {};
+    const allowedKinds = target === "workbench"
+      ? new Set(["workbench"])
+      : new Set(["camp", "refuge", "base"]);
+    const sites = [];
+    Object.entries(progression).forEach(([storedMapId, raw]) => {
+      const bucket = raw?.sites && typeof raw.sites === "object"
+        ? Object.values(raw.sites)
+        : [raw];
+      bucket.filter(Boolean).forEach((site) => {
+        const kind = String(site.kind || "").toLowerCase();
+        const mapId = String(site.mapId || storedMapId || "");
+        if (allowedKinds.has(kind) && mapId) sites.push({ ...site, kind, mapId });
+      });
+    });
+    return sites;
+  };
+
+  const nearestReachableExperimentationSite = (engine, target) => {
+    const currentMapId = String(engine?.currentMapId || "");
+    return knownExperimentationSites(engine, target)
+      .map((site) => {
+        const route = site.mapId === currentMapId
+          ? [currentMapId]
+          : engine?.findKnownRoute?.(currentMapId, site.mapId);
+        return {
+          site,
+          distance: Array.isArray(route) && route.length
+            ? Math.max(0, route.length - 1)
+            : Infinity
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.distance))
+      .sort((left, right) => left.distance - right.distance)[0]?.site || null;
+  };
+
+  const requestExperimentationLocation = (engine, intent, destination) => {
+    if (!engine || !intent || !destination) return false;
+    if (String(destination.mapId) !== String(engine.currentMapId || "")) {
+      if (typeof engine.handleNavigationSuggestion !== "function") return false;
+      engine.handleNavigationSuggestion({
+        mapId: destination.mapId,
+        source: "pending-experimentation",
+        missionId: intent.missionId
+      });
+      return true;
+    }
+    const anchor = destination.anchor || destination.position;
+    if (!anchor || typeof engine.character?.setTarget !== "function") return false;
+    const target = engine.THREE?.Vector3
+      ? new engine.THREE.Vector3(Number(anchor.x) || 0, 0, Number(anchor.z) || 0)
+      : { x: Number(anchor.x) || 0, y: 0, z: Number(anchor.z) || 0 };
+    if (engine.character.setTarget(target, "run") === false) return false;
+    engine.showWorldMarker?.(target);
+    engine.callbacks?.onStatus?.(
+      intent.locationTarget === "workbench"
+        ? "BlueFox rejoint l’établi pour préparer l’expérimentation nécessaire."
+        : "BlueFox rejoint un abri établi pour préparer l’expérimentation nécessaire."
+    );
+    return true;
+  };
+
+  const pendingExperimentationCandidate = (engine) => {
+    if (engine?.persistentNavigationIntent) return null;
+    const intent = engine?.missionManager?.pendingExperimentationIntent?.() || null;
+    if (!intent?.knowledgeId) return null;
+    const experiment = BF.Research?.experimentationForKnowledge?.(intent.knowledgeId) || null;
+    const themeId = String(experiment?.theme?.id || intent.experimentThemeId || "");
+    const state = themeId ? BF.Research?.experimentationState?.(themeId) || null : null;
+    if (!experiment || !state?.nextStage || state.completed) return null;
+    const locationTarget = state.nextStage.location === "workbench" ? "workbench" : "camp";
+    const destination = state.locationReady
+      ? null
+      : nearestReachableExperimentationSite(engine, locationTarget);
+    return {
+      id: `pending-experimentation:${intent.missionId}`,
+      axis: state.axis || intent.axis || experiment.theme?.axis || "research",
+      baseWeight: Math.max(8, Number(intent.baseWeight) || 0),
+      available: Boolean(
+        state.resourcesReady &&
+        (state.canRun || (!state.locationReady && destination))
+      ),
+      missionDriven: true,
+      execute: () => {
+        if (state.canRun) {
+          return BF.Research?.runExperiment?.(themeId, {
+            source: "bac-pending-prerequisite",
+            missionId: intent.missionId,
+            knowledgeId: intent.knowledgeId
+          }) === true;
+        }
+        if (!state.locationReady && state.resourcesReady) {
+          return requestExperimentationLocation(
+            engine,
+            { ...intent, locationTarget },
+            destination
+          );
+        }
+        return false;
+      }
+    };
+  };
+
   const routeCost = (engine, object) => {
     try {
       const approach = engine.interactionApproachPoint?.(object);
@@ -1109,6 +1213,8 @@
         BF.RationPolicy?.autonomyCandidate?.(this, now) || null;
       const constructionCandidate =
         BF.getConstructionCollectionCandidate?.(this, now) || null;
+      const experimentationCandidate =
+        pendingExperimentationCandidate(this);
       const tutorialRationConsumeUnlocked = Boolean(
         survivalDecision?.routine === "food" &&
         BF.isTutorialSurvivalCapabilityUnlocked?.("ration-consume") === true
@@ -1249,6 +1355,7 @@
       const options = [
         ...(constructionCandidate ? [constructionCandidate] : []),
         ...(rationCandidate ? [rationCandidate] : []),
+        ...(experimentationCandidate ? [experimentationCandidate] : []),
         {
           id: "survival-rest",
           axis: "survival",
@@ -1369,7 +1476,8 @@
           preferredCollectables.length > 0 &&
           preferredCollectionOption?.available &&
           rationCandidate?.missionDriven !== true &&
-          constructionCandidate?.missionDriven !== true
+          constructionCandidate?.missionDriven !== true &&
+          experimentationCandidate?.missionDriven !== true
         );
 
       const selected = preferenceCommitmentActive

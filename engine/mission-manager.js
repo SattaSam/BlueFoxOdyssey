@@ -1359,6 +1359,7 @@
         missionId: selected.missionId,
         missionTitle: selected.missionTitle,
         axis: "research",
+        baseWeight: selected.baseWeight,
         target: selected.target,
         knowledgeId,
         knowledgeLabel: experiment?.knowledge?.label || knowledgeId,
