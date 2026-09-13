@@ -292,7 +292,8 @@
       subject: metadata.subject,
       category: metadata.category,
       persistentMicroSceneId: metadata.persistentMicroSceneId,
-      microSceneId: metadata.microSceneId
+      microSceneId: metadata.microSceneId,
+      actor: metadata.actor
     };
 
     for (const [key, actual] of Object.entries(exact)) {
@@ -304,6 +305,9 @@
     if (cuoTypes.length && !cuoTypes.includes(lower(metadata.cuoType))) return false;
     const microSceneIds = asArray(params.microSceneIds).map(lower).filter(Boolean);
     if (microSceneIds.length && !microSceneIds.includes(lower(metadata.microSceneId))) return false;
+    const actorsAny = asArray(params.actorsAny).map(lower).filter(Boolean);
+    if (actorsAny.length && !actorsAny.includes(lower(metadata.actor))) return false;
+    if (params.remote != null && Boolean(params.remote) !== Boolean(metadata.remote)) return false;
 
     const tagsAny = asArray(params.tagsAny).map(lower).filter(Boolean);
     if (tagsAny.length && !tagsAny.some((tag) => tags.has(tag))) return false;
@@ -332,6 +336,11 @@
       BF.ObjectLibrary?.getById?.(event?.objectId) ||
       BF.ObjectLibrary?.get?.(detail.cuoType) ||
       null;
+    const interactionSource = lower(detail.interactionSource);
+    const droneType = lower(detail.droneType);
+    const actor = interactionSource === "drone"
+      ? (droneType === "scout_drone" ? "scout" : "drone")
+      : "bluefox";
     return {
       objectId: event?.objectId || definition?.id,
       cuoType: detail.cuoType || definition?.type,
@@ -364,6 +373,8 @@
         event?.microSceneId ||
         detail.microSceneId ||
         null,
+      actor,
+      remote: detail.remote === true,
       tags: [
         ...(event?.tags || []),
         ...(detail.tags || []),
@@ -493,6 +504,22 @@
     })) || false;
   };
 
+  const acceptsScoutObservation = (node) => {
+    const params = node?.params || {};
+    if (lower(params.actor) === "scout") return true;
+    return asArray(params.actorsAny).map(lower).includes("scout");
+  };
+
+  const studySubjectMatches = (event, node, tags) => {
+    const detail = event?.detail || {};
+    const subject = String(node?.params?.subject || "").toLowerCase();
+    if (!subject) return true;
+    if (subject === "structure") return detail.kind === "structure" || tags.has("ruin") || tags.has("landmark");
+    if (subject === "flora") return event.knowledgeFamily === "flora" || tags.has("plant");
+    if (subject === "components") return tags.has("technology") || tags.has("ruin") || detail.kind === "debris";
+    return subject === detail.subject || subject === detail.kind || subject === event.family;
+  };
+
   const eventMatchesNode = (event, node, missionId = null, tree = null) => {
     if (node.params?.catalogManaged || node.params?.siteProgressionKind) return false;
     const type = Missions.normalizeActionType(node.type);
@@ -530,6 +557,20 @@
       if (excluded.includes(reaction)) return false;
       return true;
     }
+    const scoutHistoricalObservation =
+      event.type === BF.ObjectEvents?.types.OBJECT_SEEN &&
+      lower(detail.interactionSource) === "drone" &&
+      lower(detail.droneType) === "scout_drone" &&
+      [...tags].map(lower).includes("drone-scouted");
+    if (scoutHistoricalObservation) {
+      if (!isStudyAction(type) || !acceptsScoutObservation(node)) return false;
+      if (!metadataMatchesMissionCriteria(eventMissionMetadata(event), node.params || {}, { skipSubject: true })) {
+        return false;
+      }
+      if (!relationMatches(tree, node, relationEvidenceFromEvent(event))) return false;
+      return studySubjectMatches(event, node, tags);
+    }
+
     if (![BF.ObjectEvents?.types.OBJECT_INSPECTED, BF.ObjectEvents?.types.PHENOMENON_OBSERVED, BF.ObjectEvents?.types.OBJECT_ANALYZED].includes(event.type)) return false;
     if (!isStudyAction(type)) return false;
 
@@ -553,12 +594,7 @@
       return false;
     }
     if (!relationMatches(tree, node, relationEvidenceFromEvent(event))) return false;
-    const subject = String(node.params.subject || "").toLowerCase();
-    if (!subject) return true;
-    if (subject === "structure") return detail.kind === "structure" || tags.has("ruin") || tags.has("landmark");
-    if (subject === "flora") return event.knowledgeFamily === "flora" || tags.has("plant");
-    if (subject === "components") return tags.has("technology") || tags.has("ruin") || detail.kind === "debris";
-    return subject === detail.subject || subject === detail.kind || subject === event.family;
+    return studySubjectMatches(event, node, tags);
   };
 
   const eventMatchesBoundTarget = (manager, missionId, event) => {
@@ -722,6 +758,8 @@
   const definitionMissionMetadata = (definition, resolved = null) => ({
     objectId: definition?.id,
     cuoType: definition?.type,
+    actor: "bluefox",
+    remote: false,
     kind: definition?.resource?.inventoryKey || definition?.type,
     family: definition?.resource?.family || definition?.knowledge?.family || definition?.category,
     subject: definition?.semantic?.subject || definition?.knowledge?.family || definition?.category || definition?.type,
@@ -734,6 +772,8 @@
       resolved?.object?.userData?.microSceneId ||
       resolved?.anchor?.userData?.microSceneId ||
       null,
+    actor: "bluefox",
+    remote: false,
     tags: [...objectTags(definition)]
   });
 
