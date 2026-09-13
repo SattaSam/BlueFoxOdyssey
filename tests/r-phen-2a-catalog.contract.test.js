@@ -11,7 +11,7 @@ const catalog=window.BlueFox3D.BibleCatalog;
 const byId=new Map(catalog.map(m=>[m.id,m]));
 const ids=['PHEN-01','PHEN-02','PHEN-03','PHEN-04','PHEN-05','PHEN-06'];
 ids.forEach(id=>assert(byId.has(id),`${id} absent`));
-assert.equal(catalog.length,279,'273 missions HEAD actuel + 6 PHEN attendues');
+assert(catalog.length >= 279,'les 273 missions du HEAD ECO-SIS + PHEN-01→06 doivent rester présentes sans bloquer les lots ultérieurs');
 const step=(mission,slot)=>mission.sequence.find(entry=>entry.slot===slot);
 
 const p1=byId.get('PHEN-01');

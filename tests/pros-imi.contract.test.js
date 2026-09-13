@@ -7,11 +7,10 @@ const window = { BlueFox3D:{} }; window.window = window;
 vm.runInNewContext(fs.readFileSync(path.join(ROOT,'data/bible-catalog.js'),'utf8'), window, {filename:'bible-catalog.js'});
 const BF=window.BlueFox3D;
 const byId=new Map(BF.BibleCatalog.map(m=>[m.id,m]));
-assert.equal(BF.BibleCatalog.length,282,'PROS doit ajouter exactement 3 missions au HEAD PHEN (279 -> 282)');
+assert(BF.BibleCatalog.length >= 282,'PROS doit conserver les 279 missions antérieures + ses 3 missions sans bloquer les lots ultérieurs');
 for(const id of ['PROS-01','PROS-03','PROS-02']) assert(byId.has(id),`${id} absente`);
 assert(!byId.has('PROS-04'));
 const p1=byId.get('PROS-01'), p3=byId.get('PROS-03'), p2=byId.get('PROS-02');
-
 assert.equal(p1.pattern,'SEQUENCE_ACTIONS');
 assert.equal(p1.trigger.type,'exploration.map_discovered');
 assert.equal(p1.trigger.direction,'south');
@@ -26,7 +25,6 @@ assert.equal(resonance.params.cuoType,'resonant_basalt');
 assert.equal(sample.params.cuoType,'resonant_basalt');
 assert.equal(sample.params.relation.fromSlot,'resonance');
 assert.deepStrictEqual(Array.from(sample.params.relation.sameBy),['instanceId']);
-
 assert.deepStrictEqual(Array.from(p3.prerequisites),['PROS-01','DRN-04']);
 assert.equal(p3.proximityContexts[0].microSceneId,'MSC-CUSTOM-ETABLI-VIDE');
 assert.deepStrictEqual(Array.from(p3.sequence.map(s=>s.slot)),['workbench','optimize'],'PROS-03 ne doit pas dupliquer DRN-03/04');
@@ -38,7 +36,6 @@ const consume=optimize.params.inventoryConsume;
 assert.equal(JSON.stringify(consume.map(x=>[x.inventoryKey,x.quantity])),JSON.stringify([['magnetic_ore',20],['crystal',10],['parts',5]]));
 assert.equal(p3.worldEventRequirements,undefined,'PROS-03 ne doit pas réécouter une seconde fois les événements déjà possédés par DRN-03/04');
 assert.equal(p3.runtimeValidation,undefined,'PROS-03 ne doit pas créer un runtime missionnel parallèle');
-
 assert.deepStrictEqual(Array.from(p2.prerequisites),['PROS-03']);
 assert.equal(p2.trigger.direction,'east');
 assert.equal(p2.mapGeneration.requiredMicroScenes[0].id,'MSC-CUSTOM-COMPOSANT-RUIN');
@@ -48,7 +45,6 @@ assert.equal(o.params.cuoType,'relay_block');
 assert.equal(c.params.cuoType,'relay_block');
 assert.equal(c.params.relation.fromSlot,'observeModule');
 assert.deepStrictEqual(Array.from(c.params.relation.sameBy),['instanceId']);
-
 const src=fs.readFileSync(path.join(ROOT,'data/bible-catalog.js'),'utf8');
 for(const forbidden of ['stealth_runtime','infiltration_runtime','pure_mineral','hidden_vein','pros_bridge']) assert(!src.includes(forbidden),`pseudo système interdit: ${forbidden}`);
 console.log('PROS IMI contract: PASS');

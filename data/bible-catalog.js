@@ -10628,6 +10628,350 @@
 
 
 
+  const PHEN07 = Object.freeze({
+    id: "PHEN-07",
+    title: "Cristaux chargés",
+    description: "Comparer deux sites de cristaux chargés sur des territoires distincts à l’aide de relevés Scout réels, tout en conservant la possibilité d’un relevé distant lorsqu’un site est déjà intégré au réseau balisé.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01"]),
+    priority: 207,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-01-OPPORTUNITIES",
+    ponderation: 0.9,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CHARGED-CRYSTALS-001", persistent: true, spawnOnce: true, contextRole: "phen07ChargedCrystalSite" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachSite1",
+        title: "Rejoindre un premier territoire de cristaux chargés",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          completionArrivalFact: "phen07:site1",
+          completionArrivalField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "scoutSite1",
+        title: "Obtenir un relevé Scout du premier site",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachSite1"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["energy_crystal", "crystal"]),
+          actor: "scout",
+          distinctBy: "mapId",
+          sequenceSlot: "scoutSite1",
+          requiredMapFact: "phen07:site1",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "reachSite2",
+        title: "Rejoindre un second territoire de cristaux chargés",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["scoutSite1"]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          completionArrivalFact: "phen07:site2",
+          completionArrivalField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "scoutSite2",
+        title: "Obtenir un relevé Scout du second site",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachSite2"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["energy_crystal", "crystal"]),
+          actor: "scout",
+          distinctBy: "mapId",
+          requiredMapFact: "phen07:site2",
+          requiredMapField: "mapId",
+          relation: Object.freeze({ fromSlot: "scoutSite1", differentBy: Object.freeze(["mapId"]) })
+        })
+      }),
+      Object.freeze({
+        slot: "compare",
+        title: "Comparer les deux relevés de cristaux chargés",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["scoutSite2"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Un cristal chargé ne prouve rien à lui seul. Je veux voir si la même signature réapparaît ailleurs, avec le Scout comme mesure indépendante."]),
+      completed: Object.freeze(["Deux territoires différents, deux relevés cohérents. La charge des cristaux appartient à une structure plus vaste que le site où je l’ai remarquée."])
+    })
+  });
+
+  const PHEN08 = Object.freeze({
+    id: "PHEN-08",
+    title: "Trois points dans le monde",
+    description: "Étendre le corpus scientifique à trois territoires distincts et obtenir trois relevés Scout distants réels, preuve que ces sites appartiennent effectivement au réseau balisé.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-07", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-07", "BAL-03", "ENE-13"]),
+    priority: 206,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CHARGED-CRYSTALS-001", persistent: true, spawnOnce: true, contextRole: "phen08ThirdScientificSite" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachSite3",
+        title: "Établir un troisième point scientifique sur un nouveau territoire",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          newOnly: true,
+          distinctBy: "mapId",
+          completionArrivalFact: "phen08:site3",
+          completionArrivalField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "networkReadings",
+        title: "Obtenir trois relevés Scout distants sur trois territoires distincts",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["reachSite3"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["energy_crystal", "crystal"]),
+          actor: "scout",
+          remote: true,
+          distinctBy: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "synthesis",
+        title: "Relier les trois points du réseau scientifique",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["networkReadings"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Deux sites peuvent encore être une coïncidence. Trois points distants reliés par le Scout et les balises commencent à dessiner un réseau."]),
+      completed: Object.freeze(["Trois territoires séparés répondent au même protocole. Je n’ai plus une collection d’anomalies : j’ai un réseau scientifique."])
+    })
+  });
+
+  const PHEN09 = Object.freeze({
+    id: "PHEN-09",
+    title: "Les anomalies se répondent",
+    description: "Revenir physiquement sur deux anciens sites scientifiques, y refaire des relevés et comparer ce que les mesures actuelles révèlent du même phénomène.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-08", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-08"]),
+    priority: 205,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-08-SYNTHESIS",
+    ponderation: 0.95,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "returnSite1",
+        title: "Revenir au premier site de cristaux chargés",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          targetMapFact: "phen07:site1",
+          targetMapField: "mapId",
+          distinctBy: "transition"
+        })
+      }),
+      Object.freeze({
+        slot: "remeasureSite1",
+        title: "Refaire un relevé sur le premier site",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["returnSite1"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["energy_crystal", "crystal"]),
+          actorsAny: Object.freeze(["bluefox", "scout"]),
+          requiredMapFact: "phen07:site1",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "returnSite2",
+        title: "Revenir au second site de cristaux chargés",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["remeasureSite1"]),
+        params: Object.freeze({
+          eventDriven: true,
+          targetMapFact: "phen07:site2",
+          targetMapField: "mapId",
+          distinctBy: "transition"
+        })
+      }),
+      Object.freeze({
+        slot: "remeasureSite2",
+        title: "Refaire un relevé sur le second site",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["returnSite2"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["energy_crystal", "crystal"]),
+          actorsAny: Object.freeze(["bluefox", "scout"]),
+          requiredMapFact: "phen07:site2",
+          requiredMapField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "compareHistory",
+        title: "Comparer les anciens sites à la lumière des nouvelles mesures",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["remeasureSite2"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je connais déjà ces endroits. C’est justement pour ça que je dois y retourner : une mesure prend un autre sens quand elle survit au temps et à la comparaison."]),
+      completed: Object.freeze(["Les sites n’ont pas cessé d’être eux-mêmes, mais ma lecture a changé. Les anomalies se répondent parce qu’elles appartiennent au même monde, pas parce qu’elles se ressemblent par hasard."])
+    })
+  });
+
+  const PHEN10 = Object.freeze({
+    id: "PHEN-10",
+    title: "Sous mes pattes",
+    description: "Ramener les observations au laboratoire de terrain, consommer de vrais échantillons et confronter les mesures multi-sites à une expérimentation contrôlée.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-08", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-08"]),
+    priority: 204,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-08-SYNTHESIS",
+    ponderation: 0.95,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "prepare",
+        title: "Préparer une comparaison expérimentale à l’établi",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, catalogManaged: true })
+      }),
+      Object.freeze({
+        slot: "experiment",
+        title: "Tester ensemble les matériaux représentatifs du réseau",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["prepare"]),
+        params: Object.freeze({})
+      })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({
+        id: "phen10-workbench",
+        microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+        fact: "phen10:workbench:v1",
+        slot: "prepare",
+        radius: 8
+      }),
+      Object.freeze({
+        id: "phen10-experiment",
+        microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+        fact: "phen10:experiment:v1",
+        slot: "experiment",
+        radius: 8,
+        inventoryConsume: Object.freeze({
+          inventoryKeys: Object.freeze(["energy_crystal", "crystal", "magnetic_ore", "resonant_basalt"]),
+          quantity: 6,
+          missingMessage: "Il me faut six échantillons minéraux ou cristallins réels avant de comparer les signatures du réseau."
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["J’ai accumulé assez de mesures. Il faut maintenant quitter le terrain un instant et vérifier ce que ces signatures font quand je contrôle les conditions."]),
+      completed: Object.freeze(["Sous mes pattes, les échantillons reproduisent une partie de ce que le Scout a mesuré à distance. Le réseau n’est pas seulement géographique : il est aussi matériel."])
+    })
+  });
+
+  const PHEN11 = Object.freeze({
+    id: "PHEN-11",
+    title: "Atlas des phénomènes",
+    description: "Synthétiser le réseau scientifique, les retours sur anciens sites et l’expérimentation en une connaissance persistante de la planète, sans devenir un prérequis de la chaîne ENE.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-10", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-09", "PHEN-10"]),
+    priority: 203,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 72,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "review",
+        title: "Relire le corpus scientifique multi-sites",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "atlas",
+        title: "Synthétiser l’Atlas des phénomènes planétaires",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["review"]),
+        params: Object.freeze({})
+      })
+    ]),
+    rewards: Object.freeze([
+      Object.freeze({
+        type: "research.knowledge",
+        id: "planetary_phenomena_atlas",
+        category: "research",
+        label: "Atlas des phénomènes planétaires",
+        description: "Corpus synthétique reliant les phénomènes observés, les sites scientifiques persistants, les relevés Scout et les comparaisons expérimentales."
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["J’ai assez de points, assez de retours et assez d’essais pour arrêter de penser en anomalies séparées. Il est temps d’écrire une carte de ce que la planète fait."]),
+      progress: Object.freeze([
+        Object.freeze({
+          slot: "atlas",
+          atCount: 1,
+          route: "journal",
+          text: "L’Atlas relie désormais les phénomènes géologiques, climatiques et énergétiques étudiés sans effacer leurs différences locales."
+        })
+      ]),
+      completed: Object.freeze(["L’Atlas n’explique pas tout. Il fait mieux : il me montre ce que je sais vraiment, ce qui se répète, et ce qui reste encore à comprendre."])
+    })
+  });
+
+
   // PROS — prospection, optimisation du réseau Harvest puis récupération technologique.
   // L'arc réutilise exclusivement la géologie, le réseau drone et SAME-INSTANCE existants.
   const PROS01 = Object.freeze({
@@ -10939,7 +11283,7 @@
     SUR05,
     SUR06,
     SUR07,
-    PHEN01, PHEN02, PHEN03, PHEN04, PHEN05, PHEN06,
+    PHEN01, PHEN02, PHEN03, PHEN04, PHEN05, PHEN06, PHEN07, PHEN08, PHEN09, PHEN10, PHEN11,
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     PROS01, PROS03, PROS02,
