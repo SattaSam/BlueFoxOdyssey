@@ -3,7 +3,7 @@ const root=path.resolve(__dirname,'..');
 const w={BlueFox3D:{}};w.window=w;vm.runInNewContext(fs.readFileSync(path.join(root,'data/bible-catalog.js'),'utf8'),{window:w,console});
 const cat=w.BlueFox3D.BibleCatalog,by=new Map(cat.map(m=>[m.id,m]));
 for(const id of ['POSTDIP-01','TP-01','TP-02','TP-03','TP-04','TP-05','TP-06','TP-07','TP-08','TP-09']) assert(by.has(id),`${id} absente`);
-assert.equal(cat.length,302,'R-TP-A préservé + TP-10/TP-11 intégrées attendu');
+assert.equal(cat.length,310,'R-TP-A préservé + TP-10/TP-11 intégrées attendu');
 const post=by.get('POSTDIP-01');
 assert.deepStrictEqual(Array.from(post.prerequisites),['ENE-15-C','DIP-03','ENE-14']);
 assert(post.requiredFacts.includes('shared_civilization_knowledge'));

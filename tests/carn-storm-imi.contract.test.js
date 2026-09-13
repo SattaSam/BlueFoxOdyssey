@@ -4,9 +4,9 @@ function loadCatalog(p){const w={BlueFox3D:{}};w.window=w;vm.runInNewContext(fs.
 const base=loadCatalog(path.join(root,'BASE/data/bible-catalog.js'));
 const cand=loadCatalog(path.join(root,'data/bible-catalog.js'));
 assert.equal(base.length,300,'HEAD afb47e54 attendu à 300 missions');
-assert.equal(cand.length,308,'TERR CARN/STORM doit ajouter exactement 8 missions');
+assert.equal(cand.length,310,'Catalogue combiné attendu : 300 historiques + 8 CARN/STORM + TP-10/TP-11');
 const ids=[...Array.from({length:4},(_,i)=>`TERR-CARN-${String(i+1).padStart(2,'0')}`),...Array.from({length:4},(_,i)=>`TERR-STORM-${String(i+1).padStart(2,'0')}`)];
-const added=new Set(ids);const stripped=cand.filter(m=>!added.has(m.id));assert.equal(stripped.length,base.length);
+const added=new Set([...ids,'TP-10','TP-11']);const stripped=cand.filter(m=>!added.has(m.id));assert.equal(stripped.length,base.length);
 for(let i=0;i<base.length;i++){assert.equal(stripped[i].id,base[i].id,`ordre historique modifié à ${i}`);assert.deepStrictEqual(JSON.parse(JSON.stringify(stripped[i])),JSON.parse(JSON.stringify(base[i])),`mission HEAD modifiée: ${base[i].id}`);}
 const by=new Map(cand.map(m=>[m.id,m]));
 function checkArc(prefix,scene,cuo){
@@ -31,4 +31,4 @@ function checkArc(prefix,scene,cuo){
 checkArc('CARN','MSC-PREDATOR-FLORA-001','carnivorous_plant');
 checkArc('STORM','MSC-LOCAL-STORM-001','electrostatic_storm');
 assert(!JSON.stringify(cand.filter(m=>added.has(m.id))).includes('Sanctuaire_Orchidee_'),'Sanctuaire_Orchidee hors périmètre');
-console.log('PASS TERR CARN/STORM one-shot timed exposure + autonomous HEAD fixture + 300/300 preserved');
+console.log('PASS TERR CARN/STORM + TP coexistence, 300 missions historiques préservées');
