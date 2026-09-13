@@ -10627,6 +10627,149 @@
   });
 
 
+
+  // PROS — prospection, optimisation du réseau Harvest puis récupération technologique.
+  // L'arc réutilise exclusivement la géologie, le réseau drone et SAME-INSTANCE existants.
+  const PROS01 = Object.freeze({
+    id: "PROS-01",
+    title: "Le filon caché de la faille sèche",
+    description: "Prospecter une faille basaltique, comparer plusieurs matériaux puis prélever réellement l'échantillon résonant identifié sans introduire de filon ou de minerai fictif.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "south", count: 1, uniqueOnly: true }),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 189,
+    passivePriorityAxis: "collection",
+    ponderation: 0.9,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-BASALT-RIFT", persistent: true, spawnOnce: true, contextRole: "pros01DryRift" })
+      ]),
+      requiredObjects: Object.freeze([
+        Object.freeze({ type: "resonant_basalt", count: 1 })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Explorer 35 % de la zone de faille", action: "explore-zone", target: 35, params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 35, requiredMapFact: "bibleActivation:PROS-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "compare", title: "Comparer deux matériaux distincts de la faille", action: "analyze", target: 2, requires: Object.freeze(["explore"]), params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "strong_rock", "large_rock", "needle"]), distinctBy: "cuoType", requiredMapFact: "bibleActivation:PROS-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "resonance", title: "Caractériser un basalte résonant du filon", action: "analyze", target: 1, requires: Object.freeze(["compare"]), params: Object.freeze({ cuoType: "resonant_basalt", microSceneId: "MSC-CUSTOM-BASALT-RIFT", requiredMapFact: "bibleActivation:PROS-01", requiredMapField: "mapId" }) }),
+      Object.freeze({
+        slot: "sample",
+        title: "Prélever ce même échantillon résonant",
+        action: "collect",
+        target: 1,
+        requires: Object.freeze(["resonance"]),
+        params: Object.freeze({
+          cuoType: "resonant_basalt",
+          microSceneId: "MSC-CUSTOM-BASALT-RIFT",
+          requiredMapFact: "bibleActivation:PROS-01",
+          requiredMapField: "mapId",
+          relation: Object.freeze({
+            fromSlot: "resonance",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette faille concentre plusieurs matériaux dans un espace très étroit. Je veux comprendre lequel porte réellement la signature la plus intéressante."]),
+      completed: Object.freeze(["Le basalte résonant n'est pas seulement présent ici : j'ai isolé un échantillon dont le comportement mérite d'être exploité dans mon réseau technique."])
+    })
+  });
+
+  const PROS03 = Object.freeze({
+    id: "PROS-03",
+    title: "L'optimisation du réseau de drones",
+    description: "Utiliser l'échantillon et des ressources réelles pour optimiser un réseau Harvest dont le cycle déploiement, collecte et dépôt a déjà été validé par DRN-04, sans recréer ce cycle dans cette mission.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PROS-01", count: 1 }),
+    prerequisites: Object.freeze(["PROS-01", "DRN-04"]),
+    priority: 188,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 62,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "workbench", title: "Revenir à l'infrastructure pour préparer l'optimisation Harvest", action: "research", target: 1, params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "optimize", title: "Consacrer les matériaux à l'optimisation du réseau", action: "research", target: 1, requires: Object.freeze(["workbench"]), params: Object.freeze({
+        requiresShelter: true,
+        inventoryConsume: Object.freeze([
+          Object.freeze({ inventoryKey: "magnetic_ore", quantity: 20 }),
+          Object.freeze({ inventoryKey: "crystal", quantity: 10 }),
+          Object.freeze({ inventoryKey: "parts", quantity: 5 })
+        ])
+      }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "pros03-workbench", microSceneId: "MSC-CUSTOM-ETABLI-VIDE", fact: "pros03:workbench:v1", slot: "workbench", radius: 8 })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le réseau Harvest sait déjà se déployer, collecter et déposer son cargo. Je veux maintenant utiliser les matériaux mieux caractérisés de la faille pour améliorer cette infrastructure sans réinventer son fonctionnement."]),
+      completed: Object.freeze(["L'optimisation est intégrée au réseau existant. Le cycle Harvest reste celui déjà validé : déploiement, collecte et dépôt conservent leurs propriétaires actuels."])
+    })
+  });
+
+  const PROS02 = Object.freeze({
+    id: "PROS-02",
+    title: "Récupération du module ancien",
+    description: "Étudier un relais technologique abandonné puis récupérer exactement le module préalablement observé, sans introduire de mécanique de furtivité ou de vol.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "east", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["PROS-03"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 187,
+    passivePriorityAxis: "research",
+    ponderation: 0.9,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 42,
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([
+        Object.freeze({ id: "MSC-CUSTOM-COMPOSANT-RUIN", persistent: true, spawnOnce: true, contextRole: "pros02AncientRelay" })
+      ]),
+      requiredObjects: Object.freeze([
+        Object.freeze({ type: "relay_block", count: 1 })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Explorer 35 % du site technologique ancien", action: "explore-zone", target: 35, params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 35, requiredMapFact: "bibleActivation:PROS-02", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "observeModule", title: "Observer un module intact dans la ruine", action: "observe", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ cuoType: "relay_block", microSceneId: "MSC-CUSTOM-COMPOSANT-RUIN", requiredMapFact: "bibleActivation:PROS-02", requiredMapField: "mapId" }) }),
+      Object.freeze({
+        slot: "collectModule",
+        title: "Récupérer exactement ce même module",
+        action: "collect",
+        target: 1,
+        requires: Object.freeze(["observeModule"]),
+        params: Object.freeze({
+          cuoType: "relay_block",
+          microSceneId: "MSC-CUSTOM-COMPOSANT-RUIN",
+          requiredMapFact: "bibleActivation:PROS-02",
+          requiredMapField: "mapId",
+          relation: Object.freeze({
+            fromSlot: "observeModule",
+            sameBy: Object.freeze(["instanceId"])
+          })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Ce relais semble abandonné, mais certains modules sont encore intacts. Je vais d'abord documenter celui que je veux récupérer plutôt que démonter le site au hasard."]),
+      completed: Object.freeze(["J'ai récupéré exactement le module que j'avais étudié. Son contexte reste documenté, et je n'ai eu besoin ni de vol ni d'une mécanique de furtivité artificielle."])
+    })
+  });
+
+
   BF.BibleCatalog = Object.freeze([
     T01,
     T02,
@@ -10799,6 +10942,7 @@
     PHEN01, PHEN02, PHEN03, PHEN04, PHEN05, PHEN06,
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
+    PROS01, PROS03, PROS02,
     ANN04,
     ANN06,
     ANN03,
