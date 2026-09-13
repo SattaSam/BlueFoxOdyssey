@@ -11114,6 +11114,339 @@
   });
 
 
+  const POSTDIP01 = Object.freeze({
+    id: "POSTDIP-01",
+    title: "Les anciens avaient raison",
+    description: "Relire une ancienne mesure à la lumière du savoir partagé et du réseau énergétique, avec une voie PHEN facultative qui permet de revenir sur un site scientifique réellement étudié sans rendre PHEN obligatoire.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ENE-15-C", count: 1 }),
+    prerequisites: Object.freeze(["ENE-15-C", "DIP-03", "ENE-14"]),
+    requiredFacts: Object.freeze(["shared_civilization_knowledge"]),
+    priority: 202,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 96,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "returnTemple",
+        title: "Revenir au Temple des savoirs",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, targetMapFact: "dip03:temple-map", targetMapField: "mapId", distinctBy: "transition" })
+      }),
+      Object.freeze({
+        slot: "reread",
+        title: "Réexaminer la technologie ancienne avec les connaissances nouvelles",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["returnTemple"]),
+        params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-HUGE-TEMPLE", requiredMapFact: "dip03:temple-map", requiredMapField: "mapId" })
+      }),
+      Object.freeze({
+        slot: "phenReturn",
+        title: "Revenir sur un ancien site PHEN déjà mesuré",
+        action: "travel",
+        target: 1,
+        optional: true,
+        requires: Object.freeze(["reread"]),
+        params: Object.freeze({ eventDriven: true, targetMapFact: "phen07:site1", targetMapField: "mapId", distinctBy: "transition" })
+      }),
+      Object.freeze({
+        slot: "phenScout",
+        title: "Demander au Scout un nouveau relevé du site PHEN",
+        action: "observe",
+        target: 1,
+        optional: true,
+        requires: Object.freeze(["phenReturn"]),
+        params: Object.freeze({ actor: "scout", cuoTypes: Object.freeze(["energy_crystal", "crystal"]), requiredMapFact: "phen07:site1", requiredMapField: "mapId" })
+      }),
+      Object.freeze({
+        slot: "phenCompare",
+        title: "Comparer le nouveau relevé aux mesures historiques",
+        action: "research",
+        target: 1,
+        optional: true,
+        requires: Object.freeze(["phenScout"]),
+        params: Object.freeze({})
+      }),
+      Object.freeze({
+        slot: "conclusion",
+        title: "Reformuler ce que les Anciens savaient réellement lire",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["reread"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je pensais avoir déjà compris ce réseau. Les archives partagées disent surtout que j'avais compris trop tôt."]),
+      progress: Object.freeze([Object.freeze({ slot: "conclusion", atCount: 1, text: "Je croyais avoir mal mesuré. Non. Les mesures étaient bonnes. C'est ce que j'en avais conclu qui était trop simple. Les Anciens lisaient quelque chose que je ne savais pas encore voir." })]),
+      completed: Object.freeze(["Les anciennes mesures n'étaient pas fausses. Elles attendaient simplement le bon cadre pour devenir lisibles."])
+    })
+  });
+
+  const TP01 = Object.freeze({
+    id: "TP-01",
+    title: "Deux moitiés d’une même idée",
+    description: "Rapprocher la recherche sur le transfert de matière des deux Blueprints civilisationnels déjà acquis et de l'hypothèse persistante qui n'était jusque-là qu'une possibilité théorique.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "POSTDIP-01", count: 1 }),
+    prerequisites: Object.freeze(["POSTDIP-01", "ENE-15-C"]),
+    requiredFacts: Object.freeze(["civilization:research:teleport-hypothesis-v1"]),
+    priority: 201,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 102,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "compare", title: "Comparer les deux technologies civilisationnelles", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "join", title: "Relier stabilisation géographique et fragmentation-recomposition", action: "research", target: 1, requires: Object.freeze(["compare"]), params: Object.freeze({}) })
+    ]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "teleport_combined_principle",
+      category: "engineering",
+      label: "Principe combiné de téléportation",
+      description: "Associer le marquage géographique quantique à la fragmentation-recomposition sans encore débloquer un téléporteur opérationnel."
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les deux peuples ne m'ont pas donné un téléporteur. Ils m'ont donné deux moitiés qui n'avaient jamais été pensées ensemble."]),
+      completed: Object.freeze(["La position peut être stabilisée pendant que la matière est fragmentée puis reconstruite. L'idée tient enfin debout. Pas encore la machine."])
+    })
+  });
+
+  const TP02 = Object.freeze({
+    id: "TP-02",
+    title: "Fixer une position",
+    description: "Vérifier qu'une position balisée peut être relue à distance de manière reproductible par le Scout avant toute tentative de transfert matériel.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-01", count: 1 }),
+    prerequisites: Object.freeze(["TP-01", "BAL-03", "DRN-01"]),
+    priority: 200,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "remoteReadings", title: "Obtenir deux relevés Scout distants depuis une même position balisée", action: "observe", target: 2, requires: Object.freeze([]), params: Object.freeze({ actor: "scout", remote: true, distinctBy: "instanceId" }) }),
+      Object.freeze({ slot: "stabilize", title: "Formaliser le repère spatial stable", action: "research", target: 1, requires: Object.freeze(["remoteReadings"]), params: Object.freeze({}) })
+    ]),
+    rewards: Object.freeze([Object.freeze({ type: "research.knowledge", id: "teleport_position_fix", category: "engineering", label: "Position quantiquement fixée", description: "Une balise et des relevés Scout distants fournissent un repère suffisamment stable pour poursuivre les essais." })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Avant de déplacer quoi que ce soit, je dois être certain que l'autre point reste exactement le même quand je ne le regarde plus."]),
+      completed: Object.freeze(["Le Scout retrouve la même position à distance. Pour la première fois, le problème n'est plus de savoir où envoyer la matière."])
+    })
+  });
+
+  const TP03 = Object.freeze({
+    id: "TP-03",
+    title: "Défaire sans perdre",
+    description: "Tester sur de la matière inerte une fragmentation suivie d'une recomposition contrôlée à l'établi, avec consommation réelle d'échantillons.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-02", count: 1 }),
+    prerequisites: Object.freeze(["TP-02"]),
+    priority: 199,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "prepare", title: "Préparer les échantillons inertes", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "experiment", title: "Fragmenter puis recomposer les échantillons", action: "research", target: 1, requires: Object.freeze(["prepare"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "tp03-workbench-experiment",
+      microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+      fact: "tp03:experiment:v1",
+      slot: "experiment",
+      radius: 8,
+      inventoryConsume: Object.freeze({ inventoryKeys: Object.freeze(["crystal", "magnetic_ore", "resonant_basalt", "azure_ferrite"]), quantity: 3, missingMessage: "Il me faut trois échantillons minéraux ou cristallins réels pour cet essai." })
+    })]),
+    rewards: Object.freeze([Object.freeze({ type: "research.knowledge", id: "controlled_matter_recomposition", category: "engineering", label: "Recomposition matérielle contrôlée", description: "Fragmenter puis recomposer une petite quantité de matière inerte dans des conditions contrôlées." })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Déplacer de la matière n'a aucun sens si je ne peux pas d'abord la défaire sans perdre ce qui la définit."]),
+      completed: Object.freeze(["Les échantillons ont été sacrifiés pour l'essai, mais la structure recomposée reste cohérente. Je peux maintenant travailler sur la distance."])
+    })
+  });
+
+  const TP04 = Object.freeze({
+    id: "TP-04",
+    title: "Entre deux points",
+    description: "Réaliser un premier transfert très court de matière inerte entre deux points contrôlés de l'établi, sans déplacer BlueFox.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-03", count: 1 }),
+    prerequisites: Object.freeze(["TP-03"]),
+    priority: 198,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "shortTransfer", title: "Effectuer un transfert matériel à très courte portée", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "verify", title: "Vérifier la cohérence de la matière recomposée", action: "research", target: 1, requires: Object.freeze(["shortTransfer"]), params: Object.freeze({}) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "tp04-workbench-transfer",
+      microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+      fact: "tp04:shortTransfer:v1",
+      slot: "shortTransfer",
+      radius: 8,
+      inventoryConsume: Object.freeze({ inventoryKeys: Object.freeze(["crystal", "magnetic_ore", "resonant_basalt", "azure_ferrite"]), quantity: 4, missingMessage: "Il me faut quatre échantillons inertes pour mesurer les pertes du premier transfert." })
+    })]),
+    rewards: Object.freeze([Object.freeze({ type: "research.knowledge", id: "short_range_matter_transfer", category: "engineering", label: "Transfert matériel à courte portée", description: "Transférer une faible quantité de matière entre deux points proches sans transporter BlueFox." })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Quelques centimètres suffisent. Si ça échoue ici, la distance ne fera qu'empirer les choses."]),
+      completed: Object.freeze(["La matière a franchi l'écart sans que je bouge. Ce n'est encore qu'un essai de paillasse, mais c'est un vrai transfert."])
+    })
+  });
+
+  const TP05 = Object.freeze({
+    id: "TP-05",
+    title: "Plus loin que l’établi",
+    description: "Préparer un relais matériel réel sur une nouvelle map, laisser le Scout sur ce site balisé, revenir à l'établi puis faire confirmer à distance la signature du transfert par le Scout.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-04", count: 1 }),
+    prerequisites: Object.freeze(["TP-04", "BAL-03", "DRN-01"]),
+    priority: 197,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-COMPOSANT-RUIN", persistent: true, spawnOnce: true, contextRole: "tp05RemoteReceiver" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reachReceiver", title: "Rejoindre un nouveau site pour le récepteur distant", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "tp05:receiverMap", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "prepareReceiver", title: "Préparer le relais comme récepteur expérimental", action: "research", target: 1, requires: Object.freeze(["reachReceiver"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "returnWorkbench", title: "Revenir à l'établi sans rappeler le Scout", action: "travel", target: 1, requires: Object.freeze(["prepareReceiver"]), params: Object.freeze({ eventDriven: true, toMapId: "crystal", distinctBy: "transition" }) }),
+      Object.freeze({ slot: "transfer", title: "Envoyer un échantillon vers le récepteur distant", action: "research", target: 1, requires: Object.freeze(["returnWorkbench"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "remoteWitness", title: "Faire confirmer le transfert par le Scout distant", action: "observe", target: 1, requires: Object.freeze(["transfer"]), params: Object.freeze({ cuoType: "relay_block", actor: "scout", remote: true, requiredMapFact: "tp05:receiverMap", requiredMapField: "mapId" }) })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "tp05-receiver-proximity", microSceneId: "MSC-CUSTOM-COMPOSANT-RUIN", fact: "tp05:receiverPrepared:v1", slot: "prepareReceiver", radius: 6 }),
+      Object.freeze({ id: "tp05-workbench-transfer", microSceneId: "MSC-CUSTOM-ETABLI-VIDE", fact: "tp05:transfer:v1", slot: "transfer", radius: 8, inventoryConsume: Object.freeze({ inventoryKeys: Object.freeze(["crystal", "magnetic_ore", "resonant_basalt", "azure_ferrite"]), quantity: 5, missingMessage: "Il me faut cinq échantillons inertes pour tenter le transfert distant." }) })
+    ]),
+    rewards: Object.freeze([Object.freeze({ type: "research.knowledge", id: "remote_matter_transfer_witnessed", category: "engineering", label: "Transfert distant confirmé", description: "Un Scout resté sur une map balisée confirme à distance la signature du récepteur après un transfert lancé depuis l'établi." })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La distance n'est plus une idée. Je vais laisser le Scout de l'autre côté et lui demander de me dire ce qui arrive vraiment."]),
+      completed: Object.freeze(["Le Scout confirme la signature du relais après l'essai. La matière peut franchir plus que la largeur de mon établi."])
+    })
+  });
+
+  const TP06 = Object.freeze({
+    id: "TP-06",
+    title: "Un téléporteur, pas un portail",
+    description: "Formaliser une architecture hub-and-spoke : un futur téléporteur central et des balises distantes légères, sans autoriser de transfert balise-vers-balise.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-05", count: 1 }),
+    prerequisites: Object.freeze(["TP-05"]),
+    priority: 196,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "architecture", title: "Séparer le hub central des ancrages distants", action: "research", target: 1, requires: Object.freeze([]), params: Object.freeze({}) }),
+      Object.freeze({ slot: "safety", title: "Exclure explicitement les transferts balise-vers-balise", action: "research", target: 1, requires: Object.freeze(["architecture"]), params: Object.freeze({}) })
+    ]),
+    rewards: Object.freeze([Object.freeze({ type: "research.knowledge", id: "teleport_hub_spoke_architecture", category: "engineering", label: "Architecture téléporteur–balises", description: "Un hub central unique dessert des balises distantes ; les balises ne se téléportent jamais directement entre elles." })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Si chaque balise devient un portail complet, je construis un réseau impossible à stabiliser. Il faut un centre et des points d'ancrage."]),
+      completed: Object.freeze(["Un seul hub. Des balises comme coordonnées distantes. Aucun passage direct d'une balise à une autre. L'architecture est enfin claire."])
+    })
+  });
+
+  const TP07 = Object.freeze({
+    id: "TP-07",
+    title: "Un lieu assez stable",
+    description: "Choisir un nouveau territoire compatible pour le futur hub, l'explorer réellement puis conserver cette map comme site d'implantation. L'Atlas PHEN peut enrichir l'interprétation mais n'est pas requis.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-06", count: 1 }),
+    prerequisites: Object.freeze(["TP-06"]),
+    priority: 195,
+    passivePriorityAxis: "exploration",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reach", title: "Découvrir un territoire candidat", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "tp07:hubSite", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "explore", title: "Explorer au moins 25 % du site candidat", action: "explore-zone", target: 25, requires: Object.freeze(["reach"]), params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 25, requiredMapFact: "tp07:hubSite", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "validate", title: "Valider la stabilité du futur site", action: "research", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ requiredMapFact: "tp07:hubSite", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je ne cherche pas seulement de la place. Il faut un endroit que le réseau lui-même ne cherchera pas à déformer."]),
+      completed: Object.freeze(["Ce territoire est assez stable et assez accessible pour devenir mon point fixe. Je garde cette position."])
+    })
+  });
+
+  const TP08 = Object.freeze({
+    id: "TP-08",
+    title: "Le point fixe",
+    description: "Revenir sur le site choisi et placer manuellement la MSC ASTROLOGY comme fondation unique et persistante du futur téléporteur.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-07", count: 1 }),
+    prerequisites: Object.freeze(["TP-07"]),
+    priority: 194,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "returnHub", title: "Revenir sur le site retenu", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, targetMapFact: "tp07:hubSite", targetMapField: "mapId", distinctBy: "transition" }) }),
+      Object.freeze({ slot: "placeAnchor", title: "Placer manuellement le point fixe ASTROLOGY", action: "research", target: 1, requires: Object.freeze(["returnHub"]), params: Object.freeze({ catalogManaged: true }) })
+    ]),
+    persistentWorldScenes: Object.freeze([Object.freeze({
+      requiredMapFact: "tp07:hubSite",
+      requiredMapField: "mapId",
+      instanceId: "TP-08:teleporter-anchor:primary",
+      microSceneId: "MSC-CUSTOM-ASTROLOGY",
+      kind: "teleporter_site",
+      contextRole: "teleporter_anchor",
+      requiresSlotComplete: "returnHub",
+      progressSlotWhenResolved: "placeAnchor",
+      placement: Object.freeze({ mode: "player", label: "le point fixe" }),
+      persistent: true,
+      spawnOnce: true
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La théorie a besoin d'un endroit réel. Je vais choisir moi-même où poser ce point fixe ; il ne doit pas apparaître tout seul au milieu du terrain."]),
+      completed: Object.freeze(["ASTROLOGY est ancrée à l'endroit choisi. Ce n'est pas encore un téléporteur, mais le futur hub a maintenant un lieu réel et persistant."])
+    })
+  });
+
+  const TP09 = Object.freeze({
+    id: "TP-09",
+    title: "Ce que coûte un passage",
+    description: "Vérifier un réseau réel de quatre maps balisées par des relevés Scout distants et réunir le stock physique nécessaire au futur assemblage sans consommer les balises comme de simples ressources.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-08", count: 1 }),
+    prerequisites: Object.freeze(["TP-08"]),
+    priority: 193,
+    passivePriorityAxis: "logistics",
+    ponderation: 1,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "networkProof", title: "Confirmer quatre maps balisées par le Scout distant", action: "observe", target: 4, requires: Object.freeze([]), params: Object.freeze({ actor: "scout", remote: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "minerals", title: "Disposer d'au moins 100 unités de minerais et cristaux", action: "research", target: 100, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "rareMinerals", title: "Disposer d'au moins 30 unités de matériaux énergétiques ou rares", action: "research", target: 30, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "parts", title: "Disposer de 50 composants", action: "research", target: 50, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "cores", title: "Disposer de 20 cores", action: "research", target: 20, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "fibers", title: "Disposer de 100 fibres", action: "research", target: 100, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "accumulators", title: "Disposer de 10 accumulateurs", action: "research", target: 10, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "plantBiocapital", title: "Disposer de 50 unités de biocapital végétal Thermosève/fluorescent", action: "research", target: 50, requires: Object.freeze(["networkProof"]), params: Object.freeze({ catalogManaged: true }) }),
+      Object.freeze({ slot: "costSynthesis", title: "Verrouiller le contrat matériel du futur passage", action: "research", target: 1, requires: Object.freeze(["minerals", "rareMinerals", "parts", "cores", "fibers", "accumulators", "plantBiocapital"]), params: Object.freeze({}) })
+    ]),
+    stockBackedSlots: Object.freeze([
+      Object.freeze({ slot: "minerals", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium", "crystal", "energy_crystal"]), maximum: 100 }),
+      Object.freeze({ slot: "rareMinerals", inventoryKeys: Object.freeze(["stellar_iridium", "energy_crystal"]), maximum: 30 }),
+      Object.freeze({ slot: "parts", inventoryKey: "parts", maximum: 50 }),
+      Object.freeze({ slot: "cores", inventoryKey: "core", maximum: 20 }),
+      Object.freeze({ slot: "fibers", inventoryKey: "fiber", maximum: 100 }),
+      Object.freeze({ slot: "accumulators", inventoryKey: "accumulator", maximum: 10 }),
+      Object.freeze({ slot: "plantBiocapital", inventoryKey: "biocapital", maximum: 50 })
+    ]),
+    rewards: Object.freeze([Object.freeze({ type: "research.knowledge", id: "teleporter_material_contract", category: "engineering", label: "Contrat matériel du téléporteur", description: "Le réseau de quatre balises reste déployé ; le futur assemblage exige au moins 100 minerais/cristaux, 30 matériaux énergétiques ou rares, 50 composants, 20 cores, 100 fibres, 10 accumulateurs et 50 unités de biocapital végétal. Aucune biomasse adaptative n'est requise." })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le réseau existe. Maintenant je dois regarder le coût en face : un passage stable ne se construira pas avec trois morceaux de métal et une bonne idée."]),
+      completed: Object.freeze(["Quatre points balisés répondent, et le stock nécessaire est enfin réuni. Les balises restent en place : elles sont le réseau, pas des pièces à démonter."])
+    })
+  });
+
   const CART02 = Object.freeze({
     id: "CART-02",
     title: "La traversée de la brume toxique",
@@ -11392,6 +11725,7 @@
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     PROS01, PROS03, PROS02,
+    POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09,
     CART02, CART01, CART03,
     ANN04,
     ANN06,

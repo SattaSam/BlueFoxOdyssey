@@ -2294,14 +2294,25 @@
               .map(String)
               .filter(Boolean);
             if (requiredSlots.some((slot) => !tree.find?.(`${mission.id}:${slot}`)?.isComplete)) continue;
-            const definition = this.persistentWorldSceneMap(rawSpec?.mapId);
+            const requiredMapFact = String(rawSpec?.requiredMapFact || "").trim();
+            const requiredMapField = String(rawSpec?.requiredMapField || "mapId").trim();
+            const requiredMap = requiredMapFact
+              ? manager.memory.getFact?.(requiredMapFact, null)
+              : null;
+            const targetMapId = String(
+              rawSpec?.mapId ||
+              requiredMap?.[requiredMapField] ||
+              requiredMap?.mapId ||
+              ""
+            );
+            const definition = this.persistentWorldSceneMap(targetMapId);
             if (!definition || !rawSpec?.microSceneId) continue;
             if (rawSpec.mapFact) {
               const factKey = String(rawSpec.mapFact);
               const existingMapFact = manager.memory.getFact?.(factKey, null);
-              if (String(existingMapFact?.mapId || "") !== String(rawSpec.mapId || "")) {
+              if (String(existingMapFact?.mapId || "") !== targetMapId) {
                 manager.memory.setFact?.(factKey, {
-                  mapId: String(rawSpec.mapId),
+                  mapId: targetMapId,
                   missionId: mission.id,
                   updatedAt: Date.now()
                 });
@@ -2311,12 +2322,49 @@
             }
             const spec = {
               ...rawSpec,
+              mapId: targetMapId,
               missionId: mission.id,
               persistent: rawSpec.persistent !== false,
               spawnOnce: rawSpec.spawnOnce !== false
             };
             const before = this.persistentWorldSceneRecord(definition, spec);
-            const ensured = BF.PersistentMicroScenes.ensure(definition, spec);
+            if (!before && String(rawSpec?.placement?.mode || "") === "player") {
+              const engine = BF.currentEngine;
+              if (String(engine?.currentMapId || "") !== targetMapId) continue;
+              const placementId = `persistent-world-scene:${mission.id}:${rawSpec.instanceId || rawSpec.microSceneId}`;
+              this.beginMicroScenePlacement({
+                id: placementId,
+                missionId: mission.id,
+                mapId: targetMapId,
+                microSceneId: rawSpec.microSceneId,
+                kind: rawSpec.kind || rawSpec.contextRole || "persistent-scene",
+                label: rawSpec?.placement?.label || "structure",
+                cancelMessage: rawSpec?.placement?.cancelMessage || "Placement annulé. La mission reste active.",
+                onInstall: (placement) => {
+                  const rotation = Array.isArray(placement?.rotation)
+                    ? Number(placement.rotation[1]) || 0
+                    : Number(placement?.rotation) || 0;
+                  const placed = {
+                    ...spec,
+                    anchor: placement?.anchor ? clone(placement.anchor) : null,
+                    rotation,
+                    fixedAnchor: true
+                  };
+                  const spawned = BF.PersistentMicroScenes?.spawnRecord?.(
+                    engine?.THREE,
+                    engine?.currentMap,
+                    definition,
+                    placed
+                  );
+                  if (!spawned) return false;
+                  BF.PersistentMicroScenes.ensure(definition, placed);
+                  this.reconcilePersistentWorldScenes();
+                  return true;
+                }
+              });
+              continue;
+            }
+            const ensured = before || BF.PersistentMicroScenes.ensure(definition, spec);
             if (!before && ensured) changed = true;
             const record = this.persistentWorldSceneRecord(definition, spec) || ensured;
             if (!record?.resolvedAt || !rawSpec.progressSlotWhenResolved) continue;
