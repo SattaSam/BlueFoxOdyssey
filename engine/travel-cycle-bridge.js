@@ -44,6 +44,14 @@
         normalize(params.toMapId) !== normalize(detail.toMapId)) {
       return false;
     }
+    if (params.transitionSource != null &&
+        normalize(params.transitionSource) !== normalize(detail.source)) {
+      return false;
+    }
+    if (params.transitionMode != null &&
+        normalize(params.transitionMode) !== normalize(detail.mode)) {
+      return false;
+    }
     if (params.toDiscoveryIndex != null) {
       const discoveryIndex = Number(
         BF.maps?.[detail.toMapId]?.generator?.discoveryIndex
@@ -294,7 +302,9 @@
       toMapId,
       mapId: toMapId,
       direction: detail.direction || null,
-      isNew: detail.isNew === true
+      isNew: detail.isNew === true,
+      source: detail.source || null,
+      mode: detail.mode || null
     });
   };
 

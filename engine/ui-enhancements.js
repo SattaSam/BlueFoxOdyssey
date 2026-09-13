@@ -1738,6 +1738,30 @@
       panel.querySelector(".drawer-close")?.click();
     });
     content.append(state, title, biome, resources, synthesis, button);
+
+    const teleportAction = global.BlueFox3D.SpecialObjectRuntime?.teleportUiAction?.(mapId);
+    if (teleportAction) {
+      const teleportButton = document.createElement("button");
+      teleportButton.type = "button";
+      teleportButton.className = "planet-teleporter-action";
+      teleportButton.disabled = teleportAction.enabled !== true;
+      teleportButton.textContent = teleportAction.label;
+      teleportButton.addEventListener("click", async () => {
+        teleportButton.disabled = true;
+        const runtime = global.BlueFox3D.SpecialObjectRuntime;
+        const success = teleportAction.type === "activate"
+          ? runtime?.activateTeleporter?.()
+          : teleportAction.type === "calibrate"
+            ? await runtime?.calibrateTeleporter?.(teleportAction.targetMapId)
+            : await runtime?.teleportTo?.(teleportAction.targetMapId);
+        if (success) {
+          panel.querySelector(".drawer-close")?.click();
+        } else {
+          setExploredMapDetail(panel, mapId, catalogMap);
+        }
+      });
+      content.appendChild(teleportButton);
+    }
     detail.append(image, content);
 
     panel.querySelectorAll(".planet-map-zone").forEach((zone) => {
@@ -1983,6 +2007,7 @@
         futureMarkers.forEach((marker) => {
           const type = typeof marker === "string" ? marker : marker?.type;
           if (type === "beacon") markers.push(["beacon", marker.label || "Balise"]);
+          if (type === "teleporter") markers.push(["teleporter", marker.label || "Téléporteur"]);
           if (type === "drone") markers.push(["drone", marker.label || "Drone"]);
         });
         const markerLayer = document.createElement("span");
@@ -1997,6 +2022,13 @@
           }
           marker.title = title;
           marker.setAttribute("aria-label", title);
+          if (type === "teleporter") {
+            marker.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50.0,4.0 58.7,32.0 86.0,21.3 69.5,45.5 94.8,60.2 65.6,62.5 70.0,91.4 50.0,70.0 30.0,91.4 34.4,62.5 5.2,60.2 30.5,45.5 14.0,21.3 41.3,32.0" fill="currentColor"/></svg>`;
+            marker.style.display = "inline-grid";
+            marker.style.placeItems = "center";
+            marker.style.color = "#d9fbff";
+            marker.style.filter = "drop-shadow(0 0 4px rgba(132,238,255,.95))";
+          }
           markerLayer.appendChild(marker);
         });
         const label = document.createElement("b");

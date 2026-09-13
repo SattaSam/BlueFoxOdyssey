@@ -65,13 +65,27 @@
       const engine = BF.currentEngine;
       const position = engine?.character?.root?.position;
       if (!engine || !position || engine.disposed) return false;
+      const guard = engine.explorationRelocationGuard;
+      let suppressReveal = false;
+      if (guard && String(guard.mapId || "") === String(engine.currentMapId || "")) {
+        const distance = Math.hypot(
+          Number(position.x) - Number(guard.x),
+          Number(position.z) - Number(guard.z)
+        );
+        if (distance <= Math.max(0.75, Number(guard.releaseDistance) || 0.9)) {
+          suppressReveal = true;
+        } else {
+          engine.explorationRelocationGuard = null;
+        }
+      }
       return this.recordPosition({
         mapId: engine.currentMapId,
         planetId: engine.currentPlanetId || "planet-1",
         zoneId: engine.currentZoneIndex,
         x: position.x,
         z: position.z,
-        bounds: engine.currentMap?.bounds || 27
+        bounds: engine.currentMap?.bounds || 27,
+        suppressReveal
       });
     }
 
@@ -372,6 +386,13 @@
       const x = Number(detail.x);
       const z = Number(detail.z);
       const sector = this.sectorFor(map, x, z);
+      if (detail.suppressReveal === true) {
+        // Un repositionnement synthétique (téléportation, restauration contrôlée,
+        // etc.) fixe seulement la nouvelle origine de déplacement. Il ne révèle
+        // ni secteur, ni zone, ni distance parcourue.
+        map.lastPosition = { x, z, at: Date.now() };
+        return false;
+      }
       const revealRadius = Math.max(0, Number(detail.revealRadius) || map.revealRadius);
       map.revealRadius = revealRadius;
       const newlyVisited = this.sectorsWithinRadius(map, x, z, revealRadius)

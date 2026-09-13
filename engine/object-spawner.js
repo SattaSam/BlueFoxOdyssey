@@ -188,6 +188,17 @@
             options.palette || this.palette,
             entry.variant || 0
           );
+          // ASTROLOGY est la chambre de téléportation : ses arches doivent être
+          // visuellement présentes mais traversables. L'exception reste locale
+          // à cette MSC ; ObjectLibrary conserve le contrat collider des arches
+          // partout ailleurs.
+          if (
+            template.id === "MSC-CUSTOM-ASTROLOGY" &&
+            entry.type === "arch" &&
+            Array.isArray(instance.colliders)
+          ) {
+            instance.colliders.length = 0;
+          }
           const objectRoot = instance.root;
           const objectPivot = new this.THREE.Group();
           const offset = entry.offset || [0, 0, 0];

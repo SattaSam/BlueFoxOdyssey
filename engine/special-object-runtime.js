@@ -29,7 +29,14 @@
     scout_drone: Object.freeze({ accumulator: 1, core: 2, parts: 10, energy_crystal: 2, magnetic_ore: 12 }),
     harvest_drone: Object.freeze({ accumulator: 1, core: 2, parts: 15, energy_crystal: 3, magnetic_ore: 30, stellar_iridium: 6 })
   });
-  const defaultState = () => ({ version: 1, drones: {}, harvestFleet: [], resources: {}, lastRuntimeAt: Date.now() });
+  const defaultState = () => ({
+    version: 1,
+    drones: {},
+    harvestFleet: [],
+    resources: {},
+    teleporter: { active: false, activatedAt: 0, calibratedAt: 0, calibratedBeaconMapId: null, calibratedNetworkSize: 0, firstOutboundAt: 0 },
+    lastRuntimeAt: Date.now()
+  });
   const loadState = () => {
     try {
       const saved = JSON.parse(global.localStorage.getItem(STORAGE_KEY) || "null");
@@ -41,7 +48,8 @@
           harvestFleet: Array.isArray(saved.harvestFleet)
             ? saved.harvestFleet.map((entry) => ({ ...entry, cargo: { ...(entry?.cargo || {}) } }))
             : [],
-          resources: { ...(saved.resources || {}) }
+          resources: { ...(saved.resources || {}) },
+          teleporter: { ...defaultState().teleporter, ...(saved.teleporter || {}) }
         }
         : defaultState();
     } catch {
@@ -1018,6 +1026,7 @@
 
   let lastBehaviorUpdate = 0;
   const update = (scene, elapsed) => {
+    updateTeleportFx();
     runOfflineCatchup();
     ensureDeployedDroneVisual("scout_drone");
     harvestFleet().forEach((drone) =>
@@ -1435,6 +1444,415 @@
     return true;
   };
 
+  const sleep = (milliseconds) => new Promise((resolve) => global.setTimeout(resolve, milliseconds));
+  let teleportInProgress = false;
+  let activeTeleportFx = null;
+
+  const hubRecord = () => {
+    if (!BF.PersistentMicroScenes?.list) return null;
+    for (const [mapId, definition] of Object.entries(BF.maps || {})) {
+      const record = BF.PersistentMicroScenes.list(definition).find((candidate) =>
+        candidate?.persistent !== false &&
+        String(candidate?.microSceneId || "") === "MSC-CUSTOM-ASTROLOGY" &&
+        String(candidate?.contextRole || candidate?.kind || "") === "teleporter_anchor"
+      ) || BF.PersistentMicroScenes.list(definition).find((candidate) =>
+        candidate?.persistent !== false &&
+        String(candidate?.microSceneId || "") === "MSC-CUSTOM-ASTROLOGY" &&
+        String(candidate?.kind || "") === "teleporter_site"
+      );
+      if (record?.anchor) return { ...record, mapId: String(record.mapId || mapId) };
+    }
+    return null;
+  };
+
+  const teleporterActive = () => state.teleporter?.active === true;
+  const missionStatus = (missionId) =>
+    BF.currentEngine?.missionManager?.memory?.state?.missionLifecycle?.[missionId]?.status || null;
+  const teleporterCalibrated = () => Boolean(state.teleporter?.calibratedAt && state.teleporter?.calibratedBeaconMapId);
+  const discoveredMap = (mapId) => BF.currentEngine?.discoveredMaps?.has?.(String(mapId || "")) === true;
+  const teleportDestinations = () => {
+    const hub = hubRecord();
+    if (!hub) return [];
+    return Object.keys(BF.maps || {})
+      .filter((mapId) => mapId !== hub.mapId && discoveredMap(mapId) && hasDeployedBeacon(mapId))
+      .map((mapId) => {
+        const record = deployedBeaconRecords(mapId)[0];
+        return record?.anchor ? { mapId, anchor: { ...record.anchor }, instanceId: record.instanceId || null } : null;
+      })
+      .filter(Boolean);
+  };
+
+  const TELEPORTER_MINERAL_KEYS = Object.freeze([
+    "magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium", "crystal", "energy_crystal"
+  ]);
+  const TELEPORTER_RARE_KEYS = Object.freeze(["stellar_iridium", "energy_crystal"]);
+  const inventoryTotal = (keys) => keys.reduce((sum, key) => sum + Math.max(0, Number(BF.availableInventory?.(key)) || 0), 0);
+  const canAssembleTeleporter = () =>
+    inventoryTotal(TELEPORTER_MINERAL_KEYS) >= 100 &&
+    inventoryTotal(TELEPORTER_RARE_KEYS) >= 30 &&
+    (BF.availableInventory?.("parts") || 0) >= 50 &&
+    (BF.availableInventory?.("core") || 0) >= 20 &&
+    (BF.availableInventory?.("fiber") || 0) >= 100 &&
+    (BF.availableInventory?.("accumulator") || 0) >= 10 &&
+    (BF.availableInventory?.("biocapital") || 0) >= 50;
+
+  const playerNear = (anchor, radius) => {
+    const player = BF.currentEngine?.character?.root?.position;
+    if (!player || !anchor) return false;
+    return Math.hypot(player.x - Number(anchor.x || 0), player.z - Number(anchor.z || 0)) <= radius;
+  };
+
+  const teleportBusy = () => {
+    const engine = BF.currentEngine;
+    if (!engine?.character) return true;
+    const target = engine.character.target;
+    const moving = target?.distanceTo
+      ? engine.character.root.position.distanceTo(target) > 0.2
+      : false;
+    return Boolean(
+      teleportInProgress || engine.transitioning || engine.pendingInteraction ||
+      engine.currentRoutine || engine.pendingZoneExploration || engine.pendingGate ||
+      engine.missionManager?.currentAction || moving
+    );
+  };
+
+  const hubHaloRadius = () => {
+    const template = BF.MicroScenes?.get?.("MSC-CUSTOM-ASTROLOGY");
+    const ring = (template?.objects || [])
+      .filter((entry) => entry?.type === "eroded_monolith")
+      .map((entry) => Math.hypot(Number(entry.offset?.[0]) || 0, Number(entry.offset?.[2]) || 0))
+      .filter((distance) => distance > 0);
+    const perimeter = ring.length ? Math.min(...ring) : Math.max(3.2, Number(template?.radius) || 5.5);
+    return Math.max(2.6, perimeter - 0.45);
+  };
+
+  const disposeTeleportFx = () => {
+    const fx = activeTeleportFx;
+    activeTeleportFx = null;
+    if (!fx?.group) return false;
+    if (BF.disposeObject) BF.disposeObject(fx.group);
+    else fx.group.removeFromParent?.();
+    return true;
+  };
+
+  const startTeleportFx = (kind, anchor, options = {}) => {
+    disposeTeleportFx();
+    const engine = BF.currentEngine;
+    const THREE = engine?.THREE;
+    const scene = engine?.currentMap?.group;
+    if (!THREE || !scene || !anchor) return null;
+    const group = new THREE.Group();
+    group.name = `TeleportFx:${kind}`;
+    group.position.set(Number(anchor.x) || 0, Number(anchor.y) || 0, Number(anchor.z) || 0);
+    group.userData.teleportFx = true;
+    const maxRadius = kind.includes("hub") ? hubHaloRadius() : 1.45;
+    const haloMaterial = new THREE.MeshBasicMaterial({
+      color: 0xd8f7ff,
+      transparent: true,
+      opacity: 0.12,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(maxRadius, 24, 16), haloMaterial);
+    halo.name = "TeleportHalo";
+    halo.scale.set(0.08, 0.08, 0.08);
+    halo.position.y = kind.includes("hub") ? 1.15 : 0.85;
+    group.add(halo);
+    const light = new THREE.PointLight(0xc9f5ff, 0, kind.includes("hub") ? maxRadius * 3 : 7, 1.4);
+    light.name = "TeleportAmbientLight";
+    light.position.y = 1.6;
+    group.add(light);
+    const bars = [];
+    const barCount = kind.includes("hub") ? 4 : 3;
+    for (let index = 0; index < barCount; index += 1) {
+      const material = new THREE.MeshBasicMaterial({
+        color: index % 2 ? 0xbdeeff : 0xffffff,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.16, 3.4 + (index % 3) * 0.7, 8), material);
+      bar.name = "TeleportBar";
+      const angle = (Math.PI * 2 * index) / barCount;
+      const radius = kind === "hub-return" ? maxRadius * (0.88 + (index % 2) * 0.12) : maxRadius * 0.58;
+      bar.userData = { angle, baseRadius: radius, index };
+      bar.position.set(Math.cos(angle) * radius, 1.6, Math.sin(angle) * radius);
+      group.add(bar);
+      bars.push(bar);
+    }
+    scene.add(group);
+    activeTeleportFx = {
+      kind, group, halo, light, bars, startedAt: Date.now(), maxRadius,
+      duration: Number(options.duration) || (kind === "hub-return" ? 3200 : kind === "hub-departure" ? 3600 : 1800)
+    };
+    return activeTeleportFx;
+  };
+
+  const updateTeleportFx = () => {
+    const fx = activeTeleportFx;
+    if (!fx) return;
+    const age = Date.now() - fx.startedAt;
+    const t = Math.max(0, Math.min(1, age / Math.max(1, fx.duration)));
+    if (fx.kind === "hub-departure") {
+      const grow = Math.max(0, Math.min(1, age / 2000));
+      const saturation = Math.max(0, Math.min(1, (age - 1600) / 1000));
+      const breaking = Math.max(0, Math.min(1, (age - 2500) / 1000));
+      const scale = 0.08 + grow * 0.92;
+      fx.halo.scale.set(scale, 0.62 * scale, scale);
+      fx.halo.material.opacity = breaking > 0 ? 0.92 * (1 - breaking) : 0.16 + saturation * 0.76;
+      fx.light.intensity = (4 + saturation * 22) * (1 - breaking * 0.7);
+      fx.bars.forEach((bar) => {
+        const index = bar.userData.index;
+        const radius = fx.maxRadius * (0.55 + breaking * (0.55 + (index % 2) * 0.08));
+        bar.position.x = Math.cos(bar.userData.angle) * radius;
+        bar.position.z = Math.sin(bar.userData.angle) * radius;
+        bar.position.y = 1.6 + breaking * ((index % 2 ? 1 : -1) * (0.8 + (index % 3) * 0.35));
+        bar.material.opacity = breaking * (1 - breaking) * 1.7;
+      });
+    } else if (fx.kind === "hub-return") {
+      const converge = Math.max(0, Math.min(1, age / 1500));
+      const solid = Math.max(0, Math.min(1, (age - 1200) / 650));
+      const dissolve = Math.max(0, Math.min(1, (age - 1900) / 1250));
+      fx.bars.forEach((bar) => {
+        const index = bar.userData.index;
+        const radius = fx.maxRadius * (1.05 - converge * 0.52 + (index % 2) * 0.04);
+        bar.position.x = Math.cos(bar.userData.angle) * radius;
+        bar.position.z = Math.sin(bar.userData.angle) * radius;
+        bar.position.y = 1.6 + (1 - converge) * ((index % 2 ? 1 : -1) * 1.15);
+        bar.material.opacity = (1 - solid * 0.75) * (1 - dissolve);
+      });
+      const scale = Math.max(0.05, solid * (1 - dissolve * 0.82));
+      fx.halo.scale.set(scale, 0.62 * scale, scale);
+      fx.halo.material.opacity = solid * 0.9 * (1 - dissolve);
+      fx.light.intensity = (6 + solid * 20) * (1 - dissolve);
+    } else {
+      const pulse = Math.sin(Math.min(1, t) * Math.PI);
+      fx.halo.scale.set(0.25 + pulse * 0.75, 0.45 + pulse * 0.4, 0.25 + pulse * 0.75);
+      fx.halo.material.opacity = pulse * 0.72;
+      fx.light.intensity = pulse * 11;
+      fx.bars.forEach((bar, index) => {
+        const radius = fx.maxRadius * (0.35 + t * 0.45);
+        bar.position.x = Math.cos(bar.userData.angle) * radius;
+        bar.position.z = Math.sin(bar.userData.angle) * radius;
+        bar.position.y = 1 + t * (index % 2 ? 1.2 : -0.35);
+        bar.material.opacity = pulse * 0.65;
+      });
+    }
+    if (age >= fx.duration) disposeTeleportFx();
+  };
+
+  const activateTeleporter = () => {
+    const engine = BF.currentEngine;
+    const hub = hubRecord();
+    if (!hub || !engine || String(engine.currentMapId || "") !== hub.mapId) return false;
+    if (!playerNear(hub.anchor, 7)) {
+      announce("BlueFox doit être au cœur d’ASTROLOGY pour assembler le téléporteur.");
+      return false;
+    }
+    const lifecycleStatus = missionStatus("TP-10");
+    if (lifecycleStatus !== "active" && lifecycleStatus !== "completed") return false;
+    if (teleporterActive()) return true;
+    if (!canAssembleTeleporter()) {
+      announce("Assemblage impossible : le stock validé par TP-09 n’est plus complet.");
+      return false;
+    }
+    if (lifecycleStatus === "active" && BF.bibleRuntime?.progressRuntimeValidationSlot) {
+      if (!BF.bibleRuntime.progressRuntimeValidationSlot("TP-10", "assemble", 1)) return false;
+    }
+    state.teleporter = {
+      ...state.teleporter,
+      active: true,
+      activatedAt: Date.now(),
+      calibratedAt: 0,
+      calibratedBeaconMapId: null,
+      calibratedNetworkSize: 0,
+      firstOutboundAt: 0
+    };
+    saveState();
+    startTeleportFx("hub-calibration", hub.anchor, { duration: 1800 });
+    announce("ASTROLOGY est active : le hub attend maintenant sa calibration sur le réseau de balises.");
+    global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
+    return true;
+  };
+
+  const calibrateTeleporter = async (targetMapId) => {
+    const engine = BF.currentEngine;
+    const hub = hubRecord();
+    const target = String(targetMapId || "");
+    if (!engine || !hub || !teleporterActive() || teleportBusy()) return false;
+    if (missionStatus("TP-11") !== "active") return false;
+    if (String(engine.currentMapId || "") !== hub.mapId || !playerNear(hub.anchor, 7)) return false;
+    const destinations = teleportDestinations();
+    if (destinations.length < 4) {
+      announce("Calibration impossible : quatre balises persistantes sur des maps connues sont nécessaires.");
+      return false;
+    }
+    const destination = destinations.find((entry) => entry.mapId === target);
+    if (!destination) return false;
+    teleportInProgress = true;
+    try {
+      // TP-11 : synchronisation réelle du réseau et transfert préalable d’une
+      // matière inerte. BlueFox reste au hub pendant ce test.
+      startTeleportFx("hub-calibration", hub.anchor, { duration: 2300 });
+      if (!BF.bibleRuntime?.progressRuntimeValidationSlot?.("TP-11", "calibrateNetwork", 1)) {
+        disposeTeleportFx();
+        return false;
+      }
+      await sleep(2300);
+      if (!BF.bibleRuntime?.progressRuntimeValidationSlot?.("TP-11", "inertTransfer", 1)) {
+        disposeTeleportFx();
+        return false;
+      }
+      state.teleporter = {
+        ...state.teleporter,
+        calibratedAt: Date.now(),
+        calibratedBeaconMapId: target,
+        calibratedNetworkSize: destinations.length,
+        firstOutboundAt: 0
+      };
+      saveState();
+      disposeTeleportFx();
+      announce("Transfert inerte confirmé. Cette balise est synchronisée pour le premier passage de BlueFox.");
+      global.dispatchEvent(new CustomEvent("bluefox:special-objects-changed", { detail: snapshot() }));
+      return true;
+    } finally {
+      disposeTeleportFx();
+      teleportInProgress = false;
+    }
+  };
+
+  const teleportUiAction = (selectedMapId) => {
+    const engine = BF.currentEngine;
+    const hub = hubRecord();
+    const selected = String(selectedMapId || "");
+    if (!engine || !hub || !selected) return null;
+    const current = String(engine.currentMapId || "");
+    const tp10Status = missionStatus("TP-10");
+    const tp11Status = missionStatus("TP-11");
+    if (current === hub.mapId && selected === hub.mapId && !teleporterActive()) {
+      if (tp10Status === "active") {
+        return {
+          type: "activate",
+          label: "Assembler et activer le téléporteur",
+          enabled: playerNear(hub.anchor, 7) && !teleportBusy() && canAssembleTeleporter()
+        };
+      }
+    }
+    if (!teleporterActive()) return null;
+    if (current === hub.mapId) {
+      const destination = teleportDestinations().find((entry) => entry.mapId === selected);
+      if (!destination) return null;
+      if (tp11Status === "active" && !teleporterCalibrated()) {
+        return {
+          type: "calibrate",
+          targetMapId: selected,
+          label: "Synchroniser cette balise et transférer une matière inerte",
+          enabled: teleportDestinations().length >= 4 && playerNear(hub.anchor, 7) && !teleportBusy()
+        };
+      }
+      const firstPassReady = tp11Status === "completed" || (
+        tp11Status === "active" &&
+        teleporterCalibrated() &&
+        String(state.teleporter.calibratedBeaconMapId || "") === selected
+      );
+      if (!firstPassReady) return null;
+      return {
+        type: "teleport",
+        targetMapId: selected,
+        label: `Se téléporter vers ${BF.maps?.[selected]?.name || selected}`,
+        enabled: playerNear(hub.anchor, 7) && !teleportBusy()
+      };
+    }
+    if (hasDeployedBeacon(current) && selected === hub.mapId) {
+      const source = deployedBeaconRecords(current)[0];
+      const returnReady = tp11Status === "completed" || (
+        tp11Status === "active" &&
+        Boolean(state.teleporter?.firstOutboundAt) &&
+        String(state.teleporter?.calibratedBeaconMapId || "") === current
+      );
+      if (!returnReady) return null;
+      return {
+        type: "teleport",
+        targetMapId: hub.mapId,
+        label: "Retourner au téléporteur central",
+        enabled: Boolean(source?.anchor && playerNear(source.anchor, 4.5) && !teleportBusy())
+      };
+    }
+    return null;
+  };
+
+  const teleportTo = async (targetMapId) => {
+    const engine = BF.currentEngine;
+    const hub = hubRecord();
+    const target = String(targetMapId || "");
+    if (!engine || !hub || !teleporterActive() || teleportBusy()) return false;
+    const tp11Status = missionStatus("TP-11");
+    if (tp11Status !== "active" && tp11Status !== "completed") return false;
+    const current = String(engine.currentMapId || "");
+    let sourceRecord = null;
+    let targetRecord = null;
+    let outbound = false;
+    if (current === hub.mapId) {
+      targetRecord = teleportDestinations().find((entry) => entry.mapId === target) || null;
+      if (!targetRecord || !playerNear(hub.anchor, 7)) return false;
+      if (
+        tp11Status === "active" &&
+        (!teleporterCalibrated() || String(state.teleporter.calibratedBeaconMapId || "") !== target)
+      ) return false;
+      sourceRecord = hub;
+      outbound = true;
+    } else if (target === hub.mapId && hasDeployedBeacon(current)) {
+      sourceRecord = deployedBeaconRecords(current)[0] || null;
+      targetRecord = hub;
+      if (!sourceRecord?.anchor || !playerNear(sourceRecord.anchor, 4.5)) return false;
+      if (
+        tp11Status === "active" &&
+        (!state.teleporter?.firstOutboundAt || String(state.teleporter?.calibratedBeaconMapId || "") !== current)
+      ) return false;
+    } else {
+      return false;
+    }
+    if (!discoveredMap(target) || !targetRecord?.anchor) return false;
+
+    teleportInProgress = true;
+    try {
+      const success = await engine.transitionToKnownMap(target, {
+        targetAnchor: targetRecord.anchor,
+        source: "teleporter",
+        mode: "teleport",
+        direction: outbound ? "teleport-outbound" : "teleport-return",
+        minimumDistance: 2,
+        maximumDistance: 4,
+        beforeLoad: async () => {
+          startTeleportFx(outbound ? "hub-departure" : "beacon-departure", sourceRecord.anchor);
+          await sleep(outbound ? 2850 : 900);
+        }
+      });
+      if (!success) {
+        disposeTeleportFx();
+        announce("Le passage est refusé : aucun point d’arrivée sûr n’est disponible.");
+        return false;
+      }
+      if (outbound) {
+        if (tp11Status === "active" && !state.teleporter?.firstOutboundAt) {
+          state.teleporter.firstOutboundAt = Date.now();
+          saveState();
+        }
+        startTeleportFx("beacon-arrival", targetRecord.anchor);
+        await sleep(1800);
+      } else {
+        startTeleportFx("hub-return", targetRecord.anchor);
+        await sleep(3200);
+      }
+      disposeTeleportFx();
+      return true;
+    } finally {
+      disposeTeleportFx();
+      teleportInProgress = false;
+    }
+  };
+
   const deployedBeaconRecords = (mapId) => {
     const definition = BF.maps?.[mapId];
     if (!definition || !BF.PersistentMicroScenes?.list) return [];
@@ -1447,6 +1865,10 @@
   const getPlanetMapMarkers = (mapId) => {
     const target = String(mapId || "");
     const markers = [];
+    const hub = hubRecord();
+    if (hub?.mapId === target) {
+      markers.push({ type: "teleporter", label: teleporterActive() ? "Téléporteur central actif" : "Point fixe ASTROLOGY", mapId: target });
+    }
     if (hasDeployedBeacon(target)) {
       markers.push({ type: "beacon", label: "Balise BlueFox", mapId: target });
     }
@@ -1709,6 +2131,16 @@
     repairRequirements: DRONE_REPAIR_REQUIREMENTS,
     hasDeployedBeacon,
     getPlanetMapMarkers,
+    hubRecord,
+    destinations: teleportDestinations,
+    isTeleporterActive: teleporterActive,
+    isTeleporterCalibrated: teleporterCalibrated,
+    canAssembleTeleporter,
+    activateTeleporter,
+    calibrateTeleporter,
+    teleportUiAction,
+    teleportTo,
+    disposeTeleportFx,
     invalidate(scene) { if (scene) sceneCache.delete(scene); }
   });
 })(window);

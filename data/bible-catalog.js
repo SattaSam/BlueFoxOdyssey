@@ -11447,213 +11447,114 @@
     })
   });
 
-  const TERRCARN01 = Object.freeze({
-    id: "TERR-CARN-01",
-    title: "Approcher le phénomène",
-    description: "Première rencontre opportuniste avec une zone de plantes carnivores : BlueFox se laisse attirer jusqu'au coeur dangereux, reste exposé trop longtemps puis doit réellement se retirer, se reposer et se restaurer.",
+  const TP10 = Object.freeze({
+    id: "TP-10",
+    title: "Assembler l’impossible",
+    description: "Assembler puis activer, sur le point fixe ASTROLOGY réellement placé, le hub unique qui reliera les balises déjà déployées sans encore transporter BlueFox.",
     pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 1, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-PREDATOR-FLORA-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 230,
-    passivePriorityAxis: "survival",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-09", count: 1 }),
+    prerequisites: Object.freeze(["TP-09"]),
+    priority: 192,
+    passivePriorityAxis: "engineering",
     ponderation: 1,
     obsessionEligible: true,
-    obsessionIntensity: 4,
-    sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "carnivorous_plant", microSceneId: "MSC-PREDATOR-FLORA-001", proximityOnly: true, proximityRadius: 2.0, requiredMapFact: "bibleActivation:TERR-CARN-01", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "exposure", title: "Rester brièvement dans le champ pour en mesurer le risque", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ duration: 6500, requiredMapFact: "bibleActivation:TERR-CARN-01", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["exposure"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-CARN-01", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "recover", title: "Effectuer un vrai repos après l’exposition", action: "rest", target: 1, requires: Object.freeze(["retreat"]), params: Object.freeze({}) }),
-      Object.freeze({ slot: "restore", title: "Se restaurer avant de reprendre la mission précédente", action: "eat", target: 1, requires: Object.freeze(["recover"]), params: Object.freeze({}) })
-    ]),
-    narrative: Object.freeze({
-      revealed: Object.freeze(["Ces plantes sont fascinantes. Je veux voir jusqu'où leur réaction porte..."]),
-      completed: Object.freeze(["J'ai bien failli y laisser ma vie. Je dois récupérer avant de reprendre quoi que ce soit."])
-    })
-  });
-
-  const TERRCARN02 = Object.freeze({
-    id: "TERR-CARN-02",
-    title: "Survivre au danger",
-    description: "Deuxième rencontre distincte avec les plantes carnivores : BlueFox récidive, mais écourte son exposition avant de se retirer ; l'expérience laisse cette fois un souvenir négatif durable.",
-    pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 2, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-PREDATOR-FLORA-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 229,
-    passivePriorityAxis: "survival",
-    ponderation: 0.5,
-    obsessionEligible: true,
-    obsessionIntensity: 4,
+    obsessionIntensity: 5,
     souvenir: true,
-    memoryValence: "negative",
-    scoreTrauma: 84,
+    memoryValence: "positive",
+    scoreTrauma: 118,
     sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "carnivorous_plant", microSceneId: "MSC-PREDATOR-FLORA-001", proximityOnly: true, proximityRadius: 2.1, requiredMapFact: "bibleActivation:TERR-CARN-02", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "exposure", title: "Rester brièvement dans le champ pour en mesurer le risque", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ duration: 6000, requiredMapFact: "bibleActivation:TERR-CARN-02", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["exposure"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-CARN-02", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "recover", title: "Effectuer un vrai repos après l’exposition", action: "rest", target: 1, requires: Object.freeze(["retreat"]), params: Object.freeze({}) }),
-      Object.freeze({ slot: "restore", title: "Se restaurer avant de reprendre la mission précédente", action: "eat", target: 1, requires: Object.freeze(["recover"]), params: Object.freeze({}) })
+      Object.freeze({
+        slot: "assemble",
+        title: "Assembler et activer le hub au cœur d’ASTROLOGY",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ catalogManaged: true, eventDriven: true })
+      })
+    ]),
+    runtimeValidation: Object.freeze({ type: "teleporter-activation", slot: "assemble" }),
+    effects: Object.freeze([
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["stellar_iridium", "energy_crystal"]), quantity: 30 }),
+      Object.freeze({ type: "inventory.consume", inventoryKeys: Object.freeze(["magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium", "crystal", "energy_crystal"]), quantity: 70 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "parts", quantity: 50 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "core", quantity: 20 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "fiber", quantity: 100 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "accumulator", quantity: 10 }),
+      Object.freeze({ type: "inventory.consume", inventoryKey: "biocapital", quantity: 50 })
     ]),
     narrative: Object.freeze({
-      revealed: Object.freeze(["Je reconnais cette flore. Je vais quand même vérifier jusqu'où je peux m'approcher, mais je ne dois pas y rester aussi longtemps."]),
-      completed: Object.freeze(["C'est la deuxième fois. Je devrais vraiment faire plus attention."])
+      revealed: Object.freeze(["Le réseau, les matériaux et le point fixe sont prêts. Il reste à faire de cette architecture une machine réelle, ici, au cœur d’ASTROLOGY."]),
+      completed: Object.freeze(["Le point fixe répond. Les balises ne sont toujours que des ancrages distants, mais le hub sait maintenant les atteindre. Le prochain passage sera le mien."])
     })
   });
 
-  const TERRCARN03 = Object.freeze({
-    id: "TERR-CARN-03",
-    title: "Prudence face au danger",
-    description: "Troisième rencontre : BlueFox approche encore, mais transforme plus tôt l'attraction en Observation et limite volontairement le temps passé dans le champ dangereux.",
+  const TP11 = Object.freeze({
+    id: "TP-11",
+    title: "De l’autre côté",
+    description: "Préparer la matière, synchroniser une balise réellement déployée, effectuer le premier passage BlueFox du hub vers cette balise puis revenir par la même architecture hub–balise.",
     pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 3, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-PREDATOR-FLORA-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 228,
-    passivePriorityAxis: "survival",
-    ponderation: -0.5,
-    souvenir: true,
-    memoryValence: "negative",
-    scoreTrauma: 62,
-    sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "carnivorous_plant", microSceneId: "MSC-PREDATOR-FLORA-001", proximityOnly: true, proximityRadius: 2.2, requiredMapFact: "bibleActivation:TERR-CARN-03", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "exposure", title: "Rester brièvement dans le champ pour en mesurer le risque", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ duration: 5000, requiredMapFact: "bibleActivation:TERR-CARN-03", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["exposure"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-CARN-03", requiredMapField: "mapId" }) })
-    ]),
-    narrative: Object.freeze({
-      revealed: Object.freeze(["Je connais maintenant le prix d'une seconde de trop. J'approche, j'observe, puis je coupe l'exposition."]),
-      completed: Object.freeze(["On peut l'approcher suffisamment, mais pas sans danger. Assez pour cette fois."])
-    })
-  });
-
-  const TERRCARN04 = Object.freeze({
-    id: "TERR-CARN-04",
-    title: "Intégration du danger",
-    description: "Quatrième rencontre : BlueFox intègre le danger ; il s'approche seulement assez pour valider une Observation puis se retire sans prolonger l'exposition.",
-    pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 4, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-PREDATOR-FLORA-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 227,
-    passivePriorityAxis: "survival",
-    ponderation: -0.75,
-    sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "carnivorous_plant", microSceneId: "MSC-PREDATOR-FLORA-001", proximityOnly: true, proximityRadius: 2.3, requiredMapFact: "bibleActivation:TERR-CARN-04", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-CARN-04", requiredMapField: "mapId" }) })
-    ]),
-    narrative: Object.freeze({
-      revealed: Object.freeze(["Je sais ce que cette flore peut faire. Cette fois, une Observation suffit : je n'ai aucune raison de rester dans son champ d'action."]),
-      completed: Object.freeze(["Dangereux, mais pas mortel si je ne reste pas trop longtemps dans son champ d'action."])
-    })
-  });
-
-  const TERRSTORM01 = Object.freeze({
-    id: "TERR-STORM-01",
-    title: "Approcher le phénomène",
-    description: "Première rencontre opportuniste avec une tempête électrostatique : BlueFox se laisse attirer jusque dans le front perturbé, reste exposé trop longtemps puis doit réellement se retirer, se reposer et se restaurer.",
-    pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 1, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-LOCAL-STORM-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 226,
-    passivePriorityAxis: "survival",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-10", count: 1 }),
+    prerequisites: Object.freeze(["TP-10"]),
+    priority: 191,
+    passivePriorityAxis: "engineering",
     ponderation: 1,
     obsessionEligible: true,
-    obsessionIntensity: 4,
-    sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "electrostatic_storm", microSceneId: "MSC-LOCAL-STORM-001", proximityOnly: true, proximityRadius: 6.5, requiredMapFact: "bibleActivation:TERR-STORM-01", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "exposure", title: "Rester brièvement dans le champ pour en mesurer le risque", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ duration: 6500, requiredMapFact: "bibleActivation:TERR-STORM-01", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["exposure"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-STORM-01", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "recover", title: "Effectuer un vrai repos après l’exposition", action: "rest", target: 1, requires: Object.freeze(["retreat"]), params: Object.freeze({}) }),
-      Object.freeze({ slot: "restore", title: "Se restaurer avant de reprendre la mission précédente", action: "eat", target: 1, requires: Object.freeze(["recover"]), params: Object.freeze({}) })
-    ]),
-    narrative: Object.freeze({
-      revealed: Object.freeze(["Cette tempête perturbe tout ce qui l'entoure. Je veux sentir où commence réellement son influence..."]),
-      completed: Object.freeze(["J'ai bien failli y laisser ma vie. Je dois récupérer avant de reprendre la route."])
-    })
-  });
-
-  const TERRSTORM02 = Object.freeze({
-    id: "TERR-STORM-02",
-    title: "Survivre au danger",
-    description: "Deuxième tempête distincte : BlueFox récidive malgré l'expérience, mais écourte son exposition ; la répétition laisse cette fois un souvenir négatif durable.",
-    pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 2, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-LOCAL-STORM-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 225,
-    passivePriorityAxis: "survival",
-    ponderation: 0.5,
-    obsessionEligible: true,
-    obsessionIntensity: 4,
+    obsessionIntensity: 5,
     souvenir: true,
-    memoryValence: "negative",
-    scoreTrauma: 84,
+    memoryValence: "positive",
+    scoreTrauma: 132,
     sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "electrostatic_storm", microSceneId: "MSC-LOCAL-STORM-001", proximityOnly: true, proximityRadius: 6.5, requiredMapFact: "bibleActivation:TERR-STORM-02", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "exposure", title: "Rester brièvement dans le champ pour en mesurer le risque", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ duration: 6000, requiredMapFact: "bibleActivation:TERR-STORM-02", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["exposure"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-STORM-02", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "recover", title: "Effectuer un vrai repos après l’exposition", action: "rest", target: 1, requires: Object.freeze(["retreat"]), params: Object.freeze({}) }),
-      Object.freeze({ slot: "restore", title: "Se restaurer avant de reprendre la mission précédente", action: "eat", target: 1, requires: Object.freeze(["recover"]), params: Object.freeze({}) })
+      Object.freeze({
+        slot: "calibrateNetwork",
+        title: "Calibrer ASTROLOGY sur quatre balises persistantes",
+        action: "research",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ catalogManaged: true, eventDriven: true })
+      }),
+      Object.freeze({
+        slot: "inertTransfer",
+        title: "Confirmer le transfert d’une matière inerte vers la balise synchronisée",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["calibrateNetwork"]),
+        params: Object.freeze({ catalogManaged: true, eventDriven: true })
+      }),
+      Object.freeze({
+        slot: "outbound",
+        title: "Effectuer le premier passage du hub vers une balise",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["inertTransfer"]),
+        params: Object.freeze({
+          eventDriven: true,
+          direction: "teleport-outbound",
+          transitionSource: "teleporter",
+          transitionMode: "teleport",
+          distinctBy: "transition",
+          completionArrivalFact: "tp11:firstDestination",
+          completionArrivalField: "mapId"
+        })
+      }),
+      Object.freeze({
+        slot: "returnHub",
+        title: "Revenir de la balise vers le téléporteur central",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze(["outbound"]),
+        params: Object.freeze({
+          eventDriven: true,
+          direction: "teleport-return",
+          transitionSource: "teleporter",
+          transitionMode: "teleport",
+          distinctBy: "transition"
+        })
+      })
     ]),
+    runtimeValidation: Object.freeze({ type: "teleporter-first-passage", calibrationSlot: "calibrateNetwork", inertTransferSlot: "inertTransfer" }),
     narrative: Object.freeze({
-      revealed: Object.freeze(["Je reconnais cette signature. Je vais encore vérifier la limite, mais je ne dois pas attendre la panne pour partir."]),
-      completed: Object.freeze(["C'est la deuxième fois. Je devrais vraiment faire plus attention."])
-    })
-  });
-
-  const TERRSTORM03 = Object.freeze({
-    id: "TERR-STORM-03",
-    title: "Prudence face au danger",
-    description: "Troisième tempête : BlueFox approche encore mais s'arrête plus tôt, observe le front et limite volontairement le temps passé sous perturbation.",
-    pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 3, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-LOCAL-STORM-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 224,
-    passivePriorityAxis: "survival",
-    ponderation: -0.5,
-    souvenir: true,
-    memoryValence: "negative",
-    scoreTrauma: 62,
-    sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "electrostatic_storm", microSceneId: "MSC-LOCAL-STORM-001", proximityOnly: true, proximityRadius: 6.5, requiredMapFact: "bibleActivation:TERR-STORM-03", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "exposure", title: "Rester brièvement dans le champ pour en mesurer le risque", action: "research", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ duration: 5000, requiredMapFact: "bibleActivation:TERR-STORM-03", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["exposure"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-STORM-03", requiredMapField: "mapId" }) })
-    ]),
-    narrative: Object.freeze({
-      revealed: Object.freeze(["Je connais maintenant ce front. J'approche assez pour l'Observer, pas pour lui abandonner toute mon énergie."]),
-      completed: Object.freeze(["Je peux l'approcher suffisamment, mais pas sans danger. Assez pour cette fois."])
-    })
-  });
-
-  const TERRSTORM04 = Object.freeze({
-    id: "TERR-STORM-04",
-    title: "Intégration du danger",
-    description: "Quatrième tempête : BlueFox intègre le risque ; il s'approche seulement assez pour Observer puis se retire immédiatement.",
-    pattern: "SEQUENCE_ACTIONS",
-    trigger: Object.freeze({ type: "exploration.map_discovered", count: 4, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-LOCAL-STORM-001"]) }),
-    bindActivationMap: true,
-    primaryOnActivation: true,
-    autoPrimaryEligible: true,
-    priority: 223,
-    passivePriorityAxis: "survival",
-    ponderation: -0.75,
-    sequence: Object.freeze([
-      Object.freeze({ slot: "approach", title: "Approcher assez pour observer", action: "observe", target: 1, params: Object.freeze({ cuoType: "electrostatic_storm", microSceneId: "MSC-LOCAL-STORM-001", proximityOnly: true, proximityRadius: 6.5, requiredMapFact: "bibleActivation:TERR-STORM-04", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "retreat", title: "Rompre l’exposition et reprendre de la distance", action: "explore-zone", target: 1, requires: Object.freeze(["approach"]), params: Object.freeze({ requiredMapFact: "bibleActivation:TERR-STORM-04", requiredMapField: "mapId" }) })
-    ]),
-    narrative: Object.freeze({
-      revealed: Object.freeze(["Je n'ai plus besoin d'entrer profondément dans le front. Une Observation courte suffit."]),
-      completed: Object.freeze(["Dangereux, mais pas mortel si je ne reste pas trop longtemps dans son champ d'action."])
+      revealed: Object.freeze(["J’ai déplacé des échantillons. Maintenant il n’y a plus de modèle réduit : je vais synchroniser une balise du réseau et traverser moi-même."]),
+      completed: Object.freeze(["Je suis revenu. Le passage n’est plus une hypothèse ni une expérience de matière : ASTROLOGY et les balises forment désormais un réseau de voyage réel, que j’utiliserai seulement quand je le déciderai."])
     })
   });
 
@@ -11935,8 +11836,7 @@
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     PROS01, PROS03, PROS02,
-    POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09,
-    TERRCARN01, TERRCARN02, TERRCARN03, TERRCARN04, TERRSTORM01, TERRSTORM02, TERRSTORM03, TERRSTORM04,
+    POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09, TP10, TP11,
     CART02, CART01, CART03,
     ANN04,
     ANN06,

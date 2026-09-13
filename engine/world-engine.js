@@ -55,6 +55,7 @@
       this.postActionRecoveryUntil = 0;
       this.lastCompletedAction = "";
       this.transitionStartedAt = 0;
+      this.explorationRelocationGuard = null;
       this.completedTransitions = 0;
       this.completedInteractions = 0;
       this.navigationFailures = 0;
@@ -2829,6 +2830,182 @@
       return new this.THREE.Vector3(targetMap.entry.x, 0, targetMap.entry.z);
     }
 
+    beginCanonicalMapTransition() {
+      if (this.transitioning) return null;
+      this.transitioning = true;
+      this.transitionStartedAt = performance.now();
+      this.character.enabled = false;
+      this.character.stop();
+      this.transitionElement?.classList?.add?.("active");
+      return {
+        preservedCameraView: this.cameraController?.captureViewState?.() || null
+      };
+    }
+
+    async completeCanonicalMapTransition(options = {}) {
+      this.savePosition();
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      if (!this.cameraController?.restoreViewState?.(options.preservedCameraView)) {
+        this.cameraController?.resetBehindCharacter?.(true);
+      }
+      this.completedTransitions += 1;
+      options.beforeEvent?.();
+      global.dispatchEvent(new CustomEvent("bluefox:map-transition-completed", {
+        detail: {
+          fromMapId: options.previousMapId || null,
+          mapId: this.currentMapId,
+          toMapId: this.currentMapId,
+          direction: options.direction || null,
+          biome: BF.maps[this.currentMapId]?.biome || null,
+          isNew: options.isNew === true,
+          count: this.completedTransitions,
+          ...(options.source ? { source: options.source } : {}),
+          ...(options.mode ? { mode: options.mode } : {})
+        }
+      }));
+      return true;
+    }
+
+    releaseCanonicalMapTransition() {
+      this.transitionElement?.classList?.remove?.("active");
+      this.character.enabled = true;
+      this.transitioning = false;
+      this.transitionStartedAt = 0;
+    }
+
+    safeTeleportArrival(anchor, minimumDistance = 2, maximumDistance = 4) {
+      if (!anchor || !this.currentMap || !this.character) return null;
+      const x = Number(anchor.x);
+      const z = Number(anchor.z);
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+      const radius = Math.max(0.1, Number(this.character.radius) || 0.64);
+      const regions = Array.isArray(this.character.walkableRegions)
+        ? this.character.walkableRegions
+        : [];
+      const colliders = Array.isArray(this.currentMap.colliders)
+        ? this.currentMap.colliders
+        : [];
+      const walkable = (point) => {
+        if (!regions.length) return false;
+        const margin = radius + 0.08;
+        return regions.some((region) =>
+          point.x >= Number(region.minX) + margin &&
+          point.x <= Number(region.maxX) - margin &&
+          point.z >= Number(region.minZ) + margin &&
+          point.z <= Number(region.maxZ) - margin
+        );
+      };
+      const clear = (point) => colliders.every((collider) => {
+        const position = collider?.position;
+        if (!position) return true;
+        const clearance = radius + Math.max(0, Number(collider.radius) || 0) + 0.18;
+        return Math.hypot(point.x - position.x, point.z - position.z) >= clearance;
+      });
+      const min = Math.max(2, Number(minimumDistance) || 2);
+      const max = Math.min(4, Math.max(min, Number(maximumDistance) || 4));
+      const rings = [min, (min + max) / 2, max];
+      for (const ring of rings) {
+        for (let index = 0; index < 24; index += 1) {
+          const angle = (Math.PI * 2 * index) / 24;
+          const point = new this.THREE.Vector3(
+            x + Math.cos(angle) * ring,
+            0,
+            z + Math.sin(angle) * ring
+          );
+          if (walkable(point) && clear(point)) return point;
+        }
+      }
+      return null;
+    }
+
+    async transitionToKnownMap(targetMapId, options = {}) {
+      const targetId = String(targetMapId || "");
+      if (!targetId || this.transitioning || !this.discoveredMaps.has(targetId)) return false;
+      if (!BF.maps?.[targetId]) return false;
+      const previousMapId = this.currentMapId;
+      const previousPosition = this.character?.root?.position?.clone?.() || null;
+      if (targetId === previousMapId) return false;
+
+      const transition = this.beginCanonicalMapTransition();
+      if (!transition) return false;
+      const { preservedCameraView } = transition;
+      let loadedTarget = false;
+      try {
+        if (typeof options.beforeLoad === "function") {
+          await options.beforeLoad({ fromMapId: previousMapId, toMapId: targetId });
+        }
+        await this.loadMap(targetId, null, true);
+        loadedTarget = true;
+        const spawn = this.safeTeleportArrival(
+          options.targetAnchor,
+          options.minimumDistance ?? 2,
+          options.maximumDistance ?? 4
+        );
+        if (!spawn) {
+          if (previousMapId && BF.maps?.[previousMapId]) {
+            await this.loadMap(previousMapId, null, true);
+            if (previousPosition) {
+              this.character.root.position.copy(previousPosition);
+              this.character.setTarget(this.character.root.position);
+              this.character.lastSafePosition.copy(this.character.root.position);
+            }
+          }
+          throw new Error("teleport-no-safe-arrival");
+        }
+        this.character.root.position.set(spawn.x, 0, spawn.z);
+        this.character.setTarget(this.character.root.position);
+        this.character.lastSafePosition.copy(this.character.root.position);
+        this.character.facePoint(new this.THREE.Vector3(
+          Number(options.targetAnchor?.x) || 0,
+          0,
+          Number(options.targetAnchor?.z) || 0
+        ));
+        this.explorationRelocationGuard = {
+          mapId: targetId,
+          x: spawn.x,
+          z: spawn.z,
+          releaseDistance: 0.9,
+          source: options.source || "relocation"
+        };
+        this.pendingGate = null;
+        this.gateCooldownUntil = performance.now() + 2600;
+        this.lastActivityAt = performance.now();
+        this.lastAutonomyAt = performance.now() - 4200;
+        await this.completeCanonicalMapTransition({
+          previousMapId,
+          direction: options.direction || null,
+          isNew: false,
+          source: options.source || null,
+          mode: options.mode || null,
+          preservedCameraView
+        });
+        return true;
+      } catch (error) {
+        if (String(error?.message || "") !== "teleport-no-safe-arrival") {
+          console.error("Échec de la transition directe", error);
+        }
+        if (loadedTarget && this.currentMapId !== previousMapId && BF.maps?.[previousMapId]) {
+          try {
+            await this.loadMap(previousMapId, null, true);
+            if (previousPosition) {
+              this.character.root.position.copy(previousPosition);
+              this.character.setTarget(this.character.root.position);
+              this.character.lastSafePosition.copy(this.character.root.position);
+            }
+          } catch (rollbackError) {
+            console.error("Échec du retour après transition directe", rollbackError);
+          }
+        }
+        this.explorationRelocationGuard = null;
+        if (!this.cameraController?.restoreViewState?.(preservedCameraView)) {
+          this.cameraController?.resetBehindCharacter?.(true);
+        }
+        return false;
+      } finally {
+        this.releaseCanonicalMapTransition();
+      }
+    }
+
     async crossGate(gate) {
       if (this.transitioning) return;
       const exit = gate.userData.exit;
@@ -2865,12 +3042,9 @@
         return;
       }
 
-      this.transitioning = true;
-      this.transitionStartedAt = performance.now();
-      this.character.enabled = false;
-      this.character.stop();
-      this.transitionElement.classList.add("active");
-      const preservedCameraView = this.cameraController?.captureViewState?.() || null;
+      const transition = this.beginCanonicalMapTransition();
+      if (!transition) return;
+      const { preservedCameraView } = transition;
       try {
         await new Promise((resolve) => setTimeout(resolve, 340));
 
@@ -2907,33 +3081,23 @@
           }
           this.beginAutonomyGrace("autonomous-map-transition");
         }
-        this.savePosition();
-
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        if (!this.cameraController.restoreViewState(preservedCameraView)) {
-          this.cameraController.resetBehindCharacter(true);
-        }
-        this.completedTransitions += 1;
-        if (this.persistentNavigationIntent?.mapId === this.currentMapId) {
-          this.clearPersistentNavigationIntent();
-        } else if (this.persistentNavigationIntent?.discoverUnknown === true) {
-          // Une suggestion directionnelle vers l'inconnu désigne exactement
-          // le territoire voisin. Elle est consommée au premier passage afin
-          // de ne jamais se propager aux cartes suivantes.
-          this.clearPersistentNavigationIntent();
-          this.navigationRoute = [];
-        }
-        global.dispatchEvent(new CustomEvent("bluefox:map-transition-completed", {
-          detail: {
-            fromMapId: previousMapId,
-            mapId: this.currentMapId,
-            toMapId: this.currentMapId,
-            direction: exit.direction || null,
-            biome: BF.maps[this.currentMapId]?.biome || null,
-            isNew,
-            count: this.completedTransitions
+        await this.completeCanonicalMapTransition({
+          previousMapId,
+          direction: exit.direction || null,
+          isNew,
+          preservedCameraView,
+          beforeEvent: () => {
+            if (this.persistentNavigationIntent?.mapId === this.currentMapId) {
+              this.clearPersistentNavigationIntent();
+            } else if (this.persistentNavigationIntent?.discoverUnknown === true) {
+              // Une suggestion directionnelle vers l'inconnu désigne exactement
+              // le territoire voisin. Elle est consommée au premier passage afin
+              // de ne jamais se propager aux cartes suivantes.
+              this.clearPersistentNavigationIntent();
+              this.navigationRoute = [];
+            }
           }
-        }));
+        });
       } catch (error) {
         console.error("Échec du passage de map", error);
         this.pendingGate = null;
@@ -2944,10 +3108,7 @@
           "Le passage n’a pas pu être franchi. BlueFox reprend son exploration dans la zone actuelle."
         );
       } finally {
-        this.transitionElement.classList.remove("active");
-        this.character.enabled = true;
-        this.transitioning = false;
-        this.transitionStartedAt = 0;
+        this.releaseCanonicalMapTransition();
         if (this.navigationRoute[0] === this.currentMapId) {
           this.navigationRoute.shift();
         }
