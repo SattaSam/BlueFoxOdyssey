@@ -145,7 +145,13 @@
         const fact = this.memory?.getFact?.(node.params.requiredMapFact, null);
         const field = node.params.requiredMapField || "mapId";
         const requiredMapId = fact?.[field];
-        if (!requiredMapId || String(detail.mapId || "") !== String(requiredMapId)) {
+        // Les interactions portent leur map explicitement. Les routines locales
+        // (research/rest/eat) sont exécutées par WorldEngine sur la map courante
+        // mais leur notification historique ne transporte pas mapId. On utilise
+        // donc la map courante uniquement pour ces fins de routine locales.
+        const completionMapId = detail.mapId ??
+          (detail.routine ? BF.currentEngine?.currentMapId : "");
+        if (!requiredMapId || String(completionMapId || "") !== String(requiredMapId)) {
           return false;
         }
       }

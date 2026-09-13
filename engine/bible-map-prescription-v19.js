@@ -563,9 +563,41 @@
             return false;
           }
 
-          if (!mission) return originalGenerateUnknownPassage(direction);
+          if (!mission) {
+            BF.__pendingBibleMapGenerationContext = {
+              intent: "free-exploration",
+              missionId: null,
+              opportunisticEncounterEligible: true,
+              longMissionTransit: false
+            };
+            try {
+              return await originalGenerateUnknownPassage(direction);
+            } finally {
+              BF.__pendingBibleMapGenerationContext = null;
+            }
+          }
 
           const prescription = resolveMissionMapGeneration(engine, mission);
+          const travelNode = activeEventDrivenTravelNode(engine, mission);
+          const remainingTravel = travelNode
+            ? Math.max(0, Number(travelNode.target) - Number(travelNode.progress || 0))
+            : 0;
+          const longMissionTransit = Boolean(
+            !prescription &&
+            travelNode &&
+            remainingTravel > 3
+          );
+          const generationContext = {
+            intent: prescription
+              ? "mission-destination"
+              : longMissionTransit
+                ? "mission-transit"
+                : "mission-directed",
+            missionId: mission.id,
+            opportunisticEncounterEligible: longMissionTransit,
+            longMissionTransit,
+            remainingTravel
+          };
           if (prescription?.unresolvedRequiredObjects === true) {
             engine.callbacks?.onStatus?.(
               "Le contenu requis par la mission doit être identifié avant de générer la prochaine zone."
@@ -592,6 +624,7 @@
             };
           }
 
+          BF.__pendingBibleMapGenerationContext = generationContext;
           try {
             const result = await originalGenerateUnknownPassage(direction);
             const destinationMapId = BF.maps?.[engine.currentMapId]?.exits?.[direction]?.targetMap || null;
@@ -621,6 +654,7 @@
             return result;
           } finally {
             BF.__pendingBibleMapGeneration = null;
+            BF.__pendingBibleMapGenerationContext = null;
           }
         };
     }

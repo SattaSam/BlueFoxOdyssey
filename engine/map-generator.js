@@ -483,13 +483,14 @@
     return lastIndex < 0 ? ordered.length : ordered.length - lastIndex - 1;
   };
 
-  const chooseScene = (random, biomeId, kind) => {
+  const chooseScene = (random, biomeId, kind, options = {}) => {
     const compatible = BF.MicroScenes?.list?.(biomeId)
       ?.filter((scene) => !scene.missionOnly) || [];
     const missionKeys = new Set([
       "MSC-ABANDONED-DRONE-001", "MSC-TECH-RELAY-001",
       "MSC-ANCIENT-GATEWAY-001", "MSC-RUINED-SHRINE-001",
-      "MSC-ECO-STAR-001"
+      "MSC-ECO-STAR-001",
+      "MSC-PREDATOR-FLORA-001", "MSC-LOCAL-STORM-001"
     ]);
     const candidates = compatible.filter((scene) => {
       if (kind === "mission") return missionKeys.has(scene.id);
@@ -497,7 +498,20 @@
       return ["common", "uncommon"].includes(scene.rarity);
     });
     if (kind === "mission" && !candidates.length) return null;
-    const pool = candidates.length ? candidates : compatible;
+    let pool = candidates.length ? candidates : compatible;
+    if (kind === "mission" && options.longMissionTransit === true) {
+      const dangerous = new Set([
+        "MSC-PREDATOR-FLORA-001", "MSC-LOCAL-STORM-001"
+      ]);
+      const weighted = [];
+      pool.forEach((scene) => {
+        weighted.push(scene);
+        if (dangerous.has(scene.id)) {
+          weighted.push(scene, scene, scene);
+        }
+      });
+      pool = weighted;
+    }
     return pool.length ? pool[random.integer(pool.length)] : null;
   };
 
@@ -564,10 +578,19 @@
     const richness = rules.pickRichness(() => random.next());
     const forceRemarkable = eligible && sinceRemarkable + 1 >= remarkableInterval;
     const forceDecorative = eligible && sinceDecorative + 1 >= decorativeInterval;
-    const preferMissionOpportunity = eligible && options.lowMissionProgress === true;
+    const generationContext = BF.__pendingBibleMapGenerationContext || null;
+    const missionOpportunityEligible = Boolean(
+      eligible && generationContext?.opportunisticEncounterEligible === true
+    );
+    const missionOpportunityChance = generationContext?.longMissionTransit === true
+      ? 0.65
+      : 0.25;
+    const preferMissionOpportunity = Boolean(
+      missionOpportunityEligible && random.next() < missionOpportunityChance
+    );
     const featuredScenes = [];
     const appendScene = (kind) => {
-      const scene = chooseScene(random, biomeDefinition.id, kind);
+      const scene = chooseScene(random, biomeDefinition.id, kind, generationContext || {});
       if (scene && !featuredScenes.some((entry) => entry.scene.id === scene.id)) {
         featuredScenes.push({ kind, scene });
       }
@@ -626,7 +649,13 @@
           decorativeInterval,
           remarkableGuaranteed: featuredScenes.some((entry) => entry.kind === "remarkable"),
           remarkableInterval,
+          missionOpportunityEligible,
+          missionOpportunityChance,
           missionOpportunityPreferred: featuredScenes.some((entry) => entry.kind === "mission"),
+          missionOpportunityLongTransit: Boolean(
+            featuredScenes.some((entry) => entry.kind === "mission") &&
+            generationContext?.longMissionTransit === true
+          ),
           direction: options.direction || null,
           northernFrozenAffinityApplied: options.direction === "north",
           discoveriesSinceRareBeforeGeneration: sinceRare,

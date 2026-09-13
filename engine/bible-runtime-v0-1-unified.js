@@ -1894,6 +1894,17 @@
         return false;
       }
 
+      if (trigger.featuredMicroSceneIdsAny?.length) {
+        const featuredMicroSceneIds = new Set(
+          asArray(event.featuredMicroSceneIds).map(String).filter(Boolean)
+        );
+        if (!trigger.featuredMicroSceneIdsAny.some((id) =>
+          featuredMicroSceneIds.has(String(id))
+        )) {
+          return false;
+        }
+      }
+
       if (trigger.threshold != null) {
         const value = Number(
           event.surfacePercent ??
@@ -4031,12 +4042,19 @@
       this.reconcileWorldTopologyLinks();
       this.reconcileSlotFactEffects();
 
+      const eventMapId = detail.toMapId || detail.mapId || null;
+      const mapDefinition = BF.maps?.[eventMapId] || null;
+      const featuredMicroSceneIds = [...new Set([
+        ...asArray(mapDefinition?.generator?.featuredMicroSceneIds),
+        mapDefinition?.generator?.featuredMicroSceneId
+      ].map(String).filter(Boolean))];
       const event = {
         fromMapId: detail.fromMapId || null,
-        toMapId: detail.toMapId || detail.mapId || null,
-        mapId: detail.toMapId || detail.mapId || null,
+        toMapId: eventMapId,
+        mapId: eventMapId,
         direction: lower(detail.direction) || null,
-        biome: lower(detail.biome) || null,
+        biome: lower(detail.biome || mapDefinition?.generator?.biomeId) || null,
+        featuredMicroSceneIds,
         amount: 1
       };
 

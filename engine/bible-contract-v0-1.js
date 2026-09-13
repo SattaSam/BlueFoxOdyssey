@@ -61,7 +61,7 @@
       "biome"
     ]),
     "exploration.map_discovered": Object.freeze([
-      "biome", "direction"
+      "biome", "direction", "featuredMicroSceneIdsAny"
     ]),
     "exploration.sector_discovered": Object.freeze([
       "biome"
@@ -246,7 +246,7 @@
       );
     }
 
-    ["tagsAny", "tagsAll"].forEach((key) => {
+    ["tagsAny", "tagsAll", "featuredMicroSceneIdsAny"].forEach((key) => {
       if (trigger[key] != null && !Array.isArray(trigger[key])) {
         add(errors, missionId, `trigger.${key}`, "doit être un tableau.");
       }
