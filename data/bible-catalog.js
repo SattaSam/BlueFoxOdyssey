@@ -10304,6 +10304,329 @@
     })
   });
 
+  const PHEN01 = Object.freeze({
+    id: "PHEN-01",
+    title: "Une mesure ne suffit pas",
+    description: "Comparer l’observation de BlueFox à un relevé indépendant du Scout sur la même anomalie afin d’établir une première méthode scientifique reproductible.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "BAL-03", count: 1 }),
+    prerequisites: Object.freeze(["BAL-03", "ENE-13"]),
+    priority: 214,
+    passivePriorityAxis: "research",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "random",
+      requiredObjects: Object.freeze([Object.freeze({ type: "fog_bank", count: 1, contextRole: "phen01ReferenceAnomaly" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachPhenomenon",
+        title: "Rejoindre un nouveau territoire propice au relevé",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "bluefoxReading",
+        title: "Observer personnellement une anomalie",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachPhenomenon"]),
+        params: Object.freeze({ cuoType: "fog_bank", actor: "bluefox", sequenceSlot: "bluefoxReading" })
+      }),
+      Object.freeze({
+        slot: "scoutReading",
+        title: "Obtenir un relevé indépendant du Scout sur la même anomalie",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["bluefoxReading"]),
+        params: Object.freeze({
+          cuoType: "fog_bank",
+          actor: "scout",
+          relation: Object.freeze({ fromSlot: "bluefoxReading", sameBy: Object.freeze(["instanceId"]) })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une impression n’est pas une mesure. Si le Scout retrouve la même chose sans moi, alors j’aurai quelque chose de reproductible."]),
+      completed: Object.freeze(["Deux regards, le même phénomène. Je peux commencer à comparer le monde au lieu de seulement le décrire."])
+    })
+  });
+
+  const PHEN02 = Object.freeze({
+    id: "PHEN-02",
+    title: "Le feu sous la roche",
+    description: "Faire reconnaître au Scout plusieurs signatures d’un territoire volcanique puis examiner l’élément géologique le plus significatif.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01"]),
+    priority: 210,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-01-OPPORTUNITIES",
+    ponderation: 0.9,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "volcanic",
+      requiredObjects: Object.freeze([
+        Object.freeze({ type: "resonant_basalt", count: 2, contextRole: "phen02ThermalGeology" }),
+        Object.freeze({ type: "magnetic_ore", count: 2, contextRole: "phen02ThermalGeology" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachVolcanic",
+        title: "Rejoindre un nouveau territoire volcanique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "scoutSurvey",
+        title: "Faire relever trois signatures géologiques distinctes par le Scout",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["reachVolcanic"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["resonant_basalt", "magnetic_ore", "thermosap_moss"]),
+          actor: "scout",
+          distinctBy: "instanceId"
+        })
+      }),
+      Object.freeze({
+        slot: "bluefoxStudy",
+        title: "Examiner l’élément géologique le plus significatif",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["scoutSurvey"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["resonant_basalt", "magnetic_ore"]),
+          actor: "bluefox"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La chaleur explique ce que je sens. Pas forcément ce que la roche raconte. Je vais laisser le Scout chercher les répétitions."]),
+      completed: Object.freeze(["La chaleur est visible, mais la structure va plus profond. Ce territoire ne se résume pas à ce qui brûle en surface."])
+    })
+  });
+
+  const PHEN03 = Object.freeze({
+    id: "PHEN-03",
+    title: "La mémoire du froid",
+    description: "Comparer plusieurs matériaux dans un territoire froid afin de distinguer ce que le climat modifie de ce qu’il ne fait que préserver.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01"]),
+    priority: 208,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-01-OPPORTUNITIES",
+    ponderation: 0.85,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "frozen",
+      requiredObjects: Object.freeze([
+        Object.freeze({ type: "azure_ferrite", count: 2, contextRole: "phen03FrozenSample" }),
+        Object.freeze({ type: "magnetic_ore", count: 2, contextRole: "phen03FrozenSample" }),
+        Object.freeze({ type: "crystal", count: 2, contextRole: "phen03FrozenSample" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachFrozen",
+        title: "Rejoindre un nouveau territoire froid",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "referenceCold",
+        title: "Analyser un premier matériau dans le froid",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze(["reachFrozen"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["azure_ferrite", "magnetic_ore", "crystal", "thermosap_moss"]),
+          actor: "bluefox",
+          sequenceSlot: "referenceCold"
+        })
+      }),
+      Object.freeze({
+        slot: "compareCold",
+        title: "Comparer deux autres matériaux différents",
+        action: "analyze",
+        target: 2,
+        requires: Object.freeze(["referenceCold"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["azure_ferrite", "magnetic_ore", "crystal", "thermosap_moss"]),
+          actorsAny: Object.freeze(["bluefox", "scout"]),
+          distinctBy: "objectId",
+          relation: Object.freeze({ fromSlot: "referenceCold", differentBy: Object.freeze(["objectId"]) })
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le froid conserve des traces. Il peut aussi les déformer. Je dois comparer ce qui change réellement."]),
+      completed: Object.freeze(["Le climat transforme la manifestation, pas forcément sa cause. Certaines traces étaient là avant le froid."])
+    })
+  });
+
+  const PHEN04 = Object.freeze({
+    id: "PHEN-04",
+    title: "Une boussole affolée",
+    description: "Utiliser la première map balisée comme point fixe et laisser le Scout mesurer un gradient magnétique local à plusieurs positions.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01", "BAL-03"]),
+    priority: 211,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-01-OPPORTUNITIES",
+    ponderation: 0.95,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "fixedReference",
+        title: "Contrôler un repère magnétique près de la balise",
+        action: "analyze",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["magnetic_ore", "resonant_basalt", "crystal"]),
+          actor: "bluefox",
+          requiredMapFact: "tutorialExcursion:BAL-03",
+          requiredMapField: "generatedTargetMapId"
+        })
+      }),
+      Object.freeze({
+        slot: "gradient",
+        title: "Obtenir trois relevés Scout distincts sur la map balisée",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["fixedReference"]),
+        params: Object.freeze({
+          cuoTypes: Object.freeze(["magnetic_ore", "resonant_basalt", "crystal"]),
+          actor: "scout",
+          distinctBy: "instanceId",
+          requiredMapFact: "tutorialExcursion:BAL-03",
+          requiredMapField: "generatedTargetMapId"
+        })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La balise me donne enfin un point fixe. Si les mesures changent autour d’elle, ce n’est plus une anomalie ponctuelle : c’est un gradient."]),
+      completed: Object.freeze(["Les valeurs dérivent avec la position. Le champ est localisable, mesurable, et surtout pas uniforme."])
+    })
+  });
+
+  const PHEN05 = Object.freeze({
+    id: "PHEN-05",
+    title: "Ce qui refuse de tomber",
+    description: "Observer un ensemble suspendu puis faire reconnaître au Scout plusieurs éléments distincts afin de confirmer qu’il s’agit d’un phénomène structuré.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01"]),
+    priority: 209,
+    passivePriorityAxis: "exploration",
+    concurrentAvailabilityGroup: "PHEN-01-OPPORTUNITIES",
+    ponderation: 0.9,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "magnetic",
+      requiredObjects: Object.freeze([Object.freeze({ type: "mobile_islet", count: 3, contextRole: "phen05SuspendedSet" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachSuspended",
+        title: "Rejoindre un nouveau territoire magnétique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "bluefoxObserve",
+        title: "Observer personnellement un îlot suspendu",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachSuspended"]),
+        params: Object.freeze({ cuoType: "mobile_islet", actor: "bluefox" })
+      }),
+      Object.freeze({
+        slot: "scoutSet",
+        title: "Faire reconnaître trois éléments suspendus distincts par le Scout",
+        action: "observe",
+        target: 3,
+        requires: Object.freeze(["bluefoxObserve"]),
+        params: Object.freeze({ cuoType: "mobile_islet", actor: "scout", distinctBy: "instanceId" })
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Un rocher qui flotte est une curiosité. Plusieurs qui répondent au même endroit, c’est un système."]),
+      completed: Object.freeze(["Ce n’est pas un accident isolé. La lévitation dessine une zone cohérente, presque une structure invisible."])
+    })
+  });
+
+  const PHEN06 = Object.freeze({
+    id: "PHEN-06",
+    title: "L’orage sous l’orage",
+    description: "Limiter l’exposition de BlueFox et laisser le Scout relever une tempête électrostatique avant d’en tirer une première interprétation énergétique.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01"]),
+    priority: 212,
+    passivePriorityAxis: "research",
+    concurrentAvailabilityGroup: "PHEN-01-OPPORTUNITIES",
+    ponderation: 1,
+    navigation: Object.freeze({ autonomousUnknownTravel: true }),
+    mapGeneration: Object.freeze({
+      size: "random",
+      biome: "electrical",
+      requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-LOCAL-STORM-001", persistent: true, spawnOnce: true, contextRole: "phen06StormField" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "reachStorm",
+        title: "Rejoindre un nouveau territoire électrique",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" })
+      }),
+      Object.freeze({
+        slot: "scoutStorm",
+        title: "Faire relever la tempête électrostatique par le Scout",
+        action: "observe",
+        target: 1,
+        requires: Object.freeze(["reachStorm"]),
+        params: Object.freeze({ cuoType: "electrostatic_storm", actor: "scout" })
+      }),
+      Object.freeze({
+        slot: "interpret",
+        title: "Interpréter le relevé énergétique",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["scoutStorm"]),
+        params: Object.freeze({})
+      })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je n’ai aucune raison de mettre les pattes dans cette tempête si le Scout peut y aller pour moi. Je veux des données, pas une brûlure."]),
+      completed: Object.freeze(["L’orage n’est que la partie visible. Les mesures suggèrent une circulation énergétique plus profonde dans cette zone."])
+    })
+  });
+
+
   BF.BibleCatalog = Object.freeze([
     T01,
     T02,
@@ -10473,6 +10796,7 @@
     SUR05,
     SUR06,
     SUR07,
+    PHEN01, PHEN02, PHEN03, PHEN04, PHEN05, PHEN06,
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     ANN04,

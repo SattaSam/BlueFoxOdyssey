@@ -21,7 +21,7 @@ const catalog = loaded.catalog;
 const byId = new Map(catalog.map(m=>[m.id,m]));
 const ids = Array.from({length:12},(_,i)=>`EXP-${String(i+1).padStart(2,'0')}`);
 ids.forEach(id=>assert(byId.has(id), `${id} absent`));
-assert.strictEqual(catalog.length, 267, 'le catalogue attendu doit contenir 255 historiques + 12 EXP');
+assert(catalog.length >= 267, 'le catalogue doit conserver les 255 historiques + 12 EXP, sans interdire les lots missionnels ulterieurs');
 
 for (let i=1;i<12;i++) {
   assert.deepStrictEqual(Array.from(byId.get(ids[i]).prerequisites), [ids[i-1]], `${ids[i]} prerequis incorrect`);
