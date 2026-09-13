@@ -9968,6 +9968,148 @@
     })
   });
 
+
+  const EXP01 = Object.freeze({
+    id: "EXP-01", title: "Limites du territoire",
+    description: "Depuis une map déjà bien comprise, ouvrir trois passages distincts et revenir au point de départ après chaque excursion afin d’en comprendre les limites topologiques.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "GAME-exploration_complete", count: 1 }),
+    prerequisites: Object.freeze(["GAME-exploration_complete"]), bindActivationMap: true,
+    priority: 207, passivePriorityAxis: "exploration", ponderation: 0.9, obsessionEligible: true, obsessionIntensity: 3,
+    souvenir: true, memoryValence: "positive", scoreTrauma: 34,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot:"north", title:"Ouvrir un passage au Nord", action:"travel", target:1, requires:Object.freeze([]), params:Object.freeze({ eventDriven:true, newOnly:true, distinctBy:"mapId", direction:"north" }) }),
+      Object.freeze({ slot:"return1", title:"Revenir à la map de départ", action:"travel", target:1, requires:Object.freeze(["north"]), params:Object.freeze({ eventDriven:true, targetMapFact:"bibleActivation:EXP-01", targetMapField:"mapId", distinctBy:"transition" }) }),
+      Object.freeze({ slot:"east", title:"Ouvrir un passage à l’Est", action:"travel", target:1, requires:Object.freeze(["return1"]), params:Object.freeze({ eventDriven:true, newOnly:true, distinctBy:"mapId", direction:"east" }) }),
+      Object.freeze({ slot:"return2", title:"Revenir à la map de départ", action:"travel", target:1, requires:Object.freeze(["east"]), params:Object.freeze({ eventDriven:true, targetMapFact:"bibleActivation:EXP-01", targetMapField:"mapId", distinctBy:"transition" }) }),
+      Object.freeze({ slot:"west", title:"Ouvrir un passage à l’Ouest", action:"travel", target:1, requires:Object.freeze(["return2"]), params:Object.freeze({ eventDriven:true, newOnly:true, distinctBy:"mapId", direction:"west" }) }),
+      Object.freeze({ slot:"return3", title:"Revenir une dernière fois à la map de départ", action:"travel", target:1, requires:Object.freeze(["west"]), params:Object.freeze({ eventDriven:true, targetMapFact:"bibleActivation:EXP-01", targetMapField:"mapId", distinctBy:"transition" }) })
+    ]),
+    narrative:Object.freeze({ revealed:Object.freeze(["Je connais cette map, mais pas encore ses limites. Je vais voir jusqu’où ses passages me mènent."]), completed:Object.freeze(["Trois chemins, trois territoires différents… cette zone commence enfin à avoir une forme dans ma tête."]) })
+  });
+
+  const EXP02 = Object.freeze({
+    id:"EXP-02", title:"Comprendre le territoire", description:"Explorer réellement une nouvelle map naturelle à 60 %, puis synthétiser l’organisation générale du terrain et d’une micro-scène naturelle.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-01",count:1}), prerequisites:Object.freeze(["EXP-01"]),
+    priority:206, passivePriorityAxis:"exploration", ponderation:0.9, obsessionEligible:true, obsessionIntensity:3, souvenir:true, memoryValence:"positive", scoreTrauma:36,
+    navigation:Object.freeze({autonomousUnknownTravel:true,singleUnknownTransition:true}),
+    mapGeneration:Object.freeze({compatibleBiomes:Object.freeze(["forest","jungle","swamp"]), requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-FERN-CLEARING-001",persistent:true,spawnOnce:true,contextRole:"exp02NatureContext"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"reach",title:"Découvrir un nouveau territoire naturel",action:"travel",target:1,params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp02:map",completionArrivalField:"mapId"})}),
+      Object.freeze({slot:"explore",title:"Explorer 60 % de cette map",action:"explore-zone",target:60,requires:Object.freeze(["reach"]),params:Object.freeze({scope:"map",metric:"surfacePercent",threshold:60,requiredMapFact:"exp02:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"context",title:"Observer la scène naturelle et synthétiser le territoire",action:"observe",target:1,requires:Object.freeze(["explore"]),params:Object.freeze({microSceneId:"MSC-FERN-CLEARING-001",requiredMapFact:"exp02:map",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["Regarder une grande partie d’une map ne suffit pas si je ne comprends pas comment tout s’organise."]),completed:Object.freeze(["Relief, végétation, repères… maintenant je vois la logique de cet endroit, pas seulement ses morceaux."])})
+  });
+
+  const EXP03 = Object.freeze({
+    id:"EXP-03",title:"Un savoir ancien",description:"Pousser l’exploration plus loin et étudier un ancien atelier afin d’identifier une civilisation d’artisans aux techniques avancées.",
+    pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-02",count:1}),prerequisites:Object.freeze(["EXP-02"]),
+    priority:205,passivePriorityAxis:"research",ponderation:1,obsessionEligible:true,obsessionIntensity:5,souvenir:true,memoryValence:"positive",scoreTrauma:62,
+    navigation:Object.freeze({autonomousUnknownTravel:true,singleUnknownTransition:true}),mapGeneration:Object.freeze({requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-CUSTOM-ETABLI",persistent:true,spawnOnce:true,contextRole:"exp03AncientWorkshop"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"reach",title:"Découvrir un territoire plus lointain",action:"travel",target:1,params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp03:map",completionArrivalField:"mapId"})}),
+      Object.freeze({slot:"observe",title:"Observer l’ancien atelier",action:"observe",target:1,requires:Object.freeze(["reach"]),params:Object.freeze({microSceneId:"MSC-CUSTOM-ETABLI",requiredMapFact:"exp03:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"analyze",title:"Analyser trois éléments techniques distincts",action:"analyze",target:3,requires:Object.freeze(["observe"]),params:Object.freeze({microSceneId:"MSC-CUSTOM-ETABLI",cuoTypes:Object.freeze(["stele","needle","pulse_core","memory_capsule","relay_block","ancient_machine_wreck"]),distinctBy:"objectId",requiredMapFact:"exp03:map",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["Ça ressemble à un atelier… mais pas au genre de bricolage que je pourrais improviser."]),completed:Object.freeze(["Ils expérimentaient. Et plutôt bien. J’aimerais comprendre jusqu’où leurs techniques pouvaient aller."])})
+  });
+
+  const EXP04 = Object.freeze({
+    id:"EXP-04",title:"Une source permanente",description:"À plus de dix maps de toute infrastructure établie, étudier une mare et son ruisseau comme futur point d’appui logistique.",
+    pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true}),prerequisites:Object.freeze(["EXP-03"]),bindActivationMap:true,targetMapFact:"bibleActivation:EXP-04",targetMapField:"mapId",triggerOnly:true,
+    siteDistanceGate:Object.freeze({kinds:Object.freeze(["camp","refuge","base"]),minimumExclusive:10}),priority:204,passivePriorityAxis:"survival",ponderation:1,obsessionEligible:true,obsessionIntensity:4,souvenir:true,memoryValence:"positive",scoreTrauma:54,
+    mapGeneration:Object.freeze({compatibleBiomes:Object.freeze(["forest","jungle","swamp"]),requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-CUSTOM-RUISSEAU-MARE",persistent:true,spawnOnce:true,contextRole:"exp04PermanentWater"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"water",title:"Observer la mare et le cours d’eau",action:"observe",target:1,params:Object.freeze({cuoTypes:Object.freeze(["watercourse","pool"]),microSceneId:"MSC-CUSTOM-RUISSEAU-MARE",requiredMapFact:"bibleActivation:EXP-04",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"study",title:"Analyser cette source comme point d’appui durable",action:"analyze",target:1,requires:Object.freeze(["water"]),params:Object.freeze({cuoTypes:Object.freeze(["watercourse","pool"]),microSceneId:"MSC-CUSTOM-RUISSEAU-MARE",requiredMapFact:"bibleActivation:EXP-04",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["De l’eau permanente, si loin de mes sites… ça change complètement la valeur de cette zone."]),completed:Object.freeze(["Une source fiable ici pourrait devenir le cœur d’un vrai point d’appui."])})
+  });
+
+  const EXP05 = Object.freeze({
+    id:"EXP-05",title:"Carte des ressources locales",description:"Depuis la source EXP-04, découvrir un gisement voisin, observer trois ressources, prélever deux unités de deux minerais distincts puis revenir à la source.",pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-04",count:1}),prerequisites:Object.freeze(["EXP-04"]),priority:203,passivePriorityAxis:"collection",ponderation:0.95,obsessionEligible:true,obsessionIntensity:4,souvenir:true,memoryValence:"positive",scoreTrauma:48,
+    navigation:Object.freeze({autonomousUnknownTravel:true,singleUnknownTransition:true}),mapGeneration:Object.freeze({compatibleBiomes:Object.freeze(["mountain","magnetic","crystalline"]),requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-CUSTOM-CARRIEREDECRISTAUX1",persistent:true,spawnOnce:true,contextRole:"exp05ResourceDeposit"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"reach",title:"Découvrir un gisement voisin",action:"travel",target:1,params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp05:map",completionArrivalField:"mapId"})}),
+      Object.freeze({slot:"observe",title:"Observer trois types de ressources minérales distincts",action:"observe",target:3,requires:Object.freeze(["reach"]),params:Object.freeze({subject:"mineral",distinctBy:"cuoType",requiredMapFact:"exp05:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"mineralA1",title:"Collecter une première unité d’un minerai",action:"collect",target:1,requires:Object.freeze(["observe"]),params:Object.freeze({subject:"mineral",requiredMapFact:"exp05:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"mineralA2",title:"Collecter une seconde unité du même minerai",action:"collect",target:1,requires:Object.freeze(["mineralA1"]),params:Object.freeze({subject:"mineral",relation:Object.freeze({fromSlot:"mineralA1",sameBy:Object.freeze(["cuoType"])}),requiredMapFact:"exp05:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"mineralB1",title:"Collecter une unité d’un second minerai distinct",action:"collect",target:1,requires:Object.freeze(["mineralA2"]),params:Object.freeze({subject:"mineral",relation:Object.freeze({fromSlot:"mineralA1",differentBy:Object.freeze(["cuoType"])}),requiredMapFact:"exp05:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"mineralB2",title:"Collecter une seconde unité de ce second minerai",action:"collect",target:1,requires:Object.freeze(["mineralB1"]),params:Object.freeze({subject:"mineral",relation:Object.freeze({fromSlot:"mineralB1",sameBy:Object.freeze(["cuoType"])}),requiredMapFact:"exp05:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"return",title:"Revenir à la source EXP-04",action:"travel",target:1,requires:Object.freeze(["mineralB2"]),params:Object.freeze({eventDriven:true,targetMapFact:"bibleActivation:EXP-04",targetMapField:"mapId",distinctBy:"transition"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Si les ressources sont proches aussi, cette source devient beaucoup plus intéressante."]),completed:Object.freeze(["Le trajet est simple, les minerais sont là… je pourrais presque travailler depuis la source."])})
+  });
+
+  const EXP06 = Object.freeze({
+    id:"EXP-06",title:"Frontière de deux mondes",description:"Depuis la source EXP-04, atteindre un nouveau territoire d’un biome volontairement différent et confirmer la valeur de la source comme carrefour logistique.",pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-05",count:1}),prerequisites:Object.freeze(["EXP-05"]),priority:202,passivePriorityAxis:"exploration",ponderation:1,obsessionEligible:true,obsessionIntensity:5,souvenir:true,memoryValence:"positive",scoreTrauma:72,
+    navigation:Object.freeze({autonomousUnknownTravel:true,singleUnknownTransition:true}),mapGeneration:Object.freeze({compatibleBiomes:Object.freeze(["mountain","magnetic","crystalline"]),requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-CUSTOM-CACTUS-ORE",persistent:true,spawnOnce:true,contextRole:"exp06RichBiome"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"returnSource",title:"Revenir d’abord sur la map EXP-04",action:"travel",target:1,params:Object.freeze({eventDriven:true,targetMapFact:"bibleActivation:EXP-04",targetMapField:"mapId",distinctBy:"transition"})}),
+      Object.freeze({slot:"reach",title:"Découvrir depuis EXP-04 un second milieu",action:"travel",target:1,requires:Object.freeze(["returnSource"]),params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp06:map",completionArrivalField:"mapId"})}),
+      Object.freeze({slot:"compare",title:"Observer un élément caractéristique de ce nouveau milieu",action:"observe",target:1,requires:Object.freeze(["reach"]),params:Object.freeze({microSceneId:"MSC-CUSTOM-CACTUS-ORE",requiredMapFact:"exp06:map",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Deux environnements très différents accessibles depuis le même point… ce n’est plus seulement une belle source."]),completed:Object.freeze(["Eau, ressources et plusieurs milieux autour. J’aimerais vraiment avoir un camp ici un jour."])})
+  });
+
+  const EXP07 = Object.freeze({
+    id:"EXP-07",title:"Une anomalie locale",description:"Découvrir une map où une tempête électrostatique et trois stèles anciennes coexistent, puis étudier les quatre indices.",pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-06",count:1}),prerequisites:Object.freeze(["EXP-06"]),priority:201,passivePriorityAxis:"research",ponderation:1,obsessionEligible:true,obsessionIntensity:5,souvenir:true,memoryValence:"positive",scoreTrauma:74,
+    navigation:Object.freeze({autonomousUnknownTravel:true,singleUnknownTransition:true}),mapGeneration:Object.freeze({compatibleBiomes:Object.freeze(["magnetic","crystalline","alien"]),requiredObjects:Object.freeze([Object.freeze({type:"electrostatic_storm",count:1,contextRole:"exp07Storm"}),Object.freeze({type:"stele",count:3,contextRole:"exp07Steles"}),Object.freeze({type:"nocturnal_animal",count:1,contextRole:"exp08NightFauna"}),Object.freeze({type:"lunar_vine",count:1,contextRole:"exp08NightFlora"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"reach",title:"Découvrir le territoire de l’anomalie",action:"travel",target:1,params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp07:map",completionArrivalField:"mapId"})}),
+      Object.freeze({slot:"storm",title:"Observer la tempête électrostatique",action:"observe",target:1,requires:Object.freeze(["reach"]),params:Object.freeze({cuoType:"electrostatic_storm",requiredMapFact:"exp07:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"steles",title:"Analyser les trois stèles présentes sur cette map",action:"analyze",target:3,requires:Object.freeze(["storm"]),params:Object.freeze({cuoType:"stele",distinctBy:"instanceId",requiredMapFact:"exp07:map",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Une tempête, et trois stèles au même endroit ? Ce n’est probablement pas une coïncidence."]),completed:Object.freeze(["Ces marques ne sont pas là par hasard. Je ne suis visiblement pas le premier à m’interroger sur ce phénomène."])})
+  });
+
+  const EXP08 = Object.freeze({
+    id:"EXP-08",title:"Map après la nuit",description:"Attendre le visage nocturne du territoire EXP-07 et y observer une créature nocturne ainsi qu’une manifestation végétale bioluminescente déjà garanties sur cette map.",pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-07",count:1}),prerequisites:Object.freeze(["EXP-07"]),priority:200,passivePriorityAxis:"research",ponderation:0.95,obsessionEligible:true,obsessionIntensity:4,souvenir:true,memoryValence:"positive",scoreTrauma:52,
+    targetMapFact:"exp07:map",targetMapField:"mapId",
+    sequence:Object.freeze([
+      Object.freeze({slot:"animal",title:"Attendre la nuit et observer la créature nocturne de la map EXP-07",action:"observe",target:1,params:Object.freeze({cuoType:"nocturnal_animal",requiredMapFact:"exp07:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"flora",title:"Observer la liane lunaire de cette même map",action:"observe",target:1,requires:Object.freeze(["animal"]),params:Object.freeze({cuoType:"lunar_vine",requiredMapFact:"exp07:map",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Je connais cette map de jour. La nuit, elle raconte peut-être autre chose."]),completed:Object.freeze(["Même terrain, autre vie. Je regardais seulement la moitié de ce monde."])})
+  });
+
+  const EXP09 = Object.freeze({
+    id:"EXP-09",title:"Après la tempête",description:"Revenir sur la map EXP-07 après l’expérience nocturne et réanalyser ses trois stèles afin de distinguer les changements d’état de ce qui persiste.",pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-08",count:1}),prerequisites:Object.freeze(["EXP-08"]),priority:199,passivePriorityAxis:"research",ponderation:1,obsessionEligible:true,obsessionIntensity:5,souvenir:true,memoryValence:"positive",scoreTrauma:66,
+    sequence:Object.freeze([
+      Object.freeze({slot:"return",title:"Revenir sur la map de l’anomalie EXP-07",action:"travel",target:1,params:Object.freeze({eventDriven:true,targetMapFact:"exp07:map",targetMapField:"mapId",distinctBy:"transition"})}),
+      Object.freeze({slot:"steles",title:"Réanalyser les trois stèles de cette map",action:"analyze",target:3,requires:Object.freeze(["return"]),params:Object.freeze({cuoType:"stele",distinctBy:"instanceId",requiredMapFact:"exp07:map",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Je veux revoir les stèles maintenant que les conditions ont changé."]),completed:Object.freeze(["Le décor change, l’environnement change… mais quelque chose persiste. Une forme d’énergie reste présente."])})
+  });
+
+  const EXP10 = Object.freeze({
+    id:"EXP-10",title:"Vestiges silencieux",description:"Étudier brièvement un nouveau vestige sans dupliquer la branche ARCH, afin de renforcer la curiosité archéologique de BlueFox.",pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-09",count:1}),prerequisites:Object.freeze(["EXP-09"]),priority:198,passivePriorityAxis:"research",ponderation:1,obsessionEligible:true,obsessionIntensity:5,souvenir:true,memoryValence:"positive",scoreTrauma:78,
+    navigation:Object.freeze({autonomousUnknownTravel:true,singleUnknownTransition:true}),mapGeneration:Object.freeze({requiredObjects:Object.freeze([Object.freeze({type:"tech_relic",count:1,contextRole:"exp10Vestige"})])}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"reach",title:"Découvrir un territoire portant un vestige",action:"travel",target:1,params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp10:map",completionArrivalField:"mapId"})}),
+      Object.freeze({slot:"observe",title:"Observer le vestige",action:"observe",target:1,requires:Object.freeze(["reach"]),params:Object.freeze({cuoType:"tech_relic",requiredMapFact:"exp10:map",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"analyze",title:"Analyser le vestige sans ouvrir une enquête parallèle",action:"analyze",target:1,requires:Object.freeze(["observe"]),params:Object.freeze({cuoType:"tech_relic",requiredMapFact:"exp10:map",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Encore un vestige. Plus j’avance, plus ces traces semblent appartenir à une histoire immense."]),completed:Object.freeze(["Je veux comprendre ceux qui vivaient ici. Je crois que ces ruines vont continuer à m’attirer."])})
+  });
+
+  const EXP11 = Object.freeze({
+    id:"EXP-11",title:"Le chemin du retour",description:"Interrompre l’expédition pour revenir physiquement vers le réseau de Camp/Refuge/Base et transformer ce retour en besoin logistique d’expérimentation plus proche.",pattern:"TRAVEL_CYCLE",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-10",count:1}),prerequisites:Object.freeze(["EXP-10"]),priority:197,passivePriorityAxis:"research",ponderation:1,obsessionEligible:true,obsessionIntensity:4,souvenir:true,memoryValence:"positive",scoreTrauma:58,
+    targetMapFact:"bibleActivation:EXP-04",targetMapField:"mapId",
+    slots:Object.freeze({travel:Object.freeze({title:"Revenir physiquement vers le point d’appui connu",target:1,params:Object.freeze({eventDriven:true,targetMapFact:"bibleActivation:EXP-04",targetMapField:"mapId",distinctBy:"transition"})})}),
+    narrative:Object.freeze({revealed:Object.freeze(["J’ai assez de données pour travailler, mais pas ici. Il faut rentrer."]),completed:Object.freeze(["Revenir aussi loin chaque fois que je veux expérimenter… si seulement j’avais un établi plus près de mes zones d’étude."])})
+  });
+
+  const EXP12 = Object.freeze({
+    id:"EXP-12",title:"Expertise locale",description:"Découvrir deux nouvelles maps après le déclenchement, y reconnaître trois micro-scènes garanties et explorer intégralement la seconde.",pattern:"SEQUENCE_ACTIONS",trigger:Object.freeze({type:"progression.mission_completed",missionId:"EXP-11",count:1}),prerequisites:Object.freeze(["EXP-11"]),priority:196,passivePriorityAxis:"exploration",ponderation:1,obsessionEligible:true,obsessionIntensity:5,souvenir:true,memoryValence:"positive",scoreTrauma:76,
+    navigation:Object.freeze({autonomousUnknownTravel:true,repeatUnknownTravelUntilComplete:true}),
+    sequence:Object.freeze([
+      Object.freeze({slot:"map1",title:"Découvrir une première nouvelle map",action:"travel",target:1,params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp12:map1",completionArrivalField:"mapId",mapGenerationOnCount:Object.freeze({1:Object.freeze({requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-FERN-CLEARING-001",persistent:true,spawnOnce:true,contextRole:"exp12Map1Context"})])})})})}),
+      Object.freeze({slot:"msc1",title:"Découvrir la micro-scène de la première map",action:"observe",target:1,requires:Object.freeze(["map1"]),params:Object.freeze({microSceneId:"MSC-FERN-CLEARING-001",requiredMapFact:"exp12:map1",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"map2",title:"Découvrir une deuxième nouvelle map",action:"travel",target:1,requires:Object.freeze(["msc1"]),params:Object.freeze({eventDriven:true,newOnly:true,distinctBy:"mapId",completionArrivalFact:"exp12:map2",completionArrivalField:"mapId",mapGenerationOnCount:Object.freeze({1:Object.freeze({requiredMicroScenes:Object.freeze([Object.freeze({id:"MSC-CUSTOM-CARRIERE",persistent:true,spawnOnce:true,contextRole:"exp12Map2ContextA"}),Object.freeze({id:"MSC-CUSTOM-CORAILBIOLUMINESCENT1",persistent:true,spawnOnce:true,contextRole:"exp12Map2ContextB"})])})})})}),
+      Object.freeze({slot:"msc2a",title:"Découvrir une première micro-scène sur la seconde map",action:"observe",target:1,requires:Object.freeze(["map2"]),params:Object.freeze({microSceneId:"MSC-CUSTOM-CARRIERE",requiredMapFact:"exp12:map2",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"msc2b",title:"Découvrir une seconde micro-scène sur la seconde map",action:"observe",target:1,requires:Object.freeze(["msc2a"]),params:Object.freeze({microSceneId:"MSC-CUSTOM-CORAILBIOLUMINESCENT1",requiredMapFact:"exp12:map2",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"explore100",title:"Explorer intégralement l’une des deux nouvelles maps",action:"explore-zone",target:100,requires:Object.freeze(["msc2b"]),params:Object.freeze({scope:"map",metric:"surfacePercent",threshold:100,requiredMapFact:"exp12:map2",requiredMapField:"mapId"})})
+    ]),narrative:Object.freeze({revealed:Object.freeze(["Deux territoires de plus. Cette fois, je veux vraiment les comprendre jusqu’au bout."]),completed:Object.freeze(["Je ne traverse plus seulement des maps. Je commence à connaître ce monde comme un territoire."])})
+  });
+
   BF.BibleCatalog = Object.freeze([
     T01,
     T02,
@@ -10137,6 +10279,7 @@
     SUR05,
     SUR06,
     SUR07,
+    EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ANN04,
     ANN06,
     ANN03,
