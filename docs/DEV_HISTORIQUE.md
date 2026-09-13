@@ -1,5 +1,126 @@
 # BLUEFOX ODYSSEY — DEV HISTORIQUE
 
+## Session des 13–14 septembre 2026 — CARN/STORM, Téléportation, réconciliation inter-chantiers et continuité documentaire
+
+### Base finale vérifiée
+- CARN/STORM + CUO Lab : `d521af2f3d6e5f221975d64729ec7eff8cc11606` — `CARN/STORM + CUO-lab fix`.
+- Téléportation complète : `e76af8f6bfba8dd599912c50e50ce641338c5985` — `TP complet`.
+- Réconciliation finale : `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` — `restaure CARN/STORM`.
+- Checkpoint de santé toujours applicable : `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — `fix Save`.
+
+### CARN/STORM
+Les anciennes intentions TERR ont été abandonnées au profit de deux rencontres dangereuses opportunistes :
+- `TERR-CARN-01→04` ;
+- `TERR-STORM-01→04`.
+
+Progression retenue :
+1. approche/exposition trop directe avec conséquence forte ;
+2. récidive moins exposée et souvenir négatif ;
+3. observation prudente, notamment sous contrainte d'énergie ;
+4. observation brève et maîtrisée, sans exposition prolongée.
+
+Contrat technique :
+- occurrences MSC 1→2→3→4 avec `uniqueOnly` ;
+- objectifs d'observation réellement ciblés ;
+- opportunité fortement pondérée à l'entrée lorsqu'elle est présente ;
+- poids renforcé sur trajets missionnels longs ;
+- reprise du trajet principal après traitement ;
+- aucune nouvelle couche de scheduler.
+
+Le correctif CUO Lab associé rend la fenêtre de test des mouvements PNJ fermable et ne l'affiche que lorsqu'un PNJ est sélectionné.
+
+### Téléportation TP-10 / TP-11
+TP-10 et TP-11 ont été intégrées au moteur avec les contraintes suivantes :
+- hub unique `MSC-CUSTOM-ASTROLOGY` ;
+- ASTROLOGY ancrée comme site TP réel ;
+- arches d'ASTROLOGY traversables uniquement dans cette MSC ;
+- au moins 4 balises persistantes déployées, non consommées ;
+- destinations = maps connues possédant une balise réellement déployée ;
+- hub↔balise uniquement, aucun beacon↔beacon ;
+- téléportation initiée par le joueur uniquement ;
+- calibration + transfert de matière inerte avant BlueFox ;
+- trajet BlueFox hub→balise puis balise→hub ;
+- aucun gain synthétique d'exploration ni génération de map ;
+- arrivée sûre sur zone marchable ;
+- transition canonique et restauration de l'état/caméra/contrôles.
+
+Ressources confirmées :
+- 100 minerais ;
+- 50 composants ;
+- 20 cores ;
+- 100 fibres ;
+- 50 biocapital végétal exclusivement Thermosève + plantes fluorescentes ;
+- 10 accumulateurs ;
+- sous-assemblages issus des blueprints déjà acquis.
+
+Un défaut d'autorité missionnelle détecté lors de la validation a été corrigé : les étapes runtime spécialisées TP ne peuvent plus être complétées par un fallback RESEARCH générique du Planner.
+
+### Régression inter-chantier et règle de livraison
+Le commit TP a été construit initialement contre une base antérieure à CARN/STORM. Après commit sur le parent réel `d521af2f…`, `data/bible-catalog.js` avait réécrasé les huit définitions CARN/STORM.
+
+Le SHA `e76af8f6…` a donc été refusé en non-régression inter-chantier malgré la validité intrinsèque du lot TP.
+
+Le correctif `bca4b01b…` restaure les huit missions CARN/STORM sans retirer TP-10/11. Cette séquence établit un garde-fou durable :
+- un ZIP validé contre sa base de fabrication n'est pas automatiquement committable si le parent Git a changé ;
+- avant commit/finalisation, comparer le candidat au **parent réel courant** ;
+- après commit, contrôler le SHA final et la coexistence des chantiers qui partagent des fichiers.
+
+### Continuité post-TP documentée
+Le chantier Téléportation ne se termine pas avec TP-11.
+
+Séquence restant à industrialiser :
+- `TP-AFTER-01 — Le monde paraît plus petit` ;
+- `TP-AFTER-02 — Le chemin du retour` ;
+- `TP-AFTER-03 — Cela peut servir à autre chose` ;
+- `TP-AFTER-04 — Et maintenant ?`.
+
+Fonction : appropriation réelle du téléporteur, puis baisse forte du poids/obsession Téléportation afin que le BAC réarbitre les autres axes.
+
+Le téléporteur devient ensuite une infrastructure transversale, jamais une branche dominante ni un automatisme BAC.
+
+### EXP-LONG / maturation
+Un bloc d'expéditions lointaines doit laisser le monde continuer à vivre après TP :
+- utilisation du réseau pour faciliter les expéditions et retours ;
+- reprise des branches scientifique, environnementale, archéologique et relationnelle encore ouvertes ;
+- pas de déclenchement de fin automatique par simple possession du TP.
+
+### END-CHOICE / FIN
+La fin prévue reste :
+- retour au Camp / lieu de départ ;
+- `END-CHOICE — Là où je suis arrivé` ;
+- choix **Rester** ou **Trouver un moyen de rentrer**.
+
+Branche Rester :
+- choix mémorisé ;
+- pas de générique imposé ;
+- monde ouvert poursuivable.
+
+Branche retour :
+- `FIN-01 — Ce qu'ils m'ont appris` : passage par le Temple, finalisation de la connaissance, adieux Rocky/Translucides ;
+- `FIN-02 — Le point de départ` : retour capsule, intégration du **Noyau de navigation résonante**, capsule enfin potentiellement opérationnelle, entrée de BlueFox, fondu noir, générique.
+
+La capsule n'est pas rétroactivement considérée comme réparée avant cette phase. La réparation finale est l'aboutissement des connaissances acquises pendant l'aventure, pas une nouvelle grosse boucle de grind.
+
+### Chantier missions OPPORTUNITÉS
+Le lot OPPORTUNITÉS MSC est désormais un chantier officiel de la TODO.
+
+Principes validés :
+- pas de map générée par une mission OPP ;
+- MSC d'abord produite par la génération/peuplement normal ;
+- opportunité disponible à l'entrée/découverte si la MSC qualifiante est réellement présente ;
+- forte pondération possible sans écraser directive joueur ou primaire runnable ;
+- reprise du trajet principal après opportunité ;
+- pas de scheduler parallèle ;
+- MSC déjà missionnées/protégées non réutilisées ;
+- retours de mini-séries sur la même map + même instance persistante ;
+- Orchidée et `MSC-ABANDONED-DRONE-001` destinées à des mini-suites approfondies ;
+- apparitions PNJ/faune réutilisent les propriétaires existants ;
+- `lowMissionProgress` ne doit pas rendre les opportunités structurellement impossibles à faire apparaître.
+
+CARN/STORM servent de première référence industrialisée de rencontre opportuniste dangereuse.
+
+---
+
 ## Session du 13 septembre 2026 — ANN-01→07 / synchronisation exhaustive Bible
 
 ### Base et commit validé

@@ -1,6 +1,7 @@
 # BlueFox Odyssey — Architecture technique
 
-Référence technique auditée : **commit `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — 12 septembre 2026 — `fix Save`**
+Référence technique auditée : **checkpoint R-HEALTH `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — 12 septembre 2026 — `fix Save`**  
+Synchronisation missionnelle courante : **HEAD `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` — 13 septembre 2026 — `restaure CARN/STORM`**.
 
 Ce document décrit les propriétaires et contrats effectifs à préserver. Le HEAD courant et les validations runtime plus récentes priment sur toute description antérieure contradictoire.
 
@@ -40,12 +41,13 @@ Ce document décrit les propriétaires et contrats effectifs à préserver. Le H
 | Intégration BAC | `engine/behavior-arbitration-integration.js` | Raccord runtime, sans posséder le lifecycle |
 | Budget CPU | `engine/runtime-budget.js` | Unique throttling adaptatif |
 | Progression / inventaire | `engine/progression-registry.js` | Stock physique et progression canonique |
-| Objets spéciaux / drones / balise | `engine/special-object-runtime.js` | Runtime réel des objets spéciaux |
+| Objets spéciaux / drones / balise / téléporteur | `engine/special-object-runtime.js` | Runtime réel des objets spéciaux et réseau TP |
+| Transition TP / monde | `engine/world-engine.js` + raccords de transition existants | Lifecycle de changement de map, relocalisation, événement canonique |
 | NPC / comportement relationnel | `engine/npc-runtime.js` + propriétaires relation existants | Approche, réaction physique, dialogue et signaux relationnels |
 | Relations / commerce | `engine/mission-catalog.js` + mémoire/faits/recherche existants | Réputation, échanges, coûts physiques, connaissances/blueprints |
 | Recherche / effets / recettes | `engine/bible-runtime-v0-1-unified.js` + UI consommatrice | Le runtime reste propriétaire métier |
 | Inventaire UI / Kit | `engine/inventory-ui-bridge.js` + `engine/inventory-ui-clean-v0-2.js` | Présentation/transport ; aucune logique métier d'objet |
-| UI générale / Journal | `engine/ui-enhancements.js` | Présentation et déclenchement lazy du Journal |
+| UI générale / Journal / présentation TP | `engine/ui-enhancements.js` | Présentation seulement ; aucune décision d'éligibilité TP |
 | Sauvegarde UI/snapshot | `engine/save-ui-bridge.js` | Sélection du slot et snapshot après flush |
 | Hydratation missions sauvegardées | `engine/mission-manager.js` | Préserve l'état tant que les définitions nécessaires ne sont pas encore disponibles |
 | `map-registry.js` | **PROTÉGÉ** | Aucun ajout de logique mission/objet/population |
@@ -69,6 +71,18 @@ Le mécanisme de transition missionnelle couvre :
 Une secondaire locale réellement runnable peut retarder un départ lorsque le contrat le permet. Une fois terminée/non-runnable, la transition primaire reprend.
 
 Les retries restent réveillés par causes réelles ; aucun polling de runnabilité parallèle.
+
+### Autorité des étapes runtime spécialisées
+
+Une étape réellement possédée par un runtime métier ne doit pas pouvoir être complétée par un fallback générique du Planner.
+
+Application TP validée :
+- assemblage TP-10 ;
+- calibration TP-11 ;
+- transfert de matière inerte TP-11 ;
+- déplacements téléportés.
+
+Ces étapes restent déclarées `eventDriven`/runtime-managed dans le catalogue et leur progression provient des événements/actions du propriétaire réel.
 
 ## BAC / expérimentation-prérequis
 
@@ -127,6 +141,54 @@ Règle générale :
 
 Les extensions de données MSC ne doivent jamais devenir un deuxième propriétaire de placement ou de progression.
 
+### MSC missionnelles / opportunités
+
+Pour une opportunité basée sur une MSC remarquable :
+- la génération/peuplement normal reste propriétaire de l'apparition ;
+- la mission ne génère pas sa propre map pour se satisfaire ;
+- l'activation peut consommer l'identité de MSC déjà réellement générée ;
+- `context-msc-bridge.js`, ObjectM0 et BibleRuntime restent les consommateurs missionnels ;
+- si une mini-série exige un retour, `MissionMemory` doit mémoriser map + identité persistante et `PersistentMicroScenes` doit préserver la même instance ;
+- une MSC déjà réservée/protégée par un autre contrat missionnel ne doit pas être recyclée sans décision explicite ;
+- aucun scheduler OPP parallèle n'est autorisé.
+
+Les missions CARN/STORM utilisent ce principe d'opportunité avec une progression dangereuse en quatre occurrences, sans devenir propriétaire de la génération de map.
+
+## Téléporteur
+
+### Runtime et réseau
+
+Le téléporteur est porté par `special-object-runtime.js` et les propriétaires monde/transition existants.
+
+Contrat :
+- hub unique : `MSC-CUSTOM-ASTROLOGY` ;
+- destination = map connue avec balise persistante réellement déployée ;
+- hub↔balise seulement ;
+- aucune balise↔balise ;
+- au moins quatre balises persistantes pour TP-11 ;
+- balises non consommées par la téléportation ;
+- BlueFox proche de la source ;
+- refus si action/séquence non interruptible ;
+- prévention du double transfert ;
+- aucune génération de map, découverte ou exploration synthétique.
+
+### ASTROLOGY
+
+Les arches de `MSC-CUSTOM-ASTROLOGY` sont traversables uniquement dans cette MSC. Le contrat collider global des arches reste inchangé partout ailleurs.
+
+### Transition
+
+La téléportation réutilise le lifecycle canonique de transition :
+- lock contrôle ;
+- FX ;
+- chargement map ;
+- relocalisation sûre ;
+- sauvegarde/caméra/état ;
+- `bluefox:map-transition-completed` ;
+- restauration contrôle.
+
+L'événement est distingué par `source:"teleporter"` et `mode:"teleport"`.
+
 ## Progression / inventaire / Kit
 
 `ProgressionRegistry` reste propriétaire du stock physique.
@@ -141,7 +203,7 @@ Le Kit d'expédition :
 
 ## Relations / civilisations
 
-Le sous-système relationnel actuel comprend désormais :
+Le sous-système relationnel actuel comprend :
 - réactions NPC à l'approche ;
 - fuite canonique lors d'une fermeture intrusive ;
 - comportement prudent après approche stable ;
@@ -152,6 +214,8 @@ Le sous-système relationnel actuel comprend désormais :
 
 Les couches missionnelles CONTACT/DIP consomment ces capacités ; elles ne doivent pas devenir propriétaires parallèles du comportement NPC ou du stock.
 
+Les futures missions FIN doivent réutiliser ces acquis pour les interactions finales Rocky/Translucides, sans créer de système d'adieux parallèle.
+
 ## Énergie, balise et drones
 
 ### ENE
@@ -161,19 +225,34 @@ ENE-11→15 est présente au HEAD R-HEALTH. Les missions réutilisent l'établi,
 Le runtime réel est porté par `special-object-runtime.js`.
 La balise déployée est représentée par sa MSC/runtime existant.
 Les missions `BAL-01→03` consomment ces propriétaires ; aucune logique de balise parallèle.
+Une balise persistante peut être consommée comme **destination logique** du réseau TP sans être consommée physiquement.
 
 ### Drones
-`DRN-01→04` réutilise le runtime existant :
+`DRN-01→05` réutilise le runtime existant :
 - Blueprint Scout ;
 - Blueprint Harvest ;
 - déploiement/récolte distante sur map balisée ;
 - priorité et dépôt cargo ;
-- console dans Recherche.
+- console dans Recherche ;
+- dépannage terrain.
 
 Le Scout :
 - observe les objets de map ;
 - alimente le compteur historique global via `OBJECT_SEEN`;
 - ne réalise pas d'observations missionnelles ordinaires sauf demande explicite de mission.
+
+## Fin de jeu — contrat d'architecture
+
+La fin reste missionnelle et consomme les propriétaires existants :
+- TP-AFTER utilise le runtime TP + MissionManager/BAC ;
+- EXP-LONG utilise topologie/navigation/réseau existants ;
+- END-CHOICE mémorise un choix de branche dans MissionMemory ;
+- FIN-01 consomme les propriétaires relation/recherche existants ;
+- FIN-02 utilise la capsule/objet réel et les effets de fin existants ou, s'ils manquent, un chantier moteur séparé explicitement audité.
+
+Aucun « moteur de fin » parallèle ne doit être créé tant que les propriétaires existants peuvent porter le besoin.
+
+La capsule reste non réparée avant FIN-02. Le **Noyau de navigation résonante** est un résultat final de synthèse, pas un état rétroactif ni une ressource disponible prématurément.
 
 ## Sauvegarde / hydratation
 
@@ -185,7 +264,7 @@ Depuis `560249…`, MissionManager protège le cas où un état sauvegardé réf
 - dès que la définition devient disponible, l'hydratation peut reprendre dans MissionManager ;
 - aucun moteur de sauvegarde missionnelle parallèle n'est introduit.
 
-Le changement de slot doit également éviter qu'une ancienne instance encore en cours de déchargement réécrive par-dessus le slot nouvellement choisi.
+Les chantiers TP-AFTER et OPP doivent revalider explicitement les états persistants multi-map : hub, balises destinations, MSC d'opportunité et bindings SAME-INSTANCE.
 
 ## Journal lazy et persistant
 
@@ -199,6 +278,8 @@ Contrat :
 - briques persistantes et stabilité des branches inchangées ;
 - aucun `setInterval` ajouté.
 
+TP-AFTER, OPP et END/FIN enrichissent les branches existantes ; aucun second journal narratif.
+
 ## R-HEALTH / barrière de non-régression
 
 Le checkpoint R-HEALTH du 12 septembre 2026 considère la base `560249…` saine :
@@ -207,8 +288,6 @@ Le checkpoint R-HEALTH du 12 septembre 2026 considère la base `560249…` saine
 - 4 ORANGE de validation incomplète ;
 - 0 ROUGE systémique démontré.
 
-La barrière de validation ne doit plus être résumée au nombre absolu de tests rouges.
-
 Avant de corriger le moteur pour un test rouge préexistant, déterminer s'il s'agit de :
 - test/API/fixture obsolète ;
 - harness incomplet ;
@@ -216,6 +295,8 @@ Avant de corriger le moteur pour un test rouge préexistant, déterminer s'il s'
 - panne runtime actuelle reproduite.
 
 Une correction moteur n'est justifiée que dans le dernier cas, ou lorsqu'un contrat encore valide est réellement violé.
+
+Le contrôle post-commit doit également vérifier le diff contre le **parent Git réel** afin de détecter les écrasements inter-chantiers par fichiers partagés.
 
 ## Discipline de modification
 
@@ -226,4 +307,5 @@ Une correction moteur n'est justifiée que dans le dernier cas, ou lorsqu'un con
 - aucun fichier reconstruit depuis un extrait ;
 - BASE partielle exacte limitée au périmètre ;
 - comparer HEAD/CANDIDAT et refuser toute dérive ;
+- comparer aussi le commit final à son parent réel ;
 - `map-registry.js` protégé.

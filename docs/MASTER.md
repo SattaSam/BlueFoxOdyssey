@@ -2,15 +2,17 @@
 
 ## État de référence
 
-Dernière mise à jour : **13 septembre 2026**
+Dernière mise à jour : **14 septembre 2026**
 
 ### Version de travail
-- HEAD missionnel/documentaire courant vérifié : commit `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` — `ANN 01-07`.
+- HEAD missionnel/documentaire courant vérifié : commit `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` — `restaure CARN/STORM`.
+- TP complet : `e76af8f6bfba8dd599912c50e50ce641338c5985`.
+- CARN/STORM + correctif CUO Lab : `d521af2f3d6e5f221975d64729ec7eff8cc11606`, puis restauration de coexistence sur `bca4b01b…`.
 - Checkpoint moteur R-HEALTH sain conservé : commit `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — `fix Save`.
 - Le HEAD GitHub courant reste la seule base technique de reprise ; le checkpoint R-HEALTH sert de référence de santé, jamais de base de codage à la place du HEAD.
 - Les recovery checkpoints existants restent historiques et ne priment pas sur le HEAD courant.
 - `ROADMAP_TODO.md` reste la seule TODO active.
-- Le DOCX Bible présent dans `docs/` est une source documentaire de contenu ; il doit rester synchronisé avec les définitions moteur effectivement confirmées.
+- La Bible documentaire est la source de contenu missionnel ; les coches moteur ne doivent refléter que les définitions réellement intégrées et validées.
 
 ## Gouvernance documentaire officielle
 
@@ -59,9 +61,10 @@ Une non-régression de ZIP doit prioritairement prouver :
 1. préservation des capacités R-HEALTH du HEAD ;
 2. absence de nouvelle panne gameplay démontrée ;
 3. absence de nouveau nom d'échec pertinent ;
-4. conformité au contrat actuel des propriétaires et consommateurs.
+4. conformité au contrat actuel des propriétaires et consommateurs ;
+5. coexistence avec le **parent Git réellement courant au moment de l'application**.
 
-On ne modifie jamais le moteur uniquement pour faire repasser un test ancien dont l'attendu n'est plus contractuel.
+Le cas TP/CARN du 13 septembre 2026 constitue le garde-fou de référence : un ZIP techniquement correct contre son ancienne base peut devenir régressif si un autre chantier a été committé entre-temps. Le contrôle post-commit du SHA réel est donc obligatoire.
 
 ## Architecture de référence
 
@@ -76,8 +79,9 @@ Principes majeurs :
 - `BibleRuntime` : interprétation Bible, effets, gates, bindings, sites et compteurs sans posséder le lifecycle ;
 - `ProgressionRegistry` : progression centrale et inventaires canoniques ;
 - `MicroScenes` : identité et composition des micro-scènes ; les MSC custom restent des données ;
+- `PersistentMicroScenes` : identité persistante des scènes/sites qui doivent survivre aux retours/reloads ;
 - `RuntimeBudget` : unique propriétaire du throttling adaptatif ;
-- `SpecialObjectRuntime` : runtime métier des drones, balises et objets spéciaux ;
+- `SpecialObjectRuntime` : runtime métier des drones, balises, téléporteur et objets spéciaux ;
 - UI : jamais propriétaire du gameplay ;
 - `map-registry.js` : protégé.
 
@@ -121,11 +125,67 @@ Règles actuelles :
 - `object-m0-bridge.js` conserve le filtre historique `cuoType` et accepte aussi `cuoTypes` comme filtre OR optionnel, cumulatif avec les autres critères ;
 - aucune migration automatique de vieux bindings n'est autorisée sans preuve runtime complète.
 
-### Navigation
+### Navigation et téléportation
+Navigation ordinaire :
 - trajet connu = déplacement physique ;
 - destination inconnue = génération au passage réellement demandé ;
-- pas de téléportation comme substitut d'un retour ;
 - absence de chemin = échec de navigation, pas marche infinie contre obstacle.
+
+Téléportation :
+- le téléporteur est un **outil joueur**, jamais une décision autonome du BAC ;
+- hub unique = `MSC-CUSTOM-ASTROLOGY` ;
+- destinations = maps connues possédant une balise réellement déployée et persistante ;
+- liaisons hub↔balise uniquement ; aucun beacon↔beacon ;
+- BlueFox doit être près de la source ;
+- refus pendant action/séquence non interruptible et refus du double transfert ;
+- arrivée sur zone marchable sûre ; aucune création de map, découverte synthétique ou augmentation artificielle de l'exploration ;
+- la transition reste canonique et publie `bluefox:map-transition-completed` ;
+- TP-11 : calibration + matière inerte avant BlueFox, puis hub→balise→hub.
+
+## Téléportation — acquis et continuité
+
+### Acquis moteur
+- POSTDIP / TP-01→09 déjà présents avant la passe finale ;
+- TP-10 / TP-11 intégrées ;
+- ressources TP : 100 minerais, 50 composants, 20 cores, 100 fibres, 50 biocapital végétal exclusivement Thermosève/plantes fluorescentes, 10 accumulateurs, sous-assemblages issus des blueprints géographiques/fragmentation ;
+- au moins 4 balises persistantes déployées requises et non consommées ;
+- ASTROLOGY conserve ses arches visuelles mais leurs colliders sont neutralisés **uniquement dans cette MSC** ;
+- l'autorité des étapes runtime TP est protégée contre un fallback RESEARCH générique du Planner.
+
+### Continuité documentaire à industrialiser
+- `TP-AFTER-01→04` : appropriation du réseau, retour réel, usage transversal, puis baisse forte du poids/obsession Téléportation ;
+- `EXP-LONG` : expéditions lointaines et maturation du parcours sans déclencher artificiellement la fin ;
+- `END-CHOICE — Là où je suis arrivé` : choix Rester / Trouver un moyen de rentrer ;
+- `FIN-01 — Ce qu'ils m'ont appris` : Temple + connaissances finales + adieux Rocky/Translucides ;
+- `FIN-02 — Le point de départ` : Noyau de navigation résonante, capsule enfin potentiellement opérationnelle, départ/fondu/générique.
+
+La capsule ne doit jamais être considérée comme déjà réparée avant FIN-02. Sa remise en fonctionnement est la synthèse finale des connaissances accumulées, pas une simple recette disponible depuis le début.
+
+La branche **Rester** ne ferme pas le monde : elle mémorise le choix et laisse l'exploration ouverte.
+
+## Missions OPPORTUNITÉS / MSC
+
+Le chantier OPPORTUNITÉS devient un axe officiel d'industrialisation.
+
+Principes :
+- une mission OPP ne génère pas une map pour se satisfaire ;
+- la MSC qualifiante doit exister réellement via la génération/peuplement normaux ;
+- l'opportunité peut alors devenir disponible à l'entrée/découverte locale ;
+- poids fort possible, mais sans écraser directive joueur persistante ni primaire réellement runnable ;
+- après traitement, reprise de la transition principale ;
+- aucune couche de scheduler missionnel parallèle ;
+- les MSC déjà affectées à des missions protégées ne sont pas réutilisées ;
+- les retours d'une mini-série ciblent la même map et la même instance persistante ;
+- Orchidée et `MSC-ABANDONED-DRONE-001` sont destinées à des mini-suites approfondies, avec mémoire/obsession/souvenir positif possibles ;
+- apparitions PNJ/faune restent sous leurs propriétaires existants.
+
+CARN/STORM constituent la première branche dangereuse opportuniste industrialisée :
+- quatre occurrences par phénomène ;
+- progression exposition → apprentissage → prudence → maîtrise ;
+- déclenchements distincts `1→2→3→4` avec `uniqueOnly` ;
+- ciblage d'observation réel ;
+- poids renforcé sur trajets missionnels longs ;
+- reprise du trajet après traitement.
 
 ## Sauvegarde / persistance
 
@@ -137,18 +197,18 @@ La sauvegarde doit préserver :
 - ration et compteurs de craft ;
 - directive joueur persistante ;
 - constructions placées ;
-- état du réseau drone/balise lorsqu'il est porté par ses propriétaires canoniques ;
+- état du réseau drone/balise/téléporteur lorsqu'il est porté par ses propriétaires canoniques ;
 - briques du Journal déjà consolidées.
 
 Les états différés doivent être flushés avant snapshot.
 
-Depuis le checkpoint `560249…`, MissionManager protège aussi l'hydratation différée d'une sauvegarde : si une mission sauvegardée est connue dans l'état mais que sa définition n'est pas encore chargée, la restauration attend la disponibilité de la définition au lieu d'écraser prématurément l'état sauvegardé. Cette protection reste dans le propriétaire canonique du lifecycle ; aucun second moteur de restauration missionnelle n'est créé.
+Depuis le checkpoint `560249…`, MissionManager protège aussi l'hydratation différée d'une sauvegarde : si une mission sauvegardée est connue dans l'état mais que sa définition n'est pas encore chargée, la restauration attend la disponibilité de la définition au lieu d'écraser prématurément l'état sauvegardé.
 
 Aucune propagation ou migration artificielle rejetée par le runtime ne doit être réintroduite.
 
 ## Industrialisation missionnelle acquise
 
-Lots intégrés au HEAD `ca619120…` et à préserver :
+Lots intégrés et à préserver :
 - T01→T13 ;
 - FLO-01→07 ;
 - GEO-01→07 ;
@@ -166,15 +226,16 @@ Lots intégrés au HEAD `ca619120…` et à préserver :
 - CONTACT-01→15 ;
 - DIP-01→03 ;
 - chaîne GAME contact : `GAME-contact_first`, `GAME-contact_cautious`, `GAME-contact_ambassador` ;
-- chaîne ANN industrialisée au commit `ca619120…` : `ANN-04 → ANN-06 → ANN-03 → ANN-02 → ANN-05 → ANN-01 → ANN-07`.
+- ANN-01→07 ;
+- POSTDIP / TP-01→11 ;
+- TERR-CARN-01→04 ;
+- TERR-STORM-01→04.
 
-La Bible documentaire synchronisée avec ce HEAD représente désormais **255/255 définitions moteur du catalogue** avec une coche ✅. Les projets documentaires sans définition moteur restent volontairement sans coche.
-
-La présence au catalogue ne dispense jamais de vérifier le raccord runtime, les prérequis et les consommateurs lorsqu'un nouveau chantier touche ces branches.
+Les projets documentaires sans définition moteur — notamment TP-AFTER, EXP-LONG, END/FIN et le lot OPP restant — restent volontairement sans statut moteur validé.
 
 ## Lot ANN — contrat acquis
 
-Commit de référence : `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` — `ANN 01-07`.
+Commit de référence historique : `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` — `ANN 01-07`.
 
 Acquis à préserver :
 - ANN-04 s'ouvre après T13 sur une nouvelle map Ouest et réutilise les phénomènes météo existants ;
@@ -183,55 +244,59 @@ Acquis à préserver :
 - ANN-03 utilise l'épave réelle et ses composants physiques ;
 - ANN-02 collecte 25 Thermosèves puis consomme réellement 6 plantes + 2 minerais connus ;
 - ANN-05 analyse 3 types minéraux, collecte 4 de chacun et consomme réellement les 12 échantillons ;
-- ANN-01 remplace tout ancien `signal_strength = 44` par trois seuils d'exploration réels 10 % → 25 % → 60 %, puis observation de 3 éléments du relais et collecte d'un composant réel ;
-- ANN-07 consomme l'historique réel `OBJECT_SEEN` / `observations.historical` pour la faune nocturne et n'impose pas de réobservation artificielle ;
-- les bulles BlueFox sont spécifiques aux étapes vécues et persistées par les mécanismes existants ;
+- ANN-01 utilise 10 % → 25 % → 60 % d'exploration réelle avant observation du relais ;
+- ANN-07 consomme l'historique réel `OBJECT_SEEN` / `observations.historical` pour la faune nocturne ;
 - aucune couche ANN parallèle n'a été créée.
 
 ## Relations / civilisations
 
-Le moteur relationnel a dépassé le simple enchaînement de missions CONTACT :
-- les NPC réagissent physiquement à la manière d'approcher ;
-- une approche intrusive peut produire une fuite canonique ;
-- une approche lente/stable peut permettre une progression prudente ;
-- un dialogue/contact déjà engagé reste protégé contre une fuite automatique concurrente ;
-- réputation, commerce et déblocages de recherche utilisent les propriétaires canoniques ;
-- les coûts de commerce consomment le stock physique et les récompenses produisent des connaissances/blueprints réels ;
-- CONTACT-10→15 constitue la minisérie de la seconde civilisation, avec sélection persistante et reprise vers CONTACT-10 en cas d'échec relationnel significatif.
+Le moteur relationnel comprend :
+- réactions NPC à l'approche ;
+- fuite canonique lors d'une fermeture intrusive ;
+- comportement prudent après approche stable ;
+- protection d'un dialogue/contact déjà engagé ;
+- réputation ;
+- commerce consommant le stock physique ;
+- déblocage de connaissances et blueprints par les propriétaires existants.
 
-Le raccord CONTACT-10→CONTACT-11 précédemment signalé comme défaut local n'est plus une TODO documentaire générale : les deux définitions sont présentes au HEAD actuel. Toute anomalie future doit être reproduite au runtime avant correction.
+CONTACT/DIP restent les couches missionnelles consommatrices, pas les propriétaires du comportement NPC.
+
+FIN-01 devra réutiliser réellement les acquis des Rocky et des Translucides ; leur rôle final ne doit pas être remplacé par un simple flag abstrait.
 
 ## Énergie / balise / drones
 
 ### ENE
-La chaîne énergétique présente au catalogue va de ENE-01 à ENE-14, puis se prolonge par `ENE-15-A`, `ENE-15-B`, `ENE-15-C`. Les mécanismes continuent de réutiliser l'établi, les accumulateurs, les machines/objets et les propriétaires existants plutôt que de créer un second moteur énergétique.
+La chaîne énergétique présente au catalogue va de ENE-01 à ENE-14, puis se prolonge par `ENE-15-A`, `ENE-15-B`, `ENE-15-C`.
 
 ### Balise et drones
 - la balise déployée appartient au runtime d'objets spéciaux existant ;
 - le Kit d'expédition sait transporter les objets concernés sans devenir leur propriétaire métier ;
 - `BAL-01→03` formalise analyse, fabrication/déploiement et usage de la balise ;
 - `DRN-01→05` couvre Scout/Harvest, récolte distante, réseau et dépannage terrain ;
-- les observations du Scout utilisent le chemin canonique `OBJECT_SEEN` pour l'historique global, sans produire d'observations missionnelles ordinaires non demandées.
+- les observations du Scout utilisent le chemin canonique `OBJECT_SEEN`.
+
+Les balises servent désormais aussi de destinations TP lorsqu'elles sont réellement déployées et persistantes ; cette extension ne transfère pas leur propriété à l'UI ou au catalogue missionnel.
 
 ## Journal évolutif
 
 Le Journal est lazy et persistant :
-- la consolidation narrative est demandée uniquement à l'ouverture du menu Journal ;
-- les scans/mutations DOM ne déclenchent pas de consolidation répétitive ;
-- les briques déjà écrites sont conservées ;
-- une branche sans évolution majeure reste stable ;
-- seules les évolutions significatives enrichissent la synthèse ;
-- aucun polling n'a été ajouté.
+- consolidation à l'ouverture uniquement ;
+- aucune consolidation due aux seules mutations DOM ;
+- briques persistantes ;
+- branche inchangée stable ;
+- enrichissement uniquement après évolution significative ;
+- aucun polling.
 
-ANN-07 ajoute un jalon documentaire à la branche Faune/Nature du Journal lorsqu'un premier catalogue du vivant est réellement établi.
+TP-AFTER, OPP et END/FIN devront enrichir les branches existantes plutôt que créer un second Journal.
 
 ## Continuité
 
 - `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` reste le **checkpoint moteur R-HEALTH sain** ;
-- `ca619120c502ff6b122d69ad3ed15d0e8dc8a1d0` est le **HEAD missionnel de référence de cette synchronisation documentaire** ;
-- la prochaine industrialisation doit être choisie parmi les projets réellement encore sans définition moteur dans la Bible synchronisée ;
+- `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` est le **HEAD missionnel vérifié de cette synchronisation** ;
+- prochaine continuité principale : TP-AFTER → EXP-LONG → END-CHOICE/FIN ;
+- chantier parallèle officiel : missions OPPORTUNITÉS / MSC remarquables ;
 - aucun chantier général de réparation moteur n'est ouvert ;
-- les quatre domaines ORANGE restent des zones de validation à compléter quand un chantier les traverse, pas des pannes présumées.
+- les quatre domaines ORANGE restent des zones de validation à compléter lorsqu'un chantier les traverse.
 
 ## Discipline d'industrialisation
 
@@ -239,6 +304,8 @@ ANN-07 ajoute un jalon documentaire à la branche Faune/Nature du Journal lorsqu
 - propriétaires existants plutôt que bridges ;
 - réutiliser les MSC/CUO existants avant création nouvelle ;
 - une nouvelle MSC composite reste une donnée si le moteur sait déjà l'instancier comme une scène unique ;
+- protéger les MSC déjà missionnées contre une réutilisation opportuniste non validée ;
 - tests de réfutation et consommateurs réels avant PASS ;
 - BASE partielle exacte limitée au périmètre : ne jamais reconstruire le dépôt complet ;
+- contrôler le parent Git courant avant application d'un ZIP ;
 - un test historique rouge n'autorise une correction moteur qu'après reproduction d'une panne actuelle ou violation d'un contrat encore valide.
