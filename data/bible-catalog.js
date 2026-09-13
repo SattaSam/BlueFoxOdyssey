@@ -11114,6 +11114,111 @@
   });
 
 
+  const CART02 = Object.freeze({
+    id: "CART-02",
+    title: "La traversée de la brume toxique",
+    description: "Cartographier localement une nappe de brume réelle avec BlueFox puis le Scout afin d'identifier sa distribution sur le territoire sans introduire de capteur ou de support météo fictif.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "PHEN-01", count: 1 }),
+    prerequisites: Object.freeze(["PHEN-01"]),
+    priority: 186,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.9,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "mixed",
+    scoreTrauma: 44,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      biome: "swamp",
+      requiredObjects: Object.freeze([Object.freeze({ type: "fog_bank", count: 2, contextRole: "cart02FogField" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reach", title: "Découvrir un territoire couvert de brume", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "cart02:map", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "bluefoxFog", title: "Observer personnellement une nappe de brume", action: "observe", target: 1, requires: Object.freeze(["reach"]), params: Object.freeze({ cuoType: "fog_bank", actor: "bluefox", requiredMapFact: "cart02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "scoutConfirm", title: "Faire relever cette même nappe par le Scout", action: "observe", target: 1, requires: Object.freeze(["bluefoxFog"]), params: Object.freeze({ cuoType: "fog_bank", actor: "scout", remote: false, requiredMapFact: "cart02:map", requiredMapField: "mapId", relation: Object.freeze({ fromSlot: "bluefoxFog", sameBy: Object.freeze(["instanceId"]) }) }) }),
+      Object.freeze({ slot: "explore", title: "Explorer 45 % du territoire pour contourner la nappe", action: "explore-zone", target: 45, requires: Object.freeze(["scoutConfirm"]), params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 45, requiredMapFact: "cart02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "distribution", title: "Faire relever deux nappes distinctes sur le territoire", action: "observe", target: 2, requires: Object.freeze(["explore"]), params: Object.freeze({ cuoType: "fog_bank", actor: "scout", remote: false, distinctBy: "instanceId", requiredMapFact: "cart02:map", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Cette brume masque le terrain plus qu'elle ne le transforme. Si je veux la traverser sans tourner en rond, je dois d'abord comprendre où elle s'accumule." ]),
+      completed: Object.freeze(["La nappe n'est pas uniforme. J'ai maintenant une première carte locale de ses zones denses et de ses passages praticables."])
+    })
+  });
+
+  const CART01 = Object.freeze({
+    id: "CART-01",
+    title: "L'écho des cristaux sonores",
+    description: "Cartographier un secteur cristallin en comparant cristal, basalte résonant et aiguilles cristallines ; leur caractère 'sonore' reste une lecture narrative du milieu, pas un nouveau type d'objet.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CART-02", count: 1 }),
+    prerequisites: Object.freeze(["CART-02"]),
+    priority: 185,
+    passivePriorityAxis: "research",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 32,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      biome: "crystalline",
+      requiredObjects: Object.freeze([
+        Object.freeze({ type: "crystal", count: 1, contextRole: "cart01Crystal" }),
+        Object.freeze({ type: "resonant_basalt", count: 1, contextRole: "cart01ResonantBasalt" }),
+        Object.freeze({ type: "needle", count: 1, contextRole: "cart01BlueCrystals" })
+      ])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reach", title: "Découvrir un territoire cristallin", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "cart01:map", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "explore", title: "Explorer 40 % du secteur cristallin", action: "explore-zone", target: 40, requires: Object.freeze(["reach"]), params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 40, requiredMapFact: "cart01:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "analyzeCrystal", title: "Analyser un cristal du secteur", action: "analyze", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ cuoType: "crystal", requiredMapFact: "cart01:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "analyzeBasalt", title: "Analyser un basalte résonant du secteur", action: "analyze", target: 1, requires: Object.freeze(["analyzeCrystal"]), params: Object.freeze({ cuoType: "resonant_basalt", requiredMapFact: "cart01:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "analyzeNeedle", title: "Analyser les cristaux bleus du secteur", action: "analyze", target: 1, requires: Object.freeze(["analyzeBasalt"]), params: Object.freeze({ cuoType: "needle", requiredMapFact: "cart01:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "scoutCrystal", title: "Faire relever la signature du cristal par le Scout", action: "observe", target: 1, requires: Object.freeze(["analyzeNeedle"]), params: Object.freeze({ cuoType: "crystal", actor: "scout", remote: false, requiredMapFact: "cart01:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "scoutBasalt", title: "Faire relever la signature du basalte résonant par le Scout", action: "observe", target: 1, requires: Object.freeze(["scoutCrystal"]), params: Object.freeze({ cuoType: "resonant_basalt", actor: "scout", remote: false, requiredMapFact: "cart01:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "scoutNeedle", title: "Faire relever la signature des cristaux bleus par le Scout", action: "observe", target: 1, requires: Object.freeze(["scoutBasalt"]), params: Object.freeze({ cuoType: "needle", actor: "scout", remote: false, requiredMapFact: "cart01:map", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le vent ne fait pas réagir toutes les formations de la même façon. Le cristal, le basalte résonant et les cristaux bleus composent chacun une voix différente du paysage." ]),
+      completed: Object.freeze(["Leur 'chant' n'est pas un nouvel objet à mesurer : c'est la manière dont trois structures minérales différentes révèlent l'organisation du terrain."])
+    })
+  });
+
+  const CART03 = Object.freeze({
+    id: "CART-03",
+    title: "L'abysse atmosphérique",
+    description: "Établir une cartographie atmosphérique régionale à partir d'un contexte de référence puis de relevés Scout provenant de plusieurs territoires réellement distincts.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "CART-01", count: 1 }),
+    prerequisites: Object.freeze(["CART-01"]),
+    priority: 184,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "mixed",
+    scoreTrauma: 48,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({
+      requiredObjects: Object.freeze([Object.freeze({ type: "fog_bank", count: 1, contextRole: "cart03ReferenceFlow" })])
+    }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reachReference", title: "Découvrir un nouveau contexte atmosphérique de référence", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "cart03:referenceMap", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "reference", title: "Analyser le phénomène atmosphérique de référence", action: "analyze", target: 1, requires: Object.freeze(["reachReference"]), params: Object.freeze({ cuoType: "fog_bank", actor: "bluefox", requiredMapFact: "cart03:referenceMap", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "regionalSurvey", title: "Obtenir des relevés Scout sur trois territoires distincts", action: "observe", target: 3, requires: Object.freeze(["reference"]), params: Object.freeze({ cuoTypes: Object.freeze(["fog_bank", "electrostatic_storm"]), actor: "scout", distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "synthesis", title: "Synthétiser la cartographie atmosphérique régionale", action: "research", target: 1, requires: Object.freeze(["regionalSurvey"]), params: Object.freeze({}) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une carte locale m'aide à passer. Trois territoires comparés peuvent commencer à révéler une structure atmosphérique régionale." ]),
+      completed: Object.freeze(["Les relevés ne décrivent plus seulement des phénomènes isolés. Leur distribution dessine désormais une organisation atmosphérique à l'échelle régionale."])
+    })
+  });
+
+
   BF.BibleCatalog = Object.freeze([
     T01,
     T02,
@@ -11287,6 +11392,7 @@
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     PROS01, PROS03, PROS02,
+    CART02, CART01, CART03,
     ANN04,
     ANN06,
     ANN03,
