@@ -10110,6 +10110,200 @@
     ]),narrative:Object.freeze({revealed:Object.freeze(["Deux territoires de plus. Cette fois, je veux vraiment les comprendre jusqu’au bout."]),completed:Object.freeze(["Je ne traverse plus seulement des maps. Je commence à connaître ce monde comme un territoire."])})
   });
 
+
+  // ECO-SIS — lecture écologique puis tellurique du monde.
+  // ECO-03 n'est volontairement pas réintroduite : son ancien rôle de conception de drones
+  // est désormais possédé par les chaînes Engineering / BAL / DRN existantes.
+  const ECO01 = Object.freeze({
+    id: "ECO-01",
+    title: "Cartographie du cratère",
+    description: "Sur un nouveau territoire, lire les traces géologiques d'un impact et comprendre comment le relief local s'est organisé avant d'étudier la réponse du vivant.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", direction: "west", count: 1, uniqueOnly: true }),
+    prerequisites: Object.freeze(["GAME-exploration_complete"]),
+    bindActivationMap: true,
+    triggerOnly: true,
+    priority: 195,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.8,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "mixed",
+    scoreTrauma: 42,
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-ECO-STAR-001", persistent: true, spawnOnce: true, contextRole: "eco01ImpactContext" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Explorer 35 % du territoire marqué par l'impact", action: "explore-zone", target: 35, params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 35, requiredMapFact: "bibleActivation:ECO-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "impact", title: "Observer la structure du site d'impact", action: "observe", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ microSceneId: "MSC-ECO-STAR-001", requiredMapFact: "bibleActivation:ECO-01", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "terrain", title: "Analyser deux éléments géologiques distincts du site", action: "analyze", target: 2, requires: Object.freeze(["impact"]), params: Object.freeze({ subject: "mineral", distinctBy: "objectId", requiredMapFact: "bibleActivation:ECO-01", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le relief garde la trace de ce qui lui est arrivé. Je veux comprendre ce que cet impact a changé autour de lui."]),
+      completed: Object.freeze(["Le sol raconte ce qui s'est passé ici. Si le terrain a changé, le vivant qui pousse dessus doit forcément en porter quelque chose aussi."])
+    })
+  });
+
+  const ECO02 = Object.freeze({
+    id: "ECO-02",
+    title: "La flore comme indice",
+    description: "Comparer une plante d'un contexte végétal ordinaire à une plante thermosensible afin de comprendre comment la géologie et les conditions du sol influencent le vivant.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ECO-01", count: 1 }),
+    prerequisites: Object.freeze(["ECO-01"]),
+    priority: 194,
+    passivePriorityAxis: "research",
+    ponderation: 0.85,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 34,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([
+      Object.freeze({ id: "MSC-FERN-CLEARING-001", persistent: true, spawnOnce: true, contextRole: "eco02OrdinaryFlora" }),
+      Object.freeze({ id: "MSC-ECO-THERM-001", persistent: true, spawnOnce: true, contextRole: "eco02ThermalFlora" })
+    ]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reach", title: "Découvrir un terrain où comparer deux contextes végétaux", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "eco02:map", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "ordinary", title: "Observer une plante dans un contexte végétal ordinaire", action: "observe", target: 1, requires: Object.freeze(["reach"]), params: Object.freeze({ subject: "flora", microSceneId: "MSC-FERN-CLEARING-001", requiredMapFact: "eco02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "thermal", title: "Observer une plante thermosensible dans la veine chaude", action: "observe", target: 1, requires: Object.freeze(["ordinary"]), params: Object.freeze({ cuoType: "thermosap_moss", microSceneId: "MSC-ECO-THERM-001", requiredMapFact: "eco02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "ordinaryStudy", title: "Analyser la plante du contexte ordinaire", action: "analyze", target: 1, requires: Object.freeze(["thermal"]), params: Object.freeze({ subject: "flora", microSceneId: "MSC-FERN-CLEARING-001", requiredMapFact: "eco02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "thermalStudy", title: "Analyser la réponse de la Thermosève au contexte minéral", action: "analyze", target: 1, requires: Object.freeze(["ordinaryStudy"]), params: Object.freeze({ cuoType: "thermosap_moss", microSceneId: "MSC-ECO-THERM-001", requiredMapFact: "eco02:map", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le sol a changé. Je veux voir si les plantes réagissent elles aussi à ce qu'il y a sous leurs racines."]),
+      completed: Object.freeze(["Elles ne poussent pas seulement différemment. Elles répondent à ce qu'il y a sous elles. Le vivant peut m'aider à lire le terrain."])
+    })
+  });
+
+  const ECO04 = Object.freeze({
+    id: "ECO-04",
+    title: "La piste des anomalies telluriques",
+    description: "Suivre une faille riche en indices minéraux afin de confirmer que plusieurs symptômes locaux partagent une origine souterraine commune.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ECO-02", count: 1 }),
+    prerequisites: Object.freeze(["ECO-02"]),
+    priority: 193,
+    passivePriorityAxis: "research",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 48,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([Object.freeze({ id: "MSC-CUSTOM-BASALT-RIFT", persistent: true, spawnOnce: true, contextRole: "eco04TelluricRift" })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reach", title: "Découvrir une faille porteuse d'indices telluriques", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "eco04:map", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "rift", title: "Observer la faille basaltique", action: "observe", target: 1, requires: Object.freeze(["reach"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-BASALT-RIFT", requiredMapFact: "eco04:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "indices", title: "Analyser deux indices géologiques distincts de la faille", action: "analyze", target: 2, requires: Object.freeze(["rift"]), params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "strong_rock", "large_rock", "needle"]), distinctBy: "cuoType", requiredMapFact: "eco04:map", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La flore m'a montré un symptôme. Maintenant je veux suivre ce qui change réellement sous la surface."]),
+      completed: Object.freeze(["Ce ne sont pas des anomalies séparées. Plusieurs indices répondent à la même structure sous le terrain."])
+    })
+  });
+
+  const SIS01 = Object.freeze({
+    id: "SIS-01",
+    title: "L'écoute des battements telluriques",
+    description: "Sur la faille étudiée par ECO-04, confirmer par plusieurs analyses distinctes qu'une signature tellurique se répète sans recourir à un faux compteur temporel.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ECO-04", count: 1 }),
+    prerequisites: Object.freeze(["ECO-04"]),
+    priority: 192,
+    passivePriorityAxis: "research",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 44,
+    targetMapFact: "eco04:map",
+    targetMapField: "mapId",
+    sequence: Object.freeze([
+      Object.freeze({ slot: "baseline", title: "Reprendre une première mesure sur la faille", action: "analyze", target: 1, params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "strong_rock", "large_rock", "needle"]), requiredMapFact: "eco04:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "repeat", title: "Comparer deux autres indices distincts", action: "analyze", target: 2, requires: Object.freeze(["baseline"]), params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "strong_rock", "large_rock", "needle"]), distinctBy: "cuoType", requiredMapFact: "eco04:map", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Un point peut tromper. Si la même signature revient ailleurs dans la faille, alors ce phénomène est réel."]),
+      completed: Object.freeze(["Trois indices différents, mais une même signature. Ce n'est plus un accident local."])
+    })
+  });
+
+  const SIS02 = Object.freeze({
+    id: "SIS-02",
+    title: "La cartographie des failles de surface",
+    description: "Découvrir une nouvelle portion du réseau tellurique, explorer le terrain puis comparer deux contextes afin de comprendre comment la signature se propage dans l'espace.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "SIS-01", count: 1 }),
+    prerequisites: Object.freeze(["SIS-01"]),
+    priority: 191,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.95,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 46,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, singleUnknownTransition: true }),
+    mapGeneration: Object.freeze({ requiredMicroScenes: Object.freeze([
+      Object.freeze({ id: "MSC-CUSTOM-BASALT-RIFT", persistent: true, spawnOnce: true, contextRole: "sis02Rift" }),
+      Object.freeze({ id: "MSC-ECO-THERM-001", persistent: true, spawnOnce: true, contextRole: "sis02ThermalLeak" })
+    ]), requiredObjects: Object.freeze([Object.freeze({ type: "resonant_basalt", count: 3 })]) }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "reach", title: "Découvrir une autre portion du réseau tellurique", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "sis02:map", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "explore", title: "Explorer 60 % de cette portion du réseau", action: "explore-zone", target: 60, requires: Object.freeze(["reach"]), params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 60, requiredMapFact: "sis02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "rift", title: "Observer la faille de cette nouvelle zone", action: "observe", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ microSceneId: "MSC-CUSTOM-BASALT-RIFT", requiredMapFact: "sis02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "thermal", title: "Observer une fuite thermique liée au même réseau", action: "observe", target: 1, requires: Object.freeze(["rift"]), params: Object.freeze({ microSceneId: "MSC-ECO-THERM-001", requiredMapFact: "sis02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "compare", title: "Comparer la signature minérale des deux contextes", action: "analyze", target: 2, requires: Object.freeze(["thermal"]), params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "thermosap_moss", "strong_rock"]), distinctBy: "cuoType", requiredMapFact: "sis02:map", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je sais que la signature existe. Maintenant je veux voir comment elle se déplace dans le terrain."]),
+      completed: Object.freeze(["Les pulsations suivent le relief. Je commence à voir le réseau plutôt que ses symptômes."])
+    })
+  });
+
+  const SIS03 = Object.freeze({
+    id: "SIS-03",
+    title: "Stabilisation des secousses",
+    description: "Prélever du basalte résonant sur le réseau étudié, tester sa résonance à l'établi puis revenir physiquement sur le terrain pour valider une méthode de maîtrise locale sans créer de stabilisateur fictif.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "SIS-02", count: 1 }),
+    prerequisites: Object.freeze(["SIS-02", "GAME-engineering_6"]),
+    experimentalPrerequisites: Object.freeze(["materials_science"]),
+    priority: 190,
+    passivePriorityAxis: "research",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 5,
+    souvenir: true,
+    memoryValence: "positive",
+    scoreTrauma: 60,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "collect", title: "Prélever trois basaltes résonants sur le réseau étudié", action: "collect", target: 3, params: Object.freeze({ cuoType: "resonant_basalt", requiredMapFact: "sis02:map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "experiment", title: "Tester la résonance du basalte à l'établi", action: "research", target: 1, requires: Object.freeze(["collect"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "returnField", title: "Revenir physiquement sur la portion du réseau étudiée", action: "travel", target: 1, requires: Object.freeze(["experiment"]), params: Object.freeze({ eventDriven: true, targetMapFact: "sis02:map", targetMapField: "mapId", distinctBy: "transition" }) }),
+      Object.freeze({ slot: "validation", title: "Valider la maîtrise locale par une dernière analyse du terrain", action: "analyze", target: 1, requires: Object.freeze(["returnField"]), params: Object.freeze({ cuoTypes: Object.freeze(["resonant_basalt", "strong_rock", "large_rock"]), requiredMapFact: "sis02:map", requiredMapField: "mapId" }) })
+    ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "sis03-workbench-resonance",
+      microSceneId: "MSC-CUSTOM-ETABLI-VIDE",
+      fact: "sis03:workbenchResonance:v1",
+      slot: "experiment",
+      radius: 8,
+      inventoryConsume: Object.freeze({
+        inventoryKey: "resonant_basalt",
+        quantity: 3,
+        missingMessage: "Il me faut trois basaltes résonants réels avant de tester leur comportement à l'établi."
+      })
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je ne peux pas empêcher la planète de bouger. Mais je peux peut-être comprendre comment ses roches dissipent ou transmettent cette énergie."]),
+      completed: Object.freeze(["Je ne peux pas arrêter la planète de bouger. Mais je comprends maintenant comment éviter que chaque vibration devienne un danger local."])
+    })
+  });
+
   BF.BibleCatalog = Object.freeze([
     T01,
     T02,
@@ -10280,6 +10474,7 @@
     SUR06,
     SUR07,
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
+    ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     ANN04,
     ANN06,
     ANN03,
