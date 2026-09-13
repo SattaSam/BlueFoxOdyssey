@@ -907,13 +907,14 @@
       return String(event?.instanceId || "");
     }
     if (mode === "objectId") return String(event?.objectId || "").toLowerCase();
+    if (mode === "mapId") return String(event?.mapId || "");
     if (mode === "family") {
       return lower(eventMissionMetadata(event).family);
     }
     return null;
   };
 
-  const distinctValueFromResolved = (node, resolved) => {
+  const distinctValueFromResolved = (node, resolved, mapId = null) => {
     const mode = studyDistinctMode(node);
     if (!mode || mode === "none") return null;
     const identity = identityOf(resolved);
@@ -927,6 +928,7 @@
       return identity.instanceId;
     }
     if (mode === "objectId") return identity.objectId;
+    if (mode === "mapId") return String(mapId || "");
     if (mode === "family") {
       return lower(
         resolved?.definition?.resource?.family ||
@@ -1010,7 +1012,7 @@
         if (node?.params?.siteProgressionKind) return null;
         if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return null;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return null;
-        const distinctValue = node ? distinctValueFromResolved(node, resolved) : null;
+        const distinctValue = node ? distinctValueFromResolved(node, resolved, engine?.currentMapId) : null;
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return null;
         if (!(definition && canStudy(definition))) return null;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, resolved), action.params || {}, { skipSubject: true })) return null;
@@ -1089,7 +1091,7 @@
         if (!relationMatches(tree, node, relationEvidenceFromResolved(missionResolved, engine.currentMapId))) continue;
         if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;
         if (unstudiedPriority(missionResolved, node.params || {}, missionId) === -Infinity) continue;
-        const distinctValue = distinctValueFromResolved(node, missionResolved);
+        const distinctValue = distinctValueFromResolved(node, missionResolved, engine?.currentMapId);
         if (distinctValue != null && node.hasDistinctValue?.(distinctValue)) continue;
         return {
           missionId,
