@@ -244,6 +244,45 @@
     return changed;
   };
 
+  const progressSpecificTravelMissionNode = (
+    manager,
+    missionId,
+    requestedNode,
+    detail = {}
+  ) => {
+    if (!manager || !missionId || !requestedNode || !detail?.toMapId) return false;
+    if (manager.ensureLifecycle?.(missionId)?.status !== "active") return false;
+    const tree = manager.trees?.get?.(missionId);
+    if (!tree) return false;
+    const node = tree.find?.(requestedNode.id) || requestedNode;
+    if (!node || node.isComplete) return false;
+    if (node.params?.returnConsumedOnly === true) return false;
+    const eventDriven = node.params?.eventDriven === true;
+    if (!eventDriven && node.params?.biblePattern !== "TRAVEL_CYCLE") return false;
+    if (Missions.normalizeActionType(node.type) !== Missions.ActionType.TRAVEL) return false;
+    if (!eventMatchesFilters(node, detail)) return false;
+    if (!progressTravelNode(node, detail)) return false;
+
+    bindArrivalFacts(manager, missionId, node, detail);
+    bindCompletionArrivalFact(manager, node, detail);
+    if (node.isComplete) {
+      const key = `missionReturnIntent:${missionId}`;
+      const intent = manager.memory?.getFact?.(key, null);
+      if (intent?.active === true) {
+        manager.memory?.setFact?.(key, null);
+        manager.memory?.save?.();
+        progressReturnConsumedObservers(manager, missionId, detail);
+      }
+    }
+    tree.refresh?.();
+    manager.memory?.saveTree?.(tree);
+    manager.syncLifecycleFromTrees?.();
+    manager.reevaluatePendingActivations?.();
+    manager.catalogController?.schedule?.();
+    manager.publish?.();
+    return true;
+  };
+
   const progressActiveTravel = (detail = {}) => {
     const manager = BF.currentEngine?.missionManager;
     if (!manager?.trees?.size || !detail.toMapId) return 0;
@@ -318,6 +357,7 @@
   };
 
   BF.progressTravelCycleMissions = progressActiveTravel;
+  BF.progressSpecificTravelMissionNode = progressSpecificTravelMissionNode;
   BF.installTravelCycleBridge = install;
   BF.getTravelCycleDiagnostics = () => ({
     version: VERSION,

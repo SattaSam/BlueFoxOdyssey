@@ -25,6 +25,19 @@
     return true;
   };
 
+  const KNOWLEDGE_LEVELS = Object.freeze({
+    OBJECT_SEEN: 1,
+    OBJECT_INSPECTED: 2,
+    OBJECT_ANALYZED: 3,
+    PHENOMENON_OBSERVED: 3,
+    KNOWLEDGE_ACQUIRED: 3,
+    RESOURCE_COLLECTED: 4,
+    RESOURCE_EXTRACTED: 4
+  });
+  const createGeographicKnowledge = () => ({
+    knownSites: {}
+  });
+
   const defaultState = () => ({
     version: VERSION,
     updatedAt: Date.now(),
@@ -41,6 +54,7 @@
       maps: {}
     },
     mapIndicators: {},
+    geographicKnowledge: createGeographicKnowledge(),
     psychology: {
       narrativeAxes: {},
       missionObsessions: {},
@@ -65,6 +79,11 @@
       research: { ...base.research, ...(saved.research || {}) },
       masteries: { ...base.masteries, ...(saved.masteries || {}) },
       mapIndicators: { ...(saved.mapIndicators || {}) },
+      geographicKnowledge: {
+        ...base.geographicKnowledge,
+        ...(saved.geographicKnowledge || {}),
+        knownSites: { ...(saved.geographicKnowledge?.knownSites || {}) }
+      },
       psychology: {
         ...base.psychology,
         ...(saved.psychology || {}),
@@ -112,6 +131,8 @@
       this.state = defaultState();
       this.processedIds = new Set();
       this.unsubscribe = null;
+      this.siteIndexes = null;
+      this.siteById = new Map();
       this.load();
     }
 
@@ -123,7 +144,207 @@
         this.state = defaultState();
       }
       this.processedIds = new Set(this.state.processedEventIds);
+      this.rebuildSiteIndexes();
       return this.state;
+    }
+
+    createSiteIndexes() {
+      return {
+        map: new Map(),
+        microScene: new Map(),
+        resource: new Map(),
+        family: new Map()
+      };
+    }
+
+    indexSiteValue(indexName, key, siteId) {
+      const safeKey = cleanKey(key, "");
+      if (!safeKey || !siteId) return false;
+      const index = this.siteIndexes[indexName];
+      let bucket = index.get(safeKey);
+      if (!bucket) {
+        bucket = new Set();
+        index.set(safeKey, bucket);
+      }
+      bucket.add(siteId);
+      return true;
+    }
+
+    indexSite(site) {
+      if (!site?.siteId) return false;
+      this.siteById.set(site.siteId, site);
+      this.indexSiteValue("map", site.mapId, site.siteId);
+      this.indexSiteValue("microScene", site.microSceneId, site.siteId);
+      Object.keys(site.resources || {}).forEach((key) =>
+        this.indexSiteValue("resource", key, site.siteId)
+      );
+      Object.keys(site.families || {}).forEach((key) =>
+        this.indexSiteValue("family", key, site.siteId)
+      );
+      return true;
+    }
+
+    rebuildSiteIndexes() {
+      this.siteIndexes = this.createSiteIndexes();
+      this.siteById = new Map();
+      Object.values(this.state.geographicKnowledge?.knownSites || {})
+        .forEach((site) => this.indexSite(site));
+      return this.siteById.size;
+    }
+
+    siteInstanceKey(event) {
+      if (event.microSceneObjectIndex != null) {
+        return `slot:${Number(event.microSceneObjectIndex)}`;
+      }
+      return event.instanceId ? `instance:${String(event.instanceId)}` : "";
+    }
+
+    applyGeographicKnowledge(event) {
+      const level = Number(KNOWLEDGE_LEVELS[event.type]) || 0;
+      if (
+        !level ||
+        !event.mapId ||
+        !event.microSceneId ||
+        !event.microSceneInstanceId
+      ) return null;
+
+      const sites = this.state.geographicKnowledge.knownSites;
+      const siteId = cleanKey(event.microSceneInstanceId, "");
+      if (!siteId) return null;
+      let site = sites[siteId];
+      const isNewSite = !site;
+      if (!site) {
+        site = sites[siteId] = {
+          siteId,
+          mapId: String(event.mapId),
+          microSceneId: String(event.microSceneId),
+          persistentMicroSceneId: event.persistentMicroSceneId || null,
+          anchor: event.microSceneAnchor ? clone(event.microSceneAnchor) : null,
+          firstKnownAt: Number(event.at) || Date.now(),
+          lastKnownAt: Number(event.at) || Date.now(),
+          knownInstanceCount: 0,
+          instances: {},
+          resources: {},
+          families: {},
+          sources: {}
+        };
+      }
+
+      site.lastKnownAt = Math.max(
+        Number(site.lastKnownAt) || 0,
+        Number(event.at) || Date.now()
+      );
+      if (!site.anchor && event.microSceneAnchor) site.anchor = clone(event.microSceneAnchor);
+      if (!site.persistentMicroSceneId && event.persistentMicroSceneId) {
+        site.persistentMicroSceneId = event.persistentMicroSceneId;
+      }
+      const source = cleanKey(event.detail?.interactionSource || "bluefox");
+      site.sources ||= {};
+      site.sources[source] = true;
+      site.instances ||= {};
+      site.resources ||= {};
+      site.families ||= {};
+
+      const instanceKey = this.siteInstanceKey(event);
+      if (instanceKey) {
+        let instance = site.instances[instanceKey];
+        if (!instance) {
+          instance = site.instances[instanceKey] = {
+            key: instanceKey,
+            objectId: event.objectId || null,
+            firstKnownAt: Number(event.at) || Date.now(),
+            lastKnownAt: Number(event.at) || Date.now(),
+            knowledgeLevel: level,
+            resources: {},
+            families: {}
+          };
+          site.knownInstanceCount = (Number(site.knownInstanceCount) || 0) + 1;
+        } else {
+          instance.lastKnownAt = Math.max(
+            Number(instance.lastKnownAt) || 0,
+            Number(event.at) || Date.now()
+          );
+          instance.knowledgeLevel = Math.max(Number(instance.knowledgeLevel) || 0, level);
+          if (!instance.objectId && event.objectId) instance.objectId = event.objectId;
+          instance.resources ||= {};
+          instance.families ||= {};
+        }
+
+        const resourceKeys = [...new Set([
+          event.inventoryKey
+        ].map((key) => cleanKey(key, "")).filter(Boolean))];
+        resourceKeys.forEach((key) => {
+          if (instance.resources[key]) return;
+          instance.resources[key] = true;
+          const resource = site.resources[key] ||= { distinctInstances: 0 };
+          resource.distinctInstances = (Number(resource.distinctInstances) || 0) + 1;
+          this.indexSiteValue("resource", key, siteId);
+        });
+
+        const familyKeys = [...new Set([
+          event.family,
+          event.knowledgeFamily,
+          ...(event.researchDomains || [])
+        ].map((key) => cleanKey(key, "")).filter(Boolean))];
+        familyKeys.forEach((key) => {
+          if (instance.families[key]) return;
+          instance.families[key] = true;
+          const family = site.families[key] ||= { distinctInstances: 0 };
+          family.distinctInstances = (Number(family.distinctInstances) || 0) + 1;
+          this.indexSiteValue("family", key, siteId);
+        });
+      }
+
+      if (isNewSite) this.indexSite(site);
+      return site;
+    }
+
+    candidateSiteIds(criteria = {}) {
+      if (criteria.siteId) {
+        return this.siteById.has(String(criteria.siteId))
+          ? new Set([String(criteria.siteId)])
+          : new Set();
+      }
+      const requested = [
+        ["map", criteria.mapId],
+        ["microScene", criteria.microSceneId],
+        ["resource", criteria.resource],
+        ["family", criteria.family]
+      ].filter(([, value]) => value != null && String(value).trim());
+      if (!requested.length) return new Set(this.siteById.keys());
+
+      const sets = requested.map(([indexName, value]) =>
+        this.siteIndexes[indexName].get(String(value).trim()) || new Set()
+      ).sort((left, right) => left.size - right.size);
+      if (!sets.length || sets[0].size === 0) return new Set();
+      const result = new Set(sets[0]);
+      for (let index = 1; index < sets.length; index += 1) {
+        for (const siteId of [...result]) {
+          if (!sets[index].has(siteId)) result.delete(siteId);
+        }
+      }
+      return result;
+    }
+
+    getKnownSites(criteria = {}) {
+      return [...this.candidateSiteIds(criteria)]
+        .map((siteId) => this.siteById.get(siteId))
+        .filter(Boolean)
+        .sort((left, right) =>
+          (Number(right.knownInstanceCount) || 0) -
+          (Number(left.knownInstanceCount) || 0) ||
+          (Number(right.lastKnownAt) || 0) - (Number(left.lastKnownAt) || 0)
+        )
+        .map(clone);
+    }
+
+    getKnownSite(siteId) {
+      const site = this.siteById.get(String(siteId || ""));
+      return site ? clone(site) : null;
+    }
+
+    getGeographicKnowledgeState() {
+      return clone(this.state.geographicKnowledge || createGeographicKnowledge());
     }
 
     save() {
@@ -462,6 +683,7 @@
       const researchDomains = this.applyResearch(event);
       this.applyMasteries(event);
       this.applyMapIndicators(event);
+      this.applyGeographicKnowledge(event);
       this.applyJournal(event);
       this.save();
 
@@ -490,8 +712,12 @@
       this.unsubscribe = null;
     }
 
-    snapshot() {
-      return clone(this.state);
+    snapshot(options = {}) {
+      const snapshot = clone(this.state);
+      if (options.includeGeographicKnowledge !== true) {
+        delete snapshot.geographicKnowledge;
+      }
+      return snapshot;
     }
 
     getMapIndicators(mapId) {
@@ -501,6 +727,7 @@
     reset() {
       this.state = defaultState();
       this.processedIds.clear();
+      this.rebuildSiteIndexes();
       this.save();
       global.dispatchEvent(new CustomEvent("bluefox:journal-reset", {
         detail: BF.getJournalState?.() || { entries: [] }
@@ -534,6 +761,9 @@
   BF.getJournalNarrativeState = () => system.getJournalNarrative();
   BF.consolidateJournalNarrative = (candidate) => system.consolidateJournalNarrative(candidate);
   BF.getMapProgressionIndicators = (mapId) => system.getMapIndicators(mapId);
+  BF.getKnownSites = (criteria) => system.getKnownSites(criteria);
+  BF.getKnownSite = (siteId) => system.getKnownSite(siteId);
+  BF.getGeographicKnowledgeState = () => system.getGeographicKnowledgeState();
   BF.getNarrativeAxisScore = (axis) => system.narrativeAxisScore(axis);
   BF.getMissionObsessionPressure = (missionId) => system.missionObsessionPressure(missionId);
   BF.getPsychologicalMemoryScore = (context) => system.memoryScoreForContext(context);
