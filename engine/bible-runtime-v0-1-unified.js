@@ -2680,6 +2680,78 @@
       return true;
     }
 
+    missionChoiceState(missionId) {
+      const id = String(missionId || "").trim();
+      const mission = this.byId.get(id);
+      const validation = mission?.runtimeValidation || {};
+      if (!id || validation.type !== "mission-choice") return null;
+
+      const manager = this.manager();
+      const factKey = String(validation.fact || "").trim();
+      const slot = String(validation.slot || "").trim();
+      if (!manager?.memory || !factKey || !slot) return null;
+
+      const stored = manager.memory.getFact?.(factKey, null);
+      const tree = manager.trees?.get?.(id);
+      const node = tree?.find?.(`${id}:${slot}`) || null;
+      const availableLeaves = tree?.availableLeaves?.() || [];
+      const resolvedChoiceId = String(stored?.choiceId || stored?.id || "").trim();
+      const options = asArray(validation.options).map((option) => ({
+        id: String(option?.id || ""),
+        label: String(option?.label || option?.id || ""),
+        text: String(option?.text || "")
+      })).filter((option) => option.id && option.label);
+
+      return {
+        missionId: id,
+        slot,
+        fact: factKey,
+        active: this.missionLifecycle(id).active,
+        completed: this.missionLifecycle(id).completed,
+        available: Boolean(
+          this.missionLifecycle(id).active &&
+          node &&
+          !node.isComplete &&
+          availableLeaves.includes(node) &&
+          !resolvedChoiceId
+        ),
+        resolved: Boolean(resolvedChoiceId),
+        choiceId: resolvedChoiceId || null,
+        options
+      };
+    }
+
+    submitMissionChoice(missionId, choiceId) {
+      const state = this.missionChoiceState(missionId);
+      if (!state?.available) return false;
+      const selected = state.options.find((option) => option.id === String(choiceId || ""));
+      if (!selected) return false;
+
+      const manager = this.manager();
+      manager.memory.setFact?.(state.fact, {
+        missionId: state.missionId,
+        choiceId: selected.id,
+        label: selected.label,
+        selectedAt: Date.now()
+      });
+      manager.memory.save?.();
+
+      if (!this.progressRuntimeValidationSlot(state.missionId, state.slot, 1)) {
+        manager.memory.setFact?.(state.fact, null);
+        manager.memory.save?.();
+        return false;
+      }
+
+      global.dispatchEvent?.(new CustomEvent("bluefox:mission-choice-completed", {
+        detail: {
+          missionId: state.missionId,
+          choiceId: selected.id,
+          fact: state.fact
+        }
+      }));
+      return true;
+    }
+
     onRationConsumed(detail = {}) {
       if (detail.automatic === true) return false;
       const energyBefore = Number(BF.getSurvivalState?.().energy);
@@ -7080,6 +7152,10 @@
     runtime.constructionCollectionCandidate(engine || BF.currentEngine, now);
   BF.isTutorialSurvivalCapabilityUnlocked = (capability) =>
     runtime.survivalCapabilityUnlocked(capability);
+  BF.getMissionChoiceState = (missionId) =>
+    clone(runtime.missionChoiceState(missionId));
+  BF.submitMissionChoice = (missionId, choiceId) =>
+    runtime.submitMissionChoice(missionId, choiceId);
 
 
   BF.MicroScenePlacement = Object.freeze({

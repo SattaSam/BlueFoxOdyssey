@@ -438,6 +438,43 @@
     return row;
   }
 
+  function renderMissionChoiceControls(mission) {
+    const missionId = String(mission?.missionId || mission?.id || "");
+    if (!missionId || typeof BF.getMissionChoiceState !== "function") return null;
+    const choice = BF.getMissionChoiceState(missionId);
+    if (!choice || (!choice.available && !choice.resolved)) return null;
+
+    const container = document.createElement("div");
+    container.className = "mission-browser-actions mission-choice-actions";
+    if (choice.resolved) {
+      const selected = (choice.options || []).find((option) => option.id === choice.choiceId);
+      container.appendChild(createTextElement(
+        "small",
+        "mission-choice-resolved",
+        `Choix : ${selected?.label || choice.choiceId}`
+      ));
+      return container;
+    }
+
+    (choice.options || []).forEach((option) => {
+      const button = createTextElement("button", "mission-choice-button", option.label);
+      button.type = "button";
+      if (option.text) button.title = option.text;
+      button.addEventListener("click", () => {
+        const buttons = [...container.querySelectorAll("button")];
+        buttons.forEach((candidate) => { candidate.disabled = true; });
+        const accepted = BF.submitMissionChoice?.(missionId, option.id) === true;
+        if (!accepted) {
+          buttons.forEach((candidate) => { candidate.disabled = false; });
+          return;
+        }
+        global.setTimeout(refresh, 0);
+      });
+      container.appendChild(button);
+    });
+    return container;
+  }
+
   function missionHudLeafNodes(mission) {
     const root = mission?.tree?.root;
     if (!root) return [];
@@ -640,6 +677,8 @@
       (mission.tree?.root?.children || []).forEach((node, index) => {
         body.appendChild(renderStep(node, index, state.currentAction));
       });
+      const choiceControls = renderMissionChoiceControls(mission);
+      if (choiceControls) body.appendChild(choiceControls);
       if (!mission.isPrimary && mission.lifecycleStatus === "active") {
         const prioritize = createTextElement("button", "mission-priority-button", "Définir comme priorité");
         prioritize.type = "button";
@@ -795,6 +834,8 @@
             body.appendChild(renderStep(node, index, state.currentAction))
           );
         }
+        const choiceControls = renderMissionChoiceControls(mission);
+        if (choiceControls) body.appendChild(choiceControls);
         const actions = document.createElement("div");
         actions.className = "mission-browser-actions";
         if (mission.status === "active" && !mission.isPrimary) {

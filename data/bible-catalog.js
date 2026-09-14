@@ -12018,6 +12018,62 @@
     })
   });
 
+  const ENDCHOICE = Object.freeze({
+    id: "END-CHOICE",
+    title: "Là où je suis arrivé",
+    description: "Lorsque le parcours est suffisamment mûr, revenir réellement au Camp puis choisir de rester sur ce monde ou de chercher un moyen de rentrer.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "EXP-LONG-05", count: 1 }),
+    prerequisites: Object.freeze(["EXP-LONG-05", "ENV-WORLD-20", "SIS-03", "ANN-07"]),
+    priority: 171,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.2,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "returnCamp",
+        title: "Revenir réellement au Camp",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          catalogManaged: true,
+          toMapId: "crystal",
+          distinctBy: "transition"
+        })
+      }),
+      Object.freeze({
+        slot: "decision",
+        title: "Décider de la suite du voyage",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["returnCamp"]),
+        params: Object.freeze({ eventDriven: true, catalogManaged: true })
+      })
+    ]),
+    proximityContexts: Object.freeze([
+      Object.freeze({ id: "end-choice-camp", microSceneId: "MSC-CUSTOM-CAMP", fact: "endChoice:campReached", slot: "returnCamp", radius: 10 }),
+      Object.freeze({ id: "end-choice-refuge", microSceneId: "MSC-CUSTOM-CAMP-BASE", fact: "endChoice:campReached", slot: "returnCamp", radius: 10 }),
+      Object.freeze({ id: "end-choice-base", microSceneId: "MSC-CUSTOM-CAMP-BASE-REINFORCED", fact: "endChoice:campReached", slot: "returnCamp", radius: 10 })
+    ]),
+    runtimeValidation: Object.freeze({
+      type: "mission-choice",
+      slot: "decision",
+      fact: "endChoice:decision",
+      options: Object.freeze([
+        Object.freeze({ id: "stay", label: "Rester", text: "Rester ici et continuer à explorer ce monde." }),
+        Object.freeze({ id: "return", label: "Trouver un moyen de rentrer", text: "Chercher maintenant un moyen de revenir au point de départ." })
+      ])
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["J’ai relié des régions lointaines, compris des fragments de ce monde et rencontré ceux qui l’habitent. Avant d’aller plus loin, j’ai envie de revenir là où tout a commencé."]),
+      progress: Object.freeze([Object.freeze({ slot: "returnCamp", atCount: 1, text: "Le Camp est toujours là. Tout ce chemin a commencé ici, et la question que j’évitais jusque-là est devenue impossible à repousser." })]),
+      completed: Object.freeze(["J’ai choisi. Ce choix ne ferme pas ce monde ; il décide seulement de ce que je vais chercher maintenant."])
+    })
+  });
+
   const CART02 = Object.freeze({
     id: "CART-02",
     title: "La traversée de la brume toxique",
@@ -12299,7 +12355,7 @@
     TERRCARN01, TERRCARN02, TERRCARN03, TERRCARN04, TERRSTORM01, TERRSTORM02, TERRSTORM03, TERRSTORM04,
     POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09, TP10, TP11,
     TPAFTER01, TPAFTER02, TPAFTER03, TPAFTER04,
-    EXPLONG01, EXPLONG02, EXPLONG03, EXPLONG04, EXPLONG05,
+    EXPLONG01, EXPLONG02, EXPLONG03, EXPLONG04, EXPLONG05, ENDCHOICE,
     CART02, CART01, CART03,
     ANN04,
     ANN06,

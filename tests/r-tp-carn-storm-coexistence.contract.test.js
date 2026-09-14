@@ -3,7 +3,7 @@ const ROOT=path.join(__dirname,'..');const w={BlueFox3D:{}};w.window=w;vm.runInN
 const cat=w.BlueFox3D.BibleCatalog,by=new Map(cat.map(m=>[m.id,m]));
 const ids=['TERR-CARN-01','TERR-CARN-02','TERR-CARN-03','TERR-CARN-04','TERR-STORM-01','TERR-STORM-02','TERR-STORM-03','TERR-STORM-04','TP-10','TP-11','TP-AFTER-01','TP-AFTER-02','TP-AFTER-03','TP-AFTER-04'];
 for(const id of ids) assert(by.has(id),`${id} absente du catalogue combiné`);
-assert.equal(cat.length,319,'catalogue combiné CARN/STORM + TP-AFTER attendu à 319 missions');
+assert.equal(cat.length,320,'catalogue combiné CARN/STORM + TP-AFTER attendu à 320 missions');
 assert.equal(by.get('TP-10').sequence[0].params.eventDriven,true);
 assert.equal(by.get('TP-11').sequence[0].params.eventDriven,true);
 assert.equal(by.get('TP-11').sequence[1].params.eventDriven,true);
