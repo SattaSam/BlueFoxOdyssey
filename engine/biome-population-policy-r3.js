@@ -119,7 +119,11 @@ const patch=(def,pop)=>{
  // limit fauna to one or two types per map
  const faunaTypes=[...new Set(dec.filter(([t])=>FAUNA.has(t)).map(([t])=>t))];
  const faunaLimit=profile==="desert"?1:(deterministic(def)<.48?1:2);
- const keep=new Set(faunaTypes.slice(0,faunaLimit));
+ const faunaStart=faunaTypes.length?Math.floor(deterministic({...def,id:`${def?.id||""}:fauna-choice`})*faunaTypes.length):0;
+ const keep=new Set(Array.from(
+   {length:Math.min(faunaLimit,faunaTypes.length)},
+   (_,index)=>faunaTypes[(faunaStart+index)%faunaTypes.length]
+ ));
  dec=dec.filter(([t])=>!FAUNA.has(t)||keep.has(t));
  return {...pop,rockCount:rocks,decorations:dec,resourceWeights:Object.freeze(rw.map(Object.freeze)),policyVersion:"population-r3.1"};
 };

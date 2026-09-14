@@ -210,6 +210,10 @@
           rarity: template.rarity || "custom",
           radius: Math.max(1, Number(template.radius) || 1),
           custom: true,
+          missionOnly:
+            template.missionOnly === true ||
+            template.id === "MSC-CUSTOM-NID-DE-FAUNE5",
+          missionId: template.missionId || null,
           objects: Object.freeze(template.objects.map((entry) => Object.freeze({
             type: entry.type,
             offset: Object.freeze([...(entry.offset || [0, 0, 0])].map((value) => Number(value) || 0)),

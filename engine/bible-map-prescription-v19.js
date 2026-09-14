@@ -159,13 +159,22 @@
       missionStatus(engine, mission.id) === "active"
     ) || null;
 
-  const prerequisitesSatisfied = (engine, mission) =>
-    (mission?.prerequisites || []).every((missionId) =>
+  const prerequisitesSatisfied = (engine, mission) => {
+    const runtime = BF.bibleRuntime;
+    if (typeof runtime?.prerequisitesSatisfied === "function") {
+      return runtime.prerequisitesSatisfied(mission) === true;
+    }
+    return (mission?.prerequisites || []).every((missionId) =>
       missionStatus(engine, missionId) === "completed"
     );
+  };
 
-  const dormantMapDiscoveryPrescriptionMission = (engine, direction) =>
-    catalog()
+  const dormantMapDiscoveryPrescriptionMission = (engine, direction) => {
+    // Une prescription dormante ne doit jamais contourner le verrou canonique
+    // du voyage inconnu. Elle ne prépare une destination missionnelle qu'une
+    // fois la progression réellement autorisée à quitter le territoire connu.
+    if (!unknownTravelUnlocked(engine)) return null;
+    return catalog()
       .filter((mission) => {
         if (!mission?.id || !mission?.mapGeneration) return false;
         if (missionStatus(engine, mission.id) != null) return false;
@@ -180,6 +189,7 @@
         (Number(right.priority) || 0) - (Number(left.priority) || 0) ||
         catalog().indexOf(left) - catalog().indexOf(right)
       )[0] || null;
+  };
 
   const unknownTravelUnlocked = (engine) => {
     const controlled = controlledNavigationMissions();

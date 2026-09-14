@@ -112,10 +112,12 @@
     { discoveryIndex: 3, role: "unknown", plateauCount: 6 }
   ]);
 
+  // Les tailles autorisées après la progression initiale sont équiprobables.
+  // Le 5 reste explicitement à 0 afin de préserver la règle historique no5.
   const PLATEAU_WEIGHTS = list([
-    { value: 1, weight: 6 }, { value: 2, weight: 20 },
-    { value: 3, weight: 10 }, { value: 4, weight: 25 },
-    { value: 5, weight: 14 }, { value: 6, weight: 25 }
+    { value: 1, weight: 20 }, { value: 2, weight: 20 },
+    { value: 3, weight: 20 }, { value: 4, weight: 20 },
+    { value: 5, weight: 0 }, { value: 6, weight: 20 }
   ]);
 
   const RICHNESS = list([
