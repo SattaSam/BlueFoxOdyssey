@@ -878,11 +878,25 @@
       return;
     }
     if (state.state === "forage" || state.state === "play") {
-      const radius = state.state === "play" ? 0.42 : 0.28;
-      const pace = state.state === "play" ? 0.75 : 0.28;
-      root.position.x = anchor.x + Math.cos(state.forageDirection + elapsed * pace) * radius;
-      root.position.z = anchor.z + Math.sin(state.forageDirection + elapsed * pace) * radius;
-      root.rotation.y = state.anchor.rotation.y + state.forageDirection + elapsed * pace + Math.PI / 2;
+      // Déplacement court sur un axe stable : la créature avance réellement
+      // autour de son ancre sans décrire une petite orbite ni tourner sur place.
+      const range = state.state === "play" ? 1.45 : 0.95;
+      const pace = state.state === "play" ? 0.68 : 0.34;
+      const travel = Math.sin((elapsed - state.stateSince) * pace + state.phase) * range;
+      const targetX = anchor.x + Math.cos(state.forageDirection) * travel;
+      const targetZ = anchor.z + Math.sin(state.forageDirection) * travel;
+      const dx = targetX - root.position.x;
+      const dz = targetZ - root.position.z;
+      root.position.x += dx * 0.14;
+      root.position.z += dz * 0.14;
+      if (Math.hypot(dx, dz) > 0.015) {
+        const targetYaw = Math.atan2(dx, dz);
+        const yawDelta = Math.atan2(
+          Math.sin(targetYaw - root.rotation.y),
+          Math.cos(targetYaw - root.rotation.y)
+        );
+        root.rotation.y += clamp(yawDelta, -0.12, 0.12);
+      }
       root.position.y = anchor.y + (state.type === "sauteur" ? Math.max(0, Math.sin(elapsed * 3.5 + state.phase)) * 0.18 : 0);
       return;
     }

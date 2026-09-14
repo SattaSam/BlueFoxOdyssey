@@ -613,7 +613,9 @@
         root.add(chunk);
       }
       const radius = type === "large_rock" ? 2.35 : 1.25;
-      hitbox = makeHitbox(THREE, root, radius, type === "large_rock" ? 3.6 : 2.1, type);
+      const hitboxRadius = type === "large_rock" ? 1.5 : radius;
+      const hitboxHeight = type === "large_rock" ? 2.6 : 2.1;
+      hitbox = makeHitbox(THREE, root, hitboxRadius, hitboxHeight, type);
       colliders = [{ offset: new THREE.Vector3(), radius }];
     } else if (type === "crystalline_tree" || type === "luminescent_tree") {
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.62, 4.4, 7), type === "crystalline_tree" ? metal : green);
@@ -751,7 +753,7 @@
         cloud.position.set((index % 4 - 1.5) * 2.4, 0.55 + (index % 3) * 0.35, (Math.floor(index / 4) - 1) * 2.4);
         root.add(cloud);
       }
-      hitbox = makeHitbox(THREE, root, 4.8, 2.6, type);
+      hitbox = makeHitbox(THREE, root, 1.35, 1.6, type);
     } else if (type === "submerged_ruins") {
       const floor = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.34, 5.2), stone);
       floor.position.y = 0.17;
