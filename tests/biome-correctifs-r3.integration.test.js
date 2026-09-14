@@ -166,7 +166,7 @@ test("les arches gardent deux collisions de piliers et un passage central", () =
   assert.match(library, /Vector3\(1\.35,0,0\),radius:0\.4/);
 });
 
-test("les mondes sous-marins bioluminescents utilisent les trois MSC coralliennes sans arche droite isolée", () => {
+test("les mondes sous-marins bioluminescents utilisent les MSC coralliennes sans arche droite isolée", () => {
   const BF = loadCanonicalBiomeRules();
   const population = BF.BiomeRules.getMapPopulation({
     id: "underwater-bioluminescent",
@@ -183,8 +183,11 @@ test("les mondes sous-marins bioluminescents utilisent les trois MSC corallienne
   coralScenes.forEach((scene) => assert.ok(scene.objects.some(({ type }) => type === "arch")));
 
   const spawner = read("engine/object-spawner.js");
-  coralScenes.forEach(({ id }) => assert.match(spawner, new RegExp(id)));
-  assert.match(spawner, /underwaterCoralMicroSceneId/);
+  const hierarchy = read("engine/map-population-hierarchy.js");
+  assert.doesNotMatch(spawner, /underwaterCoralSceneIds/);
+  coralScenes.forEach(({ id }) => assert.match(hierarchy, new RegExp(id)));
+  assert.match(hierarchy, /const coralTarget = zones\.length <= 1 \? 1 : zones\.length <= 3 \? 2 : 3/);
+  assert.match(hierarchy, /spawnGuaranteedScene\(coralIds\[index\]/);
 });
 
 test("les rochers enneigés restent strictement réservés à la glace, la banquise et la toundra", () => {
@@ -264,11 +267,11 @@ test("la partie 4 force les cadences inter-maps sans compteur parallèle", () =>
   ));
 
   const spawner = read("engine/object-spawner.js");
-  assert.match(spawner, /featuredGeneratedScene/);
-  assert.ok(
-    spawner.indexOf("featuredGeneratedScene") <
-    spawner.indexOf("generatedSpecialScenes.length && next() < specialChance")
-  );
+  const hierarchy = read("engine/map-population-hierarchy.js");
+  assert.doesNotMatch(spawner, /featuredGeneratedScenes/);
+  assert.match(hierarchy, /const featuredSceneIds/);
+  assert.match(hierarchy, /featuredSceneIds\.forEach/);
+  assert.match(hierarchy, /spawnGuaranteedScene\(sceneId, index, "featured", true\)/);
 });
 
 test("le correctif de proximité choisit réellement la cible la plus proche", () => {

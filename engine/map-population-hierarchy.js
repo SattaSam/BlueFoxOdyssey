@@ -196,7 +196,8 @@
     }
 
     const biome = options.definition?.generator?.biomeId ||
-      options.definition?.biome || options.definition?.id || "alien";
+      options.definition?.profile || options.definition?.biome ||
+      options.definition?.id || "alien";
     const compatibleScenes = DECORATIVE_SCENES.filter((scene) =>
       scene.biomes.includes(biome) || scene.biomes.includes("alien")
     );
@@ -217,11 +218,15 @@
       options.definition?.entry,
       ...Object.values(options.resolvedExits || {})
     ].filter(Boolean);
-    const isFree = (x, z, radius) => !occupied.some((item) =>
-      Math.hypot(x - item.x, z - item.z) < radius + item.radius + 0.55
-    ) && !protectedPoints.some((point) =>
+    const isProtected = (x, z, radius) => protectedPoints.some((point) =>
       Math.hypot(x - point.x, z - point.z) < radius + 4.2
-    ) && !corridors.some(({ start, end }) => pointToSegmentSquared(start, end, x, z) < (radius + 1.8) ** 2);
+    ) || corridors.some(({ start, end }) =>
+      pointToSegmentSquared(start, end, x, z) < (radius + 1.8) ** 2
+    );
+    const isFree = (x, z, radius, ignoreOccupied = false) =>
+      (ignoreOccupied || !occupied.some((item) =>
+        Math.hypot(x - item.x, z - item.z) < radius + item.radius + 0.55
+      )) && !isProtected(x, z, radius);
 
     const findZoneEdgeOrigin = (zone, radius) => {
       for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -234,35 +239,47 @@
       return null;
     };
 
-    const featuredSceneIds = Array.isArray(options.definition?.generator?.featuredMicroSceneIds)
-      ? options.definition.generator.featuredMicroSceneIds.filter(Boolean)
-      : [];
-    const guaranteedSceneIds = [...featuredSceneIds];
-    const biomeId = options.definition?.generator?.biomeId;
-    if (["magnetic", "floating_islands"].includes(biomeId) &&
-        !guaranteedSceneIds.includes("MSC-SUSPENDED-ISLAND-001")) {
-      guaranteedSceneIds.unshift("MSC-SUSPENDED-ISLAND-001");
-    }
-    if (biomeId === "aquatic") {
-      const context = String([
-        options.definition?.name,
-        options.definition?.description,
-        ...(options.definition?.traits || []).map((trait) => trait?.label || trait?.id || "")
-      ].join(" ")).toLocaleLowerCase("fr");
-      if (/sous.?marin|underwater|ocean/.test(context)) {
-        [
-          "MSC-CUSTOM-CORAILBIOLUMINESCENT1",
-          "MSC-CUSTOM-CORAILBIOLUMINESCENT2",
-          "MSC-CUSTOM-CORAILBIOLUMINESCENT3"
-        ].forEach((id) => { if (!guaranteedSceneIds.includes(id)) guaranteedSceneIds.push(id); });
+    const findDeterministicOrigin = (radius, ignoreOccupied = false) => {
+      const distances = [18, 20, 22, Math.max(12, 24 - radius)];
+      for (let zoneIndex = 0; zoneIndex < zones.length; zoneIndex += 1) {
+        const zone = zones[zoneIndex];
+        for (const distance of distances) {
+          for (let step = 0; step < 48; step += 1) {
+            const angle = (step / 48) * Math.PI * 2;
+            const x = zone.center.x + Math.cos(angle) * distance;
+            const z = zone.center.z + Math.sin(angle) * distance;
+            if (isFree(x, z, radius, ignoreOccupied)) {
+              return { origin: { x, y: 0, z }, zoneIndex };
+            }
+          }
+        }
       }
-    }
-    guaranteedSceneIds.slice(0, Math.max(1, Math.min(zones.length, 3))).forEach((sceneId, index) => {
+      return null;
+    };
+
+    const alreadyRegistered = (sceneId) =>
+      (options.group?.userData?.microScenes || this.microSceneInstances || [])
+        .some((entry) => String(entry?.id || "") === String(sceneId));
+
+    const spawnGuaranteedScene = (sceneId, preferredZoneIndex = 0, source = "featured", terminal = true) => {
+      if (!sceneId || alreadyRegistered(sceneId)) return true;
       const scene = BF.MicroScenes?.get?.(sceneId);
-      const zone = zones[index % zones.length];
-      if (!scene || !zone) return;
-      const origin = findZoneEdgeOrigin(zone, Math.min(scene.radius || 6, 11));
-      if (!origin) return;
+      if (!scene) return false;
+      const radius = Math.min(Math.max(1, Number(scene.radius) || 6), 11);
+      const preferredZone = zones[preferredZoneIndex % zones.length];
+      let origin = preferredZone ? findZoneEdgeOrigin(preferredZone, radius) : null;
+      let resolvedZoneIndex = preferredZoneIndex % zones.length;
+      if (!origin) {
+        const deterministic = findDeterministicOrigin(radius, false);
+        origin = deterministic?.origin || null;
+        if (deterministic) resolvedZoneIndex = deterministic.zoneIndex;
+      }
+      if (!origin && terminal) {
+        const relaxed = findDeterministicOrigin(radius, true);
+        origin = relaxed?.origin || null;
+        if (relaxed) resolvedZoneIndex = relaxed.zoneIndex;
+      }
+      if (!origin) return false;
       try {
         const records = this.spawnMicroScene(scene.id, {
           origin,
@@ -270,7 +287,7 @@
           force: true,
           scene: options.group || this.scene,
           palette: options.definition.palette,
-          source: `featured-microscene:${scene.id}`
+          source: `${source}-microscene:${scene.id}`
         }) || [];
         records.forEach((record) => {
           const root = record.instanceRoot || record.root;
@@ -290,11 +307,63 @@
             )) options.colliders?.push({ position, radius: collider.radius, owner });
           });
         });
-        zoneStats[index % zones.length].scenes += 1;
+        occupied.push({ x: origin.x, z: origin.z, radius });
+        zoneStats[resolvedZoneIndex].scenes += 1;
+        return true;
       } catch (error) {
-        console.warn(`MSC featured impossible: ${scene.id}`, error);
+        console.warn(`MSC garantie impossible: ${scene.id}`, error);
+        return false;
       }
+    };
+
+    const featuredSceneIds = Array.isArray(options.definition?.generator?.featuredMicroSceneIds)
+      ? options.definition.generator.featuredMicroSceneIds.filter(Boolean)
+      : [options.definition?.generator?.featuredMicroSceneId].filter(Boolean);
+    featuredSceneIds.forEach((sceneId, index) => {
+      spawnGuaranteedScene(sceneId, index, "featured", true);
     });
+
+    const biomeId = options.definition?.generator?.biomeId || options.definition?.profile || null;
+    const context = String([
+      options.definition?.generator?.biomeId,
+      options.definition?.profile,
+      options.definition?.generator?.baseTemplateName,
+      options.definition?.name,
+      options.definition?.description,
+      ...(options.definition?.traits || []).map((trait) => trait?.label || trait?.id || "")
+    ].join(" ")).toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // La signature corallienne est une vraie MSC de population. Sa densité
+    // dépend de la taille de la map : 1 sur un plateau, 2 sur 2-3, 3 sur 4-6.
+    const underwaterContext = biomeId === "aquatic" || /sous.?marin|underwater|ocean/.test(context);
+    const bioluminescentContext = /biolum|luminescen|fluorescen/.test(context);
+    if (underwaterContext && bioluminescentContext) {
+      const coralIds = [
+        "MSC-CUSTOM-CORAILBIOLUMINESCENT1",
+        "MSC-CUSTOM-CORAILBIOLUMINESCENT2",
+        "MSC-CUSTOM-CORAILBIOLUMINESCENT3"
+      ];
+      const coralTarget = zones.length <= 1 ? 1 : zones.length <= 3 ? 2 : 3;
+      for (let index = 0; index < coralTarget; index += 1) {
+        spawnGuaranteedScene(coralIds[index], index, "biome-signature-coral", true);
+      }
+    }
+
+    // Cette MSC remarquable reste une occurrence unique. La densité 1..5
+    // demandée pour les "îles flottantes" concerne l'objet mobile_islet,
+    // géré par ObjectSpawner, jamais cette composition dense. On reprend ici
+    // les trois signatures historiques d'ObjectSpawner afin que la seconde
+    // passe puisse garantir l'occurrence si la première n'a trouvé aucun ancrage.
+    const suspendedIslandSignature =
+      options.definition?.generator?.biomeId === "floating_islands" ||
+      (/ile|island/.test(context) && /flott|floating|suspend/.test(context)) ||
+      (/magnet/.test(context) && /desert/.test(context) && /roch|rock/.test(context) &&
+        /levitat|flott|floating|suspend/.test(context)) ||
+      ((biomeId === "swamp" || /marais|swamp/.test(context)) &&
+        /ile|island/.test(context) && /flott|floating|suspend/.test(context));
+    if (suspendedIslandSignature) {
+      spawnGuaranteedScene("MSC-SUSPENDED-ISLAND-001", 0, "biome-signature", true);
+    }
 
     zones.forEach((zone, zoneIndex) => {
       let previousSceneId = "";

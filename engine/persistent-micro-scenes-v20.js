@@ -228,15 +228,109 @@
     return { x: Number(point.x) || 0, y: Number(point.y) || 0, z: Number(point.z) || 0 };
   };
 
-  const alreadySpawned = (built, id) =>
-    Boolean(built?.group?.getObjectByProperty?.("name", `PersistentMicroScene:${id}`));
+  const normalizePoint = (point) => point &&
+    Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.z))
+    ? {
+        x: Number(point.x) || 0,
+        y: Number(point.y) || 0,
+        z: Number(point.z) || 0
+      }
+    : null;
+
+  // Dernier recours strictement missionnel : une scène nécessaire au gameplay
+  // ne peut pas disparaître parce que le décor a saturé les emplacements sûrs.
+  // On conserve d'abord les réserves entrée/sorties, puis on accepte en ultime
+  // recours une superposition avec le décor. La composition interne de la MSC
+  // reste inchangée : seul son ancrage global est choisi ici.
+  const findMissionTerminalAnchor = (built, definition, preferred = null) => {
+    const regions = (built.walkableRegions || []).filter((region) =>
+      Number(region.maxX) > Number(region.minX) &&
+      Number(region.maxZ) > Number(region.minZ)
+    );
+    const candidates = missionFallbackCandidates(built, definition, preferred);
+
+    const reservedClear = candidates.find(({ point }) =>
+      regions.some((region) => pointInside(region, point, 0.75)) &&
+      clearOfReserved(definition, point, 0)
+    );
+    if (reservedClear) return normalizePoint(reservedClear.point);
+
+    // Balayage déterministe plus dense avant de relâcher les réserves.
+    for (const region of regions) {
+      const minX = Number(region.minX);
+      const maxX = Number(region.maxX);
+      const minZ = Number(region.minZ);
+      const maxZ = Number(region.maxZ);
+      for (const fx of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+        for (const fz of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+          const point = {
+            x: minX + (maxX - minX) * fx,
+            y: 0,
+            z: minZ + (maxZ - minZ) * fz
+          };
+          if (pointInside(region, point, 0.5) && clearOfReserved(definition, point, 0)) {
+            return point;
+          }
+        }
+      }
+    }
+
+    // Ultime garantie : rester dans une région réellement marchable même si
+    // elle est déjà occupée. C'est préférable à une MSC missionnelle absente.
+    if (regions.length) {
+      const region = [...regions].sort((a, b) =>
+        (Number(b.maxX) - Number(b.minX)) * (Number(b.maxZ) - Number(b.minZ)) -
+        (Number(a.maxX) - Number(a.minX)) * (Number(a.maxZ) - Number(a.minZ))
+      )[0];
+      return {
+        x: (Number(region.minX) + Number(region.maxX)) / 2,
+        y: 0,
+        z: (Number(region.minZ) + Number(region.maxZ)) / 2
+      };
+    }
+
+    // Une ancienne intention peut déjà porter un ancrage valide sans que le
+    // build courant expose de walkableRegions. On le préserve plutôt que de
+    // perdre la scène.
+    return normalizePoint(preferred) || normalizePoint(definition.entry) || { x: 0, y: 0, z: 0 };
+  };
+
+  const spawnedRoot = (built, id) =>
+    built?.group?.getObjectByProperty?.("name", `PersistentMicroScene:${id}`) || null;
+
+  const ensureExistingIndex = (built, record, id, template, root) => {
+    built.group.userData ||= {};
+    built.group.userData.microScenes ||= [];
+    const existingIndex = built.group.userData.microScenes.findIndex(
+      (entry) => String(entry?.instanceId || "") === String(id)
+    );
+    if (existingIndex >= 0) {
+      built.group.userData.microScenes[existingIndex].instanceRoot =
+        built.group.userData.microScenes[existingIndex].instanceRoot || root;
+      return;
+    }
+    built.group.userData.microScenes.push({
+      id: record.microSceneId,
+      instanceId: id,
+      missionId: record.missionId || null,
+      missionOnly: false,
+      rarity: template?.rarity || null,
+      contextRole: record.contextRole || null,
+      instanceRoot: root,
+      records: []
+    });
+  };
 
   const spawnRecord = (THREE, built, definition, record) => {
     const id = recordId(definition, record);
-    if (alreadySpawned(built, id)) return true;
-
     const template = BF.MicroScenes?.get?.(record.microSceneId);
     if (!template || !BF.ObjectSpawner) return false;
+
+    const existingRoot = spawnedRoot(built, id);
+    if (existingRoot) {
+      ensureExistingIndex(built, record, id, template, existingRoot);
+      return true;
+    }
 
     const canonical = canonicalPlacement(definition, record.microSceneId);
     if (canonical) {
@@ -264,6 +358,16 @@
           microSceneId: record.microSceneId
         });
       }
+    }
+
+    if (!anchor && record.missionId && record.fixedAnchor !== true) {
+      anchor = findMissionTerminalAnchor(built, definition, preferred);
+      console.warn("[BlueFox] Placement terminal utilisé pour garantir une micro-scène missionnelle persistante.", {
+        mapId: definition.id,
+        missionId: record.missionId,
+        microSceneId: record.microSceneId,
+        anchor
+      });
     }
 
     if (!anchor) {
@@ -428,6 +532,8 @@
     list,
     ensure,
     findSafeAnchor,
+    findMissionFallbackAnchor,
+    findMissionTerminalAnchor,
     spawnRecord,
     spawnForBuiltMap
   });

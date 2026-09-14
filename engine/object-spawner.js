@@ -485,6 +485,7 @@
       };
 
       let floatingHeightIndex = 0;
+      let standaloneFloatingIsletCount = 0;
       let elevatedFogIndex = 0;
       const placedTypeCounts = new Map();
       const contextText = `${definition.generator?.biomeId || ""} ${definition.name || ""} ${definition.description || ""} ${(definition.traits || []).map((trait) => `${trait.id || ""} ${trait.label || ""}`).join(" ")}`.toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -509,6 +510,7 @@
         });
         const object = record.instance;
         placedTypeCounts.set(type, (placedTypeCounts.get(type) || 0) + 1);
+        if (type === "mobile_islet") standaloneFloatingIsletCount += 1;
         if (frozenRockContext && snowRockTypes.has(type) && placedTypeCounts.get(type) % 3 === 0) {
           object.root.traverse((node) => {
             if (!node.isMesh || !node.material) return;
@@ -570,14 +572,10 @@
             mapBudget.resourcesMin +
             next() * (mapBudget.resourcesMax - mapBudget.resourcesMin)
           );
-      const requestedFeaturedSceneIds = Array.isArray(definition.generator?.featuredMicroSceneIds)
-        ? definition.generator.featuredMicroSceneIds.filter(Boolean)
-        : [definition.generator?.featuredMicroSceneId].filter(Boolean);
-      const landmarkCount = Math.max(
-        requestedFeaturedSceneIds.length,
-        mapBudget.landmarksMin + Math.floor(
-          next() * (mapBudget.landmarksMax - mapBudget.landmarksMin + 1)
-        )
+      // Les featured sont de vraies MSC hors budget, matérialisées par
+      // MapPopulationHierarchy. Elles ne gonflent plus le quota de landmarks.
+      const landmarkCount = mapBudget.landmarksMin + Math.floor(
+        next() * (mapBudget.landmarksMax - mapBudget.landmarksMin + 1)
       );
       const landmarkTemplate = BF.MicroScenes.getMapLandmark(population.profileId);
       const mapNumber = Number(definition.number);
@@ -616,12 +614,11 @@
             "local_storm", "suspended_island", "predator_flora"
           ].includes(Object.keys(BF.MicroScenes.data).find((key) => BF.MicroScenes.data[key] === scene)))
         : [];
-      const featuredGeneratedScenes = definition.generated && !tutorialProtected
-        ? requestedFeaturedSceneIds.map((id) => BF.MicroScenes.get(id)).filter(Boolean)
-        : [];
       const generationContext = `${
         definition.generator?.biomeId || ""
-      } ${definition.name || ""} ${definition.description || ""} ${
+      } ${definition.profile || ""} ${definition.generator?.baseTemplateName || ""} ${
+        definition.name || ""
+      } ${definition.description || ""} ${
         (definition.traits || []).map((trait) => `${trait.id || ""} ${trait.label || ""}`).join(" ")
       }`.toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const dedicatedFloatingIslands = !tutorialProtected && (
@@ -647,11 +644,6 @@
       const swampMushroomMap =
         population.profileId === "swamp" ||
         /marais|swamp/.test(generationContext);
-      const underwaterContext =
-        population.profileId === "aquatic" ||
-        /sous marin|underwater|ocean/.test(generationContext);
-      const bioluminescentUnderwater = underwaterContext &&
-        /biolum|luminescen|fluorescen/.test(generationContext);
       const populationRoll = (() => {
         const text = `${definition.id || ""}:${definition.seed || ""}:${definition.number || ""}`;
         let hash = 2166136261;
@@ -684,13 +676,6 @@
             "MSC-CUSTOM-CARRIEREDECRISTAUX1", "MSC-CUSTOM-BASALT-RIFT"
           ]
         : [];
-      const underwaterCoralSceneIds = !tutorialProtected && bioluminescentUnderwater
-        ? [
-            "MSC-CUSTOM-CORAILBIOLUMINESCENT1",
-            "MSC-CUSTOM-CORAILBIOLUMINESCENT2",
-            "MSC-CUSTOM-CORAILBIOLUMINESCENT3"
-          ]
-        : [];
       const landmarkObjectBudget = effectiveLandmarks.length
         ? effectiveLandmarks.length
         : landmarkCount * effectiveLandmarkTemplate.length;
@@ -717,22 +702,6 @@
         });
         return true;
       };
-
-      if (underwaterCoralSceneIds.length) {
-        const coralScenes = underwaterCoralSceneIds
-          .map((id) => BF.MicroScenes.get(id))
-          .filter(Boolean);
-        const selectedCoralScene = coralScenes[
-          Math.min(coralScenes.length - 1, Math.floor(populationRoll * coralScenes.length))
-        ];
-        if (spawnPreservedCustomScene(selectedCoralScene, 5)) {
-          group.userData.underwaterCoralMicroSceneId = selectedCoralScene.id;
-          remainingAfterResources = Math.max(
-            0,
-            remainingAfterResources - selectedCoralScene.objects.length
-          );
-        }
-      }
 
       let placedResources = 0;
       if (tutorialProtected && !allowCustomRange) {
@@ -882,6 +851,13 @@
         }
       }
 
+      const floatingIsletTarget = dedicatedFloatingIslands
+        ? plateauCount <= 1
+          ? 1
+          : plateauCount <= 3
+            ? 2
+            : Math.min(5, plateauCount - 1)
+        : null;
       const effectiveDecorations = population.decorations.filter(([type]) =>
         tutorialAllowsType(type)
       );
@@ -910,6 +886,11 @@
             ? Math.min(6, denseCount)
             : type === "crystalline_tree" && (glassSteppe || vitrifiedLand)
               ? Math.min(3, denseCount)
+              : type === "mobile_islet" && dedicatedFloatingIslands
+                ? Math.max(0, Math.min(
+                    floatingIsletTarget - standaloneFloatingIsletCount,
+                    denseCount
+                  ))
               : type === "mobile_islet" && magneticContext
                 ? Math.min(magneticDesert ? 5 : 3, denseCount)
                 : denseCount;
@@ -1072,11 +1053,11 @@
         );
       }
       const isletChance = magneticDesert ? 0.82 : 0.56;
-      if (magneticContext && populationRoll < isletChance) {
+      if (magneticContext && populationRoll < isletChance && !dedicatedFloatingIslands) {
         const range = magneticDesert ? 4 : 3;
         ensureCount("mobile_islet", 1 + Math.floor((populationRoll / isletChance) * range), 8, 25);
       }
-      if (magneticContext && !["mobile_islet", "electrostatic_storm", "crystalline_tree"].some((type) => (placedTypeCounts.get(type) || 0) > 0)) {
+      if (magneticContext && !dedicatedFloatingIslands && !["mobile_islet", "electrostatic_storm", "crystalline_tree"].some((type) => (placedTypeCounts.get(type) || 0) > 0)) {
         const signatures = ["mobile_islet", "electrostatic_storm", "crystalline_tree"];
         const type = signatures[Math.floor(next() * signatures.length)];
         const center = randomPosition(7, 24, placement(type).radius, type);
@@ -1084,10 +1065,11 @@
       }
       if (dedicatedFloatingIslands) {
         let guard = 0;
-        while ((placedTypeCounts.get("mobile_islet") || 0) < 3 && guard < 24) {
+        while (standaloneFloatingIsletCount < floatingIsletTarget && guard < floatingIsletTarget * 96) {
           guard += 1;
-          const center = randomPosition(8, 25, placement("mobile_islet").radius, "mobile_islet");
-          if (center) placeObject("mobile_islet", center.x, center.z, guard % 3, next() * Math.PI * 2);
+          const center = randomPosition(8, 25, placement("mobile_islet").radius, "mobile_islet", true);
+          if (!center) break;
+          placeObject("mobile_islet", center.x, center.z, guard % 3, next() * Math.PI * 2);
         }
       }
 
@@ -1095,9 +1077,7 @@
         for (let landmarkIndex = 0; landmarkIndex < landmarkCount; landmarkIndex += 1) {
           const specialChance = ["magnetic", "electrical", "floating_islands", "curiosity"]
             .includes(definition.generator?.biomeId) ? 0.72 : 0.34;
-          const specialScene = featuredGeneratedScenes[landmarkIndex]
-            ? featuredGeneratedScenes[landmarkIndex]
-            : landmarkIndex === 0 && suspendedIslandScene &&
+          const specialScene = landmarkIndex === 0 && suspendedIslandScene &&
               !customFloatingSpawned && !guaranteedSuspendedIslandSpawned
             ? suspendedIslandScene
             : landmarkIndex === 0 && generatedSpecialScenes.length && next() < specialChance
