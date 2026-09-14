@@ -2565,6 +2565,105 @@
       return changed;
     }
 
+    missionProgressValidationKey(missionId, slot) {
+      return `missionProgressValidation:${String(missionId || "")}:${String(slot || "")}`;
+    }
+
+    missionProgressValue(manager, missionId) {
+      const tree = manager?.trees?.get?.(missionId);
+      if (!tree) return null;
+      if (typeof manager.treeProgress === "function") {
+        const value = Number(manager.treeProgress(tree));
+        return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+      }
+      return tree.root?.isComplete === true ? 1 : null;
+    }
+
+    reconcileMissionProgressValidations() {
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation;
+        if (validation?.type !== "mission-progress-after-slot") continue;
+        if (!this.missionLifecycle(mission.id).active) continue;
+
+        const slot = String(validation.slot || "").trim();
+        const afterSlot = String(validation.afterSlot || "").trim();
+        const tree = manager.trees?.get?.(mission.id);
+        const proofNode = tree?.find?.(`${mission.id}:${slot}`);
+        const afterNode = tree?.find?.(`${mission.id}:${afterSlot}`);
+        if (!slot || !afterSlot || !proofNode || proofNode.isComplete || !afterNode) continue;
+
+        const key = this.missionProgressValidationKey(mission.id, slot);
+        let proof = manager.memory.getFact?.(key, null);
+        if (!proof) {
+          const excluded = new Set([
+            mission.id,
+            ...asArray(validation.excludeMissionIds).map(String).filter(Boolean)
+          ]);
+          const candidateMissionIds = asArray(manager.activeMissionIds)
+            .map(String)
+            .filter((id, index, values) =>
+              id &&
+              values.indexOf(id) === index &&
+              !excluded.has(id) &&
+              manager.memory?.state?.missionLifecycle?.[id]?.status === "active" &&
+              manager.trees?.get?.(id)
+            );
+          proof = {
+            candidateMissionIds,
+            capturedAt: Date.now(),
+            armedAt: 0,
+            baseline: null
+          };
+          manager.memory.setFact?.(key, proof);
+          manager.memory.save?.();
+          changed = true;
+        }
+
+        if (!afterNode.isComplete) continue;
+
+        if (!proof.armedAt || !proof.baseline || typeof proof.baseline !== "object") {
+          const baseline = {};
+          asArray(proof.candidateMissionIds).forEach((missionId) => {
+            const value = this.missionProgressValue(manager, missionId);
+            if (value != null) baseline[missionId] = value;
+          });
+          proof = {
+            ...proof,
+            baseline,
+            armedAt: Date.now()
+          };
+          manager.memory.setFact?.(key, proof);
+          manager.memory.save?.();
+          changed = true;
+          // Le même cycle qui arme la preuve ne peut jamais la satisfaire :
+          // seule une progression réellement postérieure au transfert compte.
+          continue;
+        }
+
+        const progressedMissionId = asArray(proof.candidateMissionIds).find((missionId) => {
+          if (!Object.prototype.hasOwnProperty.call(proof.baseline, missionId)) return false;
+          const current = this.missionProgressValue(manager, missionId);
+          const baseline = Number(proof.baseline[missionId]);
+          return current != null && Number.isFinite(baseline) && current > baseline + 1e-9;
+        });
+        if (!progressedMissionId) continue;
+
+        if (!this.progressRuntimeValidationSlot(mission.id, slot, 1)) continue;
+        manager.memory.setFact?.(key, {
+          ...proof,
+          completedAt: Date.now(),
+          completedByMissionId: progressedMissionId
+        });
+        manager.memory.save?.();
+        changed = true;
+      }
+      return changed;
+    }
+
     progressRuntimeValidationSlot(missionId, slot, amount = 1) {
       const manager = this.manager();
       const tree = manager?.trees?.get?.(missionId);
@@ -6524,6 +6623,7 @@
       // puisse les consommer dans le même cycle causal.
       this.reconcileSlotFactEffects();
       this.reconcileMissionCompletionTriggers();
+      this.reconcileMissionProgressValidations();
       this.reconcileWorldEventRequirements();
       this.reconcilePersistentWorldScenes();
       this.reconcileWorldTopologyLinks();

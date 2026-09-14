@@ -11768,6 +11768,132 @@
     })
   });
 
+  const TPAFTER01 = Object.freeze({
+    id: "TP-AFTER-01",
+    title: "Le monde paraît plus petit",
+    description: "Utiliser réellement le réseau depuis ASTROLOGY pour rejoindre une balise déjà déployée sur un territoire connu.",
+    pattern: "TRAVEL_CYCLE",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-11", count: 1 }),
+    prerequisites: Object.freeze(["TP-11"]),
+    priority: 190,
+    passivePriorityAxis: "engineering",
+    ponderation: 1,
+    obsessionEligible: true,
+    obsessionIntensity: 4,
+    slots: Object.freeze({
+      travel: Object.freeze({
+        title: "Rejoindre une ancienne balise par le téléporteur",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          transitionSource: "teleporter",
+          transitionMode: "teleport",
+          distinctBy: "transition"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le premier passage a fonctionné. Je veux maintenant utiliser ce réseau comme un vrai moyen de voyage, pas comme une expérience isolée."]),
+      completed: Object.freeze(["Une distance qui me demandait autrefois plusieurs passages tient maintenant dans un seul transfert. Le monde paraît soudain plus petit."])
+    })
+  });
+
+  const TPAFTER02 = Object.freeze({
+    id: "TP-AFTER-02",
+    title: "Le chemin du retour",
+    description: "Depuis la balise atteinte, utiliser réellement le réseau pour revenir au hub ASTROLOGY sans refaire physiquement tout le trajet.",
+    pattern: "TRAVEL_CYCLE",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-AFTER-01", count: 1 }),
+    prerequisites: Object.freeze(["TP-AFTER-01"]),
+    priority: 189,
+    passivePriorityAxis: "engineering",
+    ponderation: 0.75,
+    obsessionEligible: true,
+    obsessionIntensity: 3,
+    slots: Object.freeze({
+      travel: Object.freeze({
+        title: "Revenir de la balise vers ASTROLOGY",
+        target: 1,
+        params: Object.freeze({
+          eventDriven: true,
+          transitionSource: "teleporter",
+          transitionMode: "teleport",
+          distinctBy: "transition"
+        })
+      })
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Partir est utile. Pouvoir revenir sans refaire toute la route, c'est ce qui transforme vraiment ce réseau en infrastructure."]),
+      completed: Object.freeze(["ASTROLOGY est de nouveau devant moi. Le réseau ne raccourcit pas seulement l'aller : il rend les longues expéditions réversibles."])
+    })
+  });
+
+  const TPAFTER03 = Object.freeze({
+    id: "TP-AFTER-03",
+    title: "Cela peut servir à autre chose",
+    description: "Utiliser le téléporteur pour rejoindre un territoire balisé puis reprendre réellement une mission qui était déjà ouverte avant le transfert.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-AFTER-02", count: 1 }),
+    prerequisites: Object.freeze(["TP-AFTER-02"]),
+    priority: 188,
+    passivePriorityAxis: "engineering",
+    ponderation: 0.5,
+    obsessionEligible: true,
+    obsessionIntensity: 2,
+    sequence: Object.freeze([
+      Object.freeze({
+        slot: "teleportToOpenMission",
+        title: "Utiliser le réseau pour rejoindre un territoire balisé",
+        action: "travel",
+        target: 1,
+        requires: Object.freeze([]),
+        params: Object.freeze({
+          eventDriven: true,
+          transitionSource: "teleporter",
+          transitionMode: "teleport",
+          distinctBy: "transition"
+        })
+      }),
+      Object.freeze({
+        slot: "resumeMission",
+        title: "Faire progresser une mission déjà ouverte avant le transfert",
+        action: "research",
+        target: 1,
+        requires: Object.freeze(["teleportToOpenMission"]),
+        params: Object.freeze({ catalogManaged: true, eventDriven: true })
+      })
+    ]),
+    runtimeValidation: Object.freeze({
+      type: "mission-progress-after-slot",
+      slot: "resumeMission",
+      afterSlot: "teleportToOpenMission",
+      excludeMissionIds: Object.freeze(["TP-AFTER-01", "TP-AFTER-02", "TP-AFTER-03", "TP-AFTER-04"])
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le réseau n'a de valeur que s'il me permet de reprendre ce que j'avais laissé loin derrière. Je vais m'en servir pour une mission déjà ouverte."]),
+      completed: Object.freeze(["Ce n'est plus un projet à part. Le téléporteur vient de m'aider à reprendre un travail qui existait déjà : il fait maintenant partie de mes outils."])
+    })
+  });
+
+  const TPAFTER04 = Object.freeze({
+    id: "TP-AFTER-04",
+    title: "Et maintenant ?",
+    description: "Constater que le téléporteur est devenu une infrastructure transversale, puis laisser les autres priorités reprendre naturellement leur place.",
+    pattern: "NARRATIVE_ONLY",
+    narrativeOnly: true,
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-AFTER-03", count: 1 }),
+    prerequisites: Object.freeze(["TP-AFTER-03"]),
+    priority: 187,
+    passivePriorityAxis: "engineering",
+    ponderation: 0.1,
+    obsessionEligible: false,
+    slots: Object.freeze({}),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["J'ai passé tant de temps à comprendre comment franchir ces distances. Maintenant que le réseau fonctionne vraiment, je n'ai plus besoin d'en faire le centre de tout."]),
+      completed: Object.freeze(["Le téléporteur restera là quand j'en aurai besoin. Pour l'instant, d'autres questions attendent encore leurs réponses."])
+    })
+  });
+
   const CART02 = Object.freeze({
     id: "CART-02",
     title: "La traversée de la brume toxique",
@@ -12048,6 +12174,7 @@
     PROS01, PROS03, PROS02,
     TERRCARN01, TERRCARN02, TERRCARN03, TERRCARN04, TERRSTORM01, TERRSTORM02, TERRSTORM03, TERRSTORM04,
     POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09, TP10, TP11,
+    TPAFTER01, TPAFTER02, TPAFTER03, TPAFTER04,
     CART02, CART01, CART03,
     ANN04,
     ANN06,
