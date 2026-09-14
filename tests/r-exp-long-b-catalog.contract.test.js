@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('ass
 const root=process.env.BLUEFOX_ROOT||path.resolve(__dirname,'..');
 const w={BlueFox3D:{}};w.window=w;vm.runInNewContext(fs.readFileSync(path.join(root,'data/bible-catalog.js'),'utf8'),w);
 const cat=w.BlueFox3D.BibleCatalog,by=new Map(cat.map(m=>[m.id,m]));
-assert.equal(cat.length,320,'catalogue attendu à 320 missions après EXP-LONG-01→05');
+assert.equal(cat.length,322,'EXP-LONG préservé + END/FIN : catalogue attendu à 322 missions');
 const ids=['EXP-LONG-01','EXP-LONG-02','EXP-LONG-03','EXP-LONG-04','EXP-LONG-05'];ids.forEach(id=>assert(by.has(id),`${id} absente`));
 const [e1,e2,e3,e4,e5]=ids.map(id=>by.get(id));
 assert.equal(e1.trigger.missionId,'TP-AFTER-04');assert.deepEqual(Array.from(e1.prerequisites),['TP-AFTER-04']);

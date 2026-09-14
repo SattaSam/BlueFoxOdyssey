@@ -88,6 +88,8 @@
         this.onSiteEstablished(event.detail || {});
       this.boundCivilizationTradeCompleted = (event) =>
         this.onCivilizationTradeCompleted(event.detail || {});
+      this.boundFinalDepartureCompleted = (event) =>
+        this.onFinalDepartureCompleted(event.detail || {});
     }
 
     defaultState() {
@@ -1996,9 +1998,25 @@
       });
       if (!relationPrerequisites) return false;
       const memory = this.manager()?.memory;
-      return asArray(mission?.requiredFacts).every((factKey) =>
+      const requiredFactsReady = asArray(mission?.requiredFacts).every((factKey) =>
         Boolean(memory?.getFact?.(factKey, false))
       );
+      if (!requiredFactsReady) return false;
+      return asArray(mission?.requiredFactValues).every((requirement) => {
+        const factKey = String(requirement?.fact || "").trim();
+        if (!factKey) return true;
+        const stored = memory?.getFact?.(factKey, null);
+        const field = String(requirement?.field || "").trim();
+        const actual = field && stored && typeof stored === "object"
+          ? stored[field]
+          : stored;
+        if (Object.prototype.hasOwnProperty.call(requirement || {}, "equals")) {
+          return actual === requirement.equals;
+        }
+        const oneOf = asArray(requirement?.oneOf);
+        if (oneOf.length) return oneOf.includes(actual);
+        return Boolean(actual);
+      });
     }
 
     survivalCapabilityUnlocked(capability) {
@@ -2534,6 +2552,52 @@
       return changed;
     }
 
+    reconcileSlotInventoryGrantEffects() {
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        const effects = asArray(mission?.slotInventoryGrantEffects);
+        if (!effects.length) continue;
+        const lifecycle = this.missionLifecycle(mission.id);
+        if (!lifecycle.active && !lifecycle.completed) continue;
+        const tree = manager.trees?.get?.(mission.id);
+        if (!tree) continue;
+        for (const effect of effects) {
+          const slot = String(effect?.slot || "");
+          const inventoryKey = String(effect?.inventoryKey || "").trim();
+          const fact = String(effect?.fact || "").trim();
+          const quantity = Math.max(1, Number(effect?.quantity) || 1);
+          if (!slot || !inventoryKey || !fact) continue;
+          if (!tree.find?.(`${mission.id}:${slot}`)?.isComplete) continue;
+          if (manager.memory.getFact?.(fact, null)) continue;
+          const alreadyAvailable = Math.max(0, Number(BF.availableInventory?.([inventoryKey])) || 0);
+          const granted = alreadyAvailable >= quantity
+            ? quantity
+            : BF.grantInventory?.(inventoryKey, quantity, {
+                source: "bible-slot-inventory-grant",
+                reason: `${mission.id}:${slot}`,
+                missionId: mission.id,
+                mapId: BF.currentEngine?.currentMapId || null
+              }) || 0;
+          if (granted !== quantity) continue;
+          const baseValue = effect?.value && typeof effect.value === "object"
+            ? clone(effect.value)
+            : {};
+          manager.memory.setFact?.(fact, {
+            ...baseValue,
+            inventoryKey,
+            quantity,
+            sourceMissionId: baseValue.sourceMissionId || mission.id,
+            acquiredAt: Date.now()
+          });
+          changed = true;
+        }
+      }
+      if (changed) manager.memory.save?.();
+      return changed;
+    }
+
     reconcileSlotFactEffects() {
       const manager = this.manager();
       if (!manager?.memory) return false;
@@ -2677,6 +2741,90 @@
       manager.reevaluatePendingActivations?.();
       manager.catalogController?.schedule?.();
       manager.publish?.();
+      return true;
+    }
+
+    handleFinalCoreIntegration(event = {}) {
+      if (String(event.type || "") !== "interaction.analyze") return false;
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "final-departure" || !this.missionLifecycle(mission.id).active) continue;
+        const mapId = String(validation.mapId || "crystal");
+        if (String(event.mapId || BF.currentEngine?.currentMapId || "") !== mapId) continue;
+        if (String(event.cuoType || event.kind || "") !== "crash_capsule") continue;
+        const integrationSlot = String(validation.integrationSlot || "").trim();
+        const inventoryKey = String(validation.integrationInventoryKey || "").trim();
+        const quantity = Math.max(1, Number(validation.integrationQuantity) || 1);
+        const integrationFact = String(validation.integrationFact || validation.requiredFact || "").trim();
+        const tree = manager.trees?.get?.(mission.id);
+        const node = integrationSlot ? tree?.find?.(`${mission.id}:${integrationSlot}`) : null;
+        if (!node || node.isComplete || !(tree?.availableLeaves?.() || []).includes(node)) continue;
+        if (!inventoryKey || !integrationFact) return false;
+        const transactionId = `${mission.id}:${integrationSlot}:${inventoryKey}:v1`;
+        const removed = BF.consumeInventoryPoolOnce?.(transactionId, [inventoryKey], quantity) || 0;
+        if (removed !== quantity) {
+          BF.currentEngine?.callbacks?.onStatus?.("Le Noyau de navigation résonante doit être présent dans l’inventaire avant de pouvoir l’intégrer à la capsule.");
+          return false;
+        }
+        if (!this.progressRuntimeValidationSlot(mission.id, integrationSlot, 1)) return false;
+        manager.memory.setFact?.(integrationFact, {
+          componentId: inventoryKey,
+          inventoryKey,
+          quantity,
+          mapId,
+          consumedByMissionId: mission.id,
+          integratedAt: Date.now()
+        });
+        manager.memory.save?.();
+        return true;
+      }
+      return false;
+    }
+
+    reconcileFinalDeparture() {
+      const manager = this.manager();
+      const engine = BF.currentEngine;
+      if (!manager?.memory || !engine) return false;
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "final-departure") continue;
+        if (!this.missionLifecycle(mission.id).active) continue;
+        const mapId = String(validation.mapId || "crystal");
+        if (String(engine.currentMapId || "") !== mapId) continue;
+        const requiredFact = String(validation.requiredFact || "").trim();
+        if (requiredFact && !manager.memory.getFact?.(requiredFact, null)) continue;
+        const tree = manager.trees?.get?.(mission.id);
+        const integrationSlot = String(validation.integrationSlot || "").trim();
+        const departureSlot = String(validation.slot || "").trim();
+        const integrationNode = integrationSlot ? tree?.find?.(`${mission.id}:${integrationSlot}`) : null;
+        const departureNode = departureSlot ? tree?.find?.(`${mission.id}:${departureSlot}`) : null;
+        if (!departureNode || departureNode.isComplete) continue;
+        if (integrationSlot && !integrationNode?.isComplete) continue;
+        if (!(tree?.availableLeaves?.() || []).includes(departureNode)) continue;
+        if (engine.isFinalCapsuleSequenceActive?.()) return true;
+        return engine.beginFinalCapsuleSequence?.({ missionId: mission.id }) === true;
+      }
+      return false;
+    }
+
+    onFinalDepartureCompleted(detail = {}) {
+      const missionId = String(detail?.missionId || "FIN-02");
+      const mission = this.byId.get(missionId);
+      const validation = mission?.runtimeValidation || {};
+      if (validation.type !== "final-departure" || !this.missionLifecycle(missionId).active) {
+        return false;
+      }
+      const slot = String(validation.slot || "depart");
+      if (!this.progressRuntimeValidationSlot(missionId, slot, 1)) return false;
+      const manager = this.manager();
+      manager?.memory?.setFact?.("fin:departure-completed", {
+        missionId,
+        mapId: String(detail?.mapId || BF.currentEngine?.currentMapId || "crystal"),
+        completedAt: Date.now()
+      });
+      manager?.memory?.save?.();
       return true;
     }
 
@@ -4275,6 +4423,7 @@
       this.handleFaunaSpeciesObjectEvent(rawEvent);
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
+      this.handleFinalCoreIntegration(normalized);
       this.handleLongExpeditionStudyEvent(normalized);
       this.recordObservation(rawEvent);
       const droneHistoricalObservation =
@@ -4373,6 +4522,7 @@
       this.reconcileEnvironmentAll(detail.toMapId || detail.mapId || BF.currentEngine?.currentMapId);
       this.reconcilePersistentWorldScenes();
       this.reconcileWorldTopologyLinks();
+      this.reconcileSlotInventoryGrantEffects();
       this.reconcileSlotFactEffects();
 
       const eventMapId = detail.toMapId || detail.mapId || null;
@@ -6858,7 +7008,9 @@
       // Les faits acquis par une interaction réelle doivent exister avant la
       // traduction lifecycle -> mission_completed, afin qu'une mission suivante
       // puisse les consommer dans le même cycle causal.
+      this.reconcileSlotInventoryGrantEffects();
       this.reconcileSlotFactEffects();
+      this.reconcileFinalDeparture();
       this.reconcileMissionCompletionTriggers();
       this.reconcileMissionProgressValidations();
       this.reconcileLongExpeditionValidations();
@@ -7017,6 +7169,14 @@
       global.addEventListener?.(
         "bluefox:civilization-trade-completed",
         this.boundCivilizationTradeCompleted
+      );
+      global.removeEventListener?.(
+        "bluefox:final-departure-completed",
+        this.boundFinalDepartureCompleted
+      );
+      global.addEventListener?.(
+        "bluefox:final-departure-completed",
+        this.boundFinalDepartureCompleted
       );
       return Boolean(this.unsubscribeObjectEvents);
     }

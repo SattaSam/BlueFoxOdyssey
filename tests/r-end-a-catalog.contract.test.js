@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('ass
 const root=process.env.BLUEFOX_ROOT||path.resolve(__dirname,'..');
 const w={BlueFox3D:{}};w.window=w;vm.runInNewContext(fs.readFileSync(path.join(root,'data/bible-catalog.js'),'utf8'),{window:w,console});
 const cat=w.BlueFox3D.BibleCatalog,by=new Map(cat.map(m=>[m.id,m]));
-assert.equal(cat.length,320,'END-A doit ajouter une seule mission au HEAD 319');
+assert.equal(cat.length,322,'END-A préservé + FIN-01/FIN-02 : catalogue attendu à 322 missions');
 const m=by.get('END-CHOICE');assert(m,'END-CHOICE absente');
 assert.equal(m.title,'Là où je suis arrivé');
 assert.equal(m.trigger.type,'progression.mission_completed');assert.equal(m.trigger.missionId,'EXP-LONG-05');

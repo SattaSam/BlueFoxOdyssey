@@ -111,6 +111,8 @@
       this.startupCinematic = null;
       this.startupFadeElement = null;
       this.startupUiRevealTimer = 0;
+      this.finalCapsuleSequence = null;
+      this.finalFadeElement = null;
       if (this.freshNewGameStartup) {
         const quietUntil = performance.now() + (
           this.shouldPlayStartupCinematic
@@ -188,6 +190,57 @@
         @keyframes bluefoxStartupUiReveal {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+        body.bluefox-final-cinematic .game-shell > :not(.world-3d),
+        body.bluefox-final-cinematic .bluefox-camera-button,
+        body.bluefox-final-cinematic .bluefox-speech-button,
+        body.bluefox-final-cinematic .mission-browser,
+        body.bluefox-final-cinematic .bluefox-tutorial-message,
+        body.bluefox-final-cinematic .bluefox-click-marker {
+          opacity: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+        .bluefox-final-fade {
+          position: fixed;
+          inset: 0;
+          z-index: 140;
+          display: grid;
+          place-items: center;
+          background: #000;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 1.6s ease;
+        }
+        .bluefox-final-fade.covered { opacity: 1; }
+        .bluefox-final-credits {
+          max-width: min(760px, 82vw);
+          text-align: center;
+          color: #fff;
+          opacity: 0;
+          transform: translateY(12px);
+          transition: opacity 1.4s ease, transform 1.4s ease;
+          font-family: inherit;
+        }
+        .bluefox-final-fade.credits-visible { pointer-events: auto; }
+        .bluefox-final-fade.credits-visible .bluefox-final-credits {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        .bluefox-final-credits h1 {
+          margin: 0 0 .7rem;
+          font-size: clamp(2rem, 6vw, 4.4rem);
+          letter-spacing: .12em;
+        }
+        .bluefox-final-credits p {
+          margin: .35rem 0;
+          opacity: .82;
+        }
+        .bluefox-final-credits button {
+          margin-top: 1.4rem;
+          padding: .65rem 1.1rem;
+          font: inherit;
+          cursor: pointer;
         }
       `;
       document.head.appendChild(style);
@@ -399,6 +452,135 @@
       global.dispatchEvent(new CustomEvent("bluefox:intro-presentation", {
         detail: { active: false }
       }));
+    }
+
+    isFinalCapsuleSequenceActive() {
+      return Boolean(this.finalCapsuleSequence);
+    }
+
+    beginFinalCapsuleSequence(options = {}) {
+      if (this.finalCapsuleSequence) return true;
+      const capsule = this.currentMap?.crashCapsule;
+      if (
+        this.currentMapId !== "crystal" ||
+        !capsule?.position ||
+        !this.character?.root ||
+        !this.cameraController
+      ) {
+        return false;
+      }
+
+      this.ensureStartupPresentationStyle();
+      this.clearPersistentNavigationIntent?.("final-capsule-sequence");
+      this.navigationRoute = [];
+      this.pendingGate = null;
+      this.pendingTeleport = null;
+      this.pendingInteraction = null;
+      this.currentRoutine = null;
+      this.returningToBase = false;
+      this.runtimePaused = true;
+      this.runtimePauseReason = "final-capsule-sequence";
+      this.character.stop?.();
+      this.character.enabled = false;
+
+      const start = this.character.root.position.clone();
+      const anchor = capsule.position.clone();
+      const outward = start.clone().sub(anchor);
+      outward.y = 0;
+      if (outward.lengthSq() < 0.01) outward.set(0, 0, 1);
+      outward.normalize();
+      const inside = anchor.clone().addScaledVector(outward, -1.15);
+      inside.y = start.y;
+
+      this.finalCapsuleSequence = {
+        missionId: String(options.missionId || "FIN-02"),
+        startedAt: performance.now(),
+        start,
+        anchor,
+        inside,
+        fadeStarted: false,
+        hiddenInside: false,
+        completed: false
+      };
+
+      document.body.classList.add("bluefox-final-cinematic");
+      this.finalFadeElement?.remove();
+      this.finalFadeElement = document.createElement("div");
+      this.finalFadeElement.className = "bluefox-final-fade";
+      this.finalFadeElement.setAttribute("aria-hidden", "true");
+      const credits = document.createElement("div");
+      credits.className = "bluefox-final-credits";
+      const title = document.createElement("h1");
+      title.textContent = "BLUEFOX ODYSSEY";
+      const line = document.createElement("p");
+      line.textContent = "Le point de départ";
+      const thanks = document.createElement("p");
+      thanks.textContent = "Merci d’avoir parcouru ce monde avec BlueFox.";
+      const restart = document.createElement("button");
+      restart.type = "button";
+      restart.className = "bluefox-final-new-game";
+      restart.textContent = "Nouvelle partie";
+      restart.addEventListener?.("click", () => BF.playNewGameIntro?.());
+      credits.append(title, line, thanks, restart);
+      this.finalFadeElement.appendChild(credits);
+      document.body.appendChild(this.finalFadeElement);
+
+      this.character.facePoint?.(anchor);
+      this.cameraController.beginCinematicOrbit({
+        center: anchor,
+        durationMs: 6200,
+        radius: 9.6,
+        height: 5.8,
+        targetHeight: 1.2,
+        startAngle: -Math.PI * 0.72,
+        arc: Math.PI * 1.35
+      });
+      global.dispatchEvent?.(new CustomEvent("bluefox:final-presentation", {
+        detail: { active: true, missionId: this.finalCapsuleSequence.missionId }
+      }));
+      return true;
+    }
+
+    updateFinalCapsuleSequence(now) {
+      const state = this.finalCapsuleSequence;
+      if (!state || state.completed) return false;
+      const elapsed = now - state.startedAt;
+
+      if (elapsed >= 650 && elapsed <= 4700) {
+        const raw = Math.max(0, Math.min(1, (elapsed - 650) / 4050));
+        const eased = raw * raw * (3 - 2 * raw);
+        // Déplacement cinématique volontairement direct : pendant cette séquence
+        // BlueFox traverse la coque et ses colliders au lieu de demander un passage.
+        this.character.root.position.lerpVectors(state.start, state.inside, eased);
+        this.character.target?.copy?.(this.character.root.position);
+        this.character.facePoint?.(state.anchor);
+      }
+
+      if (!state.fadeStarted && elapsed >= 3900) {
+        state.fadeStarted = true;
+        this.finalFadeElement?.classList.add("covered");
+      }
+      if (!state.hiddenInside && elapsed >= 4850) {
+        state.hiddenInside = true;
+        this.character.root.visible = false;
+      }
+      if (elapsed < 6100) return true;
+
+      state.completed = true;
+      this.cameraController.finishCinematic?.();
+      this.finalFadeElement?.classList.add("covered", "credits-visible");
+      global.dispatchEvent?.(new CustomEvent("bluefox:final-departure-completed", {
+        detail: {
+          missionId: state.missionId,
+          mapId: this.currentMapId,
+          source: "crash-capsule",
+          mode: "final-departure"
+        }
+      }));
+      global.dispatchEvent?.(new CustomEvent("bluefox:final-presentation", {
+        detail: { active: false, completed: true, missionId: state.missionId }
+      }));
+      return true;
     }
 
     readAutonomyMode() {
@@ -3895,6 +4077,7 @@
         );
       }
       this.updateStartupCinematic(now);
+      this.updateFinalCapsuleSequence(now);
       const fatigue = BF.getSurvivalState?.().fatigue;
       this.character.fatigueSpeedMultiplier = fatigue?.movement || 1;
       this.character.update(dt);
@@ -4081,6 +4264,9 @@
       this.missionManager?.dispose();
       document.body.classList.remove("bluefox-speech-hidden");
       this.clickMarker?.remove();
+      this.finalFadeElement?.remove();
+      this.finalFadeElement = null;
+      document.body.classList.remove("bluefox-final-cinematic");
       this.cameraController?.dispose();
       this.currentMap?.dispose();
       if (this.character?.root) BF.disposeObject(this.character.root);

@@ -5,7 +5,7 @@ vm.runInNewContext(fs.readFileSync(path.join(ROOT,'data/bible-catalog.js'),'utf8
 const cat=w.BlueFox3D.BibleCatalog,by=new Map(cat.map(m=>[m.id,m]));
 const ids=['TP-AFTER-01','TP-AFTER-02','TP-AFTER-03','TP-AFTER-04'];
 for(const id of ids) assert(by.has(id),`${id} absente du catalogue`);
-assert.equal(cat.length,320,'catalogue attendu à 320 missions après TP-AFTER');
+assert.equal(cat.length,322,'TP-AFTER préservé dans le catalogue END/FIN à 322 missions');
 const a1=by.get('TP-AFTER-01'),a2=by.get('TP-AFTER-02'),a3=by.get('TP-AFTER-03'),a4=by.get('TP-AFTER-04');
 assert.equal(a1.trigger.type,'progression.mission_completed');assert.equal(a1.trigger.missionId,'TP-11');
 assert.deepEqual(Array.from(a1.prerequisites),['TP-11']);

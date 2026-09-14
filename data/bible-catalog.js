@@ -12074,6 +12074,89 @@
     })
   });
 
+
+  const FIN01 = Object.freeze({
+    id: "FIN-01",
+    title: "Ce qu'ils m'ont appris",
+    description: "Revenir au Temple des savoirs, confronter une dernière fois les acquis du voyage aux archives communes, dire au revoir aux Rocky et aux Translucides puis synthétiser le Noyau de navigation résonante.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "END-CHOICE", count: 1 }),
+    prerequisites: Object.freeze(["END-CHOICE"]),
+    requiredFactValues: Object.freeze([
+      Object.freeze({ fact: "endChoice:decision", field: "choiceId", equals: "return" })
+    ]),
+    priority: 170,
+    passivePriorityAxis: "research",
+    ponderation: 0.25,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "returnTemple", title: "Revenir au Temple des savoirs", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, targetMapFact: "dip03:temple-map", targetMapField: "mapId", distinctBy: "transition" }) }),
+      Object.freeze({ slot: "archive", title: "Relire l'archive commune avec tout ce qui a été appris", action: "analyze", target: 1, requires: Object.freeze(["returnTemple"]), params: Object.freeze({ cuoType: "tech_relic", microSceneId: "MSC-CUSTOM-HUGE-TEMPLE", requiredMapFact: "dip03:temple-map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "farewellRocky", title: "Dire au revoir à un délégué Rocky", action: "observe", target: 1, requires: Object.freeze(["archive"]), params: Object.freeze({ cuoType: "npc_rocky", persistentMicroSceneId: "DIP-03:delegate:rocky:1", requiredMapFact: "dip03:temple-map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "farewellTranslucent", title: "Dire au revoir à un délégué Translucide", action: "observe", target: 1, requires: Object.freeze(["archive"]), params: Object.freeze({ cuoType: "npc_translucent", persistentMicroSceneId: "DIP-03:delegate:translucent:1", requiredMapFact: "dip03:temple-map", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "synthesizeCore", title: "Synthétiser le Noyau de navigation résonante", action: "research", target: 1, requires: Object.freeze(["farewellRocky", "farewellTranslucent"]), params: Object.freeze({ requiredMapFact: "dip03:temple-map", requiredMapField: "mapId" }) })
+    ]),
+    slotInventoryGrantEffects: Object.freeze([Object.freeze({
+      slot: "synthesizeCore",
+      inventoryKey: "resonant_navigation_core",
+      quantity: 1,
+      fact: "fin:resonant-core",
+      value: Object.freeze({ componentId: "resonant_navigation_core", label: "Noyau de navigation résonante", mapId: "custom-map-33-temple-magnet" })
+    })]),
+    rewards: Object.freeze([Object.freeze({
+      type: "research.knowledge",
+      id: "resonant_navigation_core",
+      category: "final-synthesis",
+      label: "Noyau de navigation résonante",
+      description: "Synthèse finale des acquis énergétiques, géologiques, d'ingénierie, du réseau, du savoir ancien et des connaissances partagées avec les civilisations."
+    })]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Si je veux vraiment rentrer, je ne peux pas chercher une pièce miraculeuse. Tout ce qu'il me faut existe déjà dans ce que ce monde m'a appris."]),
+      progress: Object.freeze([
+        Object.freeze({ slot: "archive", atCount: 1, text: "Énergie, géologie, réseau, machines, archives anciennes… séparément, ce sont des découvertes. Ensemble, elles décrivent une manière de retrouver un chemin." }),
+        Object.freeze({ slot: "farewellRocky", atCount: 1, text: "Les Rocky n'ont pas besoin de comprendre mon départ pour savoir qu'il compte." }),
+        Object.freeze({ slot: "farewellTranslucent", atCount: 1, text: "Les Translucides répondent à leur manière. Ce monde ne m'est plus étranger comme au premier jour." })
+      ]),
+      completed: Object.freeze(["Le Noyau est prêt. Ce n'est pas une technologie trouvée toute faite : c'est la forme que prend tout ce que j'ai appris ici lorsque je l'oriente vers un seul objectif — retrouver le chemin du départ."])
+    })
+  });
+
+  const FIN02 = Object.freeze({
+    id: "FIN-02",
+    title: "Le point de départ",
+    description: "Revenir à la capsule de crash, intégrer le Noyau de navigation résonante puis tenter le départ.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "FIN-01", count: 1 }),
+    prerequisites: Object.freeze(["FIN-01"]),
+    requiredFacts: Object.freeze(["fin:resonant-core"]),
+    priority: 169,
+    passivePriorityAxis: "engineering",
+    ponderation: 0.2,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "returnCapsule", title: "Revenir à la capsule", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, toMapId: "crystal", distinctBy: "transition" }) }),
+      Object.freeze({ slot: "integrateCore", title: "Intégrer le Noyau de navigation résonante à la capsule", action: "analyze", target: 1, requires: Object.freeze(["returnCapsule"]), params: Object.freeze({ cuoType: "crash_capsule", eventDriven: true, catalogManaged: true }) }),
+      Object.freeze({ slot: "depart", title: "Entrer dans la capsule", action: "research", target: 1, requires: Object.freeze(["integrateCore"]), params: Object.freeze({ eventDriven: true, catalogManaged: true }) })
+    ]),
+    runtimeValidation: Object.freeze({
+      type: "final-departure",
+      slot: "depart",
+      integrationSlot: "integrateCore",
+      integrationInventoryKey: "resonant_navigation_core",
+      integrationQuantity: 1,
+      integrationFact: "fin:capsule-core-integrated",
+      requiredFact: "fin:capsule-core-integrated",
+      mapId: "crystal"
+    }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["La capsule est toujours l'épave du premier jour. Le Noyau ne répare pas rétroactivement ce qui s'est passé ; il lui donne seulement, maintenant, une possibilité qu'elle n'avait jamais eue."]),
+      progress: Object.freeze([Object.freeze({ slot: "integrateCore", atCount: 1, text: "Le Noyau répond. Pour la première fois depuis le crash, la capsule n'est peut-être plus seulement un point d'origine." })]),
+      completed: Object.freeze(["Le reste appartient au chemin que BlueFox choisit de reprendre."])
+    })
+  });
+
   const CART02 = Object.freeze({
     id: "CART-02",
     title: "La traversée de la brume toxique",
@@ -12355,7 +12438,7 @@
     TERRCARN01, TERRCARN02, TERRCARN03, TERRCARN04, TERRSTORM01, TERRSTORM02, TERRSTORM03, TERRSTORM04,
     POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09, TP10, TP11,
     TPAFTER01, TPAFTER02, TPAFTER03, TPAFTER04,
-    EXPLONG01, EXPLONG02, EXPLONG03, EXPLONG04, EXPLONG05, ENDCHOICE,
+    EXPLONG01, EXPLONG02, EXPLONG03, EXPLONG04, EXPLONG05, ENDCHOICE, FIN01, FIN02,
     CART02, CART01, CART03,
     ANN04,
     ANN06,

@@ -16,7 +16,6 @@ assert.equal(BF.getMissionChoiceState('END-CHOICE').available,false,'choix inter
 assert.equal(rt.reviewProximityContexts(),true);assert.equal(ret.isComplete,true);assert(facts['endChoice:campReached']);
 let state=BF.getMissionChoiceState('END-CHOICE');assert.equal(state.available,true);assert.deepEqual(Array.from(state.options,x=>x.id),['stay','return']);
 assert.equal(BF.submitMissionChoice('END-CHOICE','invalid'),false);assert.equal(BF.submitMissionChoice('END-CHOICE','stay'),true);assert.equal(facts['endChoice:decision'].choiceId,'stay');assert.equal(dec.isComplete,true);assert.equal(lifecycle['END-CHOICE'].status,'completed');assert.equal(BF.submitMissionChoice('END-CHOICE','return'),false,'choix persistant et non réversible');
-assert.equal(BF.BibleCatalog.some(x=>x.id==='FIN-01'||x.id==='FIN-02'),false,'END-A ne doit pas intégrer FIN');
 assert.equal(Object.prototype.hasOwnProperty.call(lifecycle,'FIN-01'),false,'Rester ne doit révéler/activer aucune FIN');
 assert.equal(Object.prototype.hasOwnProperty.call(lifecycle,'FIN-02'),false,'Rester ne doit révéler/activer aucune FIN');
 console.log('PASS END-A runtime: independent maturity + real Camp proximity + persistent irreversible choice + stay keeps world open');

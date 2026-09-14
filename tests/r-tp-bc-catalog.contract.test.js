@@ -4,7 +4,7 @@ const w={BlueFox3D:{}};w.window=w;
 vm.runInNewContext(fs.readFileSync(path.join(root,'data/bible-catalog.js'),'utf8'),{window:w,console});
 const cat=w.BlueFox3D.BibleCatalog, by=new Map(cat.map(m=>[m.id,m]));
 for(const id of ['POSTDIP-01','TP-01','TP-02','TP-03','TP-04','TP-05','TP-06','TP-07','TP-08','TP-09','TP-10','TP-11']) assert(by.has(id),`${id} absente`);
-assert.equal(cat.length,320,'R-TP complet + TP-AFTER attendus à 320 missions');
+assert.equal(cat.length,322,'R-TP complet + TP-AFTER préservés dans le catalogue END/FIN à 322 missions');
 const t10=by.get('TP-10'), t11=by.get('TP-11');
 assert.deepStrictEqual(Array.from(t10.prerequisites),['TP-09']);
 assert.equal(t10.sequence.length,1); assert.equal(t10.sequence[0].slot,'assemble');
