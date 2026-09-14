@@ -11894,6 +11894,130 @@
     })
   });
 
+
+  const EXPLONG01 = Object.freeze({
+    id: "EXP-LONG-01",
+    title: "Plus loin que prévu",
+    description: "Après la clôture de l’arc Téléportation, découvrir dix nouvelles maps depuis l’activation, établir un relais sur la frontière atteinte puis utiliser réellement ce relais pour revenir au hub.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "TP-AFTER-04", count: 1 }),
+    prerequisites: Object.freeze(["TP-AFTER-04"]),
+    priority: 176,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.65,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true, autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Découvrir 10 nouvelles maps", action: "travel", target: 10, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "expLong01:frontier", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "deployBeacon", title: "Implanter une balise persistante sur la frontière atteinte", action: "research", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong01:frontier", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "returnHub", title: "Utiliser ce relais pour revenir à ASTROLOGY", action: "travel", target: 1, requires: Object.freeze(["deployBeacon"]), params: Object.freeze({ eventDriven: true, direction: "teleport-return", transitionSource: "teleporter", transitionMode: "teleport", distinctBy: "transition", targetMapFact: "expLong01:hubTarget", targetMapField: "mapId" }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "long-expedition", beaconSlot: "deployBeacon", beaconMapFact: "expLong01:frontier", beaconFact: "expLong01:beacon", hubTargetFact: "expLong01:hubTarget" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le réseau fonctionne. Maintenant je veux voir jusqu’où il me permet réellement de pousser une expédition sans transformer chaque retour en marche arrière interminable."]),
+      completed: Object.freeze(["Dix nouvelles zones plus loin, ce relais change déjà la forme du voyage : je peux avancer sans perdre le chemin du retour."])
+    })
+  });
+
+  const EXPLONG02 = Object.freeze({
+    id: "EXP-LONG-02",
+    title: "Là où le terrain change",
+    description: "Découvrir douze nouvelles maps, identifier un territoire réellement rare ou remarquable produit par le générateur normal, y mener une étude réelle puis y implanter une balise persistante.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "EXP-LONG-01", count: 1 }),
+    prerequisites: Object.freeze(["EXP-LONG-01"]),
+    priority: 175,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.6,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Découvrir 12 nouvelles maps", action: "travel", target: 12, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "remarkable", title: "Identifier un territoire rare ou remarquable réellement rencontré", action: "research", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong02:remarkable", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "study", title: "Étudier réellement un élément de ce territoire", action: "research", target: 1, requires: Object.freeze(["remarkable"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong02:remarkable", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "deployBeacon", title: "Implanter une balise dans cette région", action: "research", target: 1, requires: Object.freeze(["study"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong02:remarkable", requiredMapField: "mapId" }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "long-expedition", remarkableSlot: "remarkable", remarkableFact: "expLong02:remarkable", studySlot: "study", beaconSlot: "deployBeacon", beaconMapFact: "expLong02:remarkable", beaconFact: "expLong02:beacon" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je peux aller loin. Ce qui m’intéresse maintenant, c’est l’endroit où le terrain cesse d’être seulement une variation de ce que je connais déjà."]),
+      completed: Object.freeze(["Cette région mérite un point fixe. Le réseau commence à relier des différences du monde, pas seulement des distances."])
+    })
+  });
+
+  const EXPLONG03 = Object.freeze({
+    id: "EXP-LONG-03",
+    title: "Une base dans l’inconnu",
+    description: "Entrer dans le réseau par une ancienne destination balisée, repartir depuis ce secteur, découvrir dix nouvelles maps supplémentaires et établir un nouveau relais sur cette nouvelle frontière.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "EXP-LONG-02", count: 1 }),
+    prerequisites: Object.freeze(["EXP-LONG-02"]),
+    priority: 174,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.6,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true, autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "teleportStart", title: "Rejoindre une destination balisée par ASTROLOGY", action: "travel", target: 1, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, direction: "teleport-outbound", transitionSource: "teleporter", transitionMode: "teleport", distinctBy: "transition", targetMapFact: "expLong03:targetBeacon", targetMapField: "mapId", completionArrivalFact: "expLong03:startBeacon", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "explore", title: "Découvrir 10 nouvelles maps au-delà de ce relais", action: "travel", target: 10, requires: Object.freeze(["teleportStart"]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "expLong03:frontier", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "deployBeacon", title: "Créer un second relais profond", action: "research", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong03:frontier", requiredMapField: "mapId" }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "long-expedition", teleportTargetFact: "expLong03:targetBeacon", beaconSlot: "deployBeacon", beaconMapFact: "expLong03:frontier", beaconFact: "expLong03:beacon", excludeBeaconMapFact: "expLong03:startBeacon" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une balise n’est pas seulement un point de retour. Elle peut devenir le début d’une nouvelle expédition, bien plus loin que le hub lui-même."]),
+      completed: Object.freeze(["Le réseau a maintenant une profondeur : un ancien relais m’a permis d’en construire un autre encore plus loin."])
+    })
+  });
+
+  const EXPLONG04 = Object.freeze({
+    id: "EXP-LONG-04",
+    title: "Quelque chose au bout du chemin",
+    description: "Découvrir douze nouvelles maps, rencontrer un territoire réellement rare ou remarquable, y effectuer une étude canonique réelle puis y fixer une balise sans créer ni forcer artificiellement le phénomène rencontré.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "EXP-LONG-03", count: 1 }),
+    prerequisites: Object.freeze(["EXP-LONG-03"]),
+    priority: 173,
+    passivePriorityAxis: "research",
+    ponderation: 0.55,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Découvrir 12 nouvelles maps", action: "travel", target: 12, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId" }) }),
+      Object.freeze({ slot: "remarkable", title: "Identifier un territoire remarquable réellement généré", action: "research", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong04:remarkable", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "study", title: "Observer, inspecter ou analyser réellement ce territoire", action: "research", target: 1, requires: Object.freeze(["remarkable"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong04:remarkable", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "deployBeacon", title: "Implanter une balise dans cette région", action: "research", target: 1, requires: Object.freeze(["study"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong04:remarkable", requiredMapField: "mapId" }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "long-expedition", remarkableSlot: "remarkable", remarkableFact: "expLong04:remarkable", studySlot: "study", beaconSlot: "deployBeacon", beaconMapFact: "expLong04:remarkable", beaconFact: "expLong04:beacon" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je ne cherche pas à fabriquer une découverte. Je veux continuer assez loin pour que le monde finisse par m’en proposer une que je n’avais pas prévue."]),
+      completed: Object.freeze(["Je n’ai pas créé ce lieu pour ma mission. Je l’ai trouvé, étudié, puis relié au reste du monde. C’est exactement ce que je voulais."])
+    })
+  });
+
+  const EXPLONG05 = Object.freeze({
+    id: "EXP-LONG-05",
+    title: "Un monde relié",
+    description: "Mener une dernière expédition de dix nouvelles maps, établir un nouveau relais, revenir réellement à ASTROLOGY puis utiliser le réseau vers une autre balise connue distincte du relais nouvellement posé.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "EXP-LONG-04", count: 1 }),
+    prerequisites: Object.freeze(["EXP-LONG-04"]),
+    priority: 172,
+    passivePriorityAxis: "exploration",
+    ponderation: 0.45,
+    obsessionEligible: false,
+    navigation: Object.freeze({ autonomousUnknownTravel: true, repeatUnknownTravelUntilComplete: true, autonomousKnownReturn: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "explore", title: "Découvrir 10 nouvelles maps", action: "travel", target: 10, requires: Object.freeze([]), params: Object.freeze({ eventDriven: true, newOnly: true, distinctBy: "mapId", completionArrivalFact: "expLong05:frontier", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "deployBeacon", title: "Implanter un nouveau relais", action: "research", target: 1, requires: Object.freeze(["explore"]), params: Object.freeze({ catalogManaged: true, eventDriven: true, requiredMapFact: "expLong05:frontier", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "returnHub", title: "Revenir réellement à ASTROLOGY par ce relais", action: "travel", target: 1, requires: Object.freeze(["deployBeacon"]), params: Object.freeze({ eventDriven: true, direction: "teleport-return", transitionSource: "teleporter", transitionMode: "teleport", distinctBy: "transition", targetMapFact: "expLong05:hubTarget", targetMapField: "mapId" }) }),
+      Object.freeze({ slot: "otherBeacon", title: "Repartir vers une autre balise connue", action: "travel", target: 1, requires: Object.freeze(["returnHub"]), params: Object.freeze({ eventDriven: true, direction: "teleport-outbound", transitionSource: "teleporter", transitionMode: "teleport", distinctBy: "transition", targetMapFact: "expLong05:otherBeaconTarget", targetMapField: "mapId" }) })
+    ]),
+    runtimeValidation: Object.freeze({ type: "long-expedition", beaconSlot: "deployBeacon", beaconMapFact: "expLong05:frontier", beaconFact: "expLong05:beacon", hubTargetFact: "expLong05:hubTarget", teleportTargetFact: "expLong05:otherBeaconTarget", excludeTeleportMapFact: "expLong05:beacon" }),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Une dernière longue route. Pas pour prouver que le téléporteur fonctionne, mais pour vérifier que le réseau est devenu une partie naturelle de ma manière de parcourir ce monde."]),
+      completed: Object.freeze(["Les relais ne sont plus des expériences séparées. Ils forment maintenant un monde relié dans lequel je peux partir loin, revenir, puis repartir ailleurs."])
+    })
+  });
+
   const CART02 = Object.freeze({
     id: "CART-02",
     title: "La traversée de la brume toxique",
@@ -12175,6 +12299,7 @@
     TERRCARN01, TERRCARN02, TERRCARN03, TERRCARN04, TERRSTORM01, TERRSTORM02, TERRSTORM03, TERRSTORM04,
     POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09, TP10, TP11,
     TPAFTER01, TPAFTER02, TPAFTER03, TPAFTER04,
+    EXPLONG01, EXPLONG02, EXPLONG03, EXPLONG04, EXPLONG05,
     CART02, CART01, CART03,
     ANN04,
     ANN06,

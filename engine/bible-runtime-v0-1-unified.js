@@ -4017,21 +4017,182 @@
       );
     }
 
+
+    longExpeditionRemarkableMap(mapId, featuredMicroSceneIds = []) {
+      const definition = BF.maps?.[String(mapId || "")] || {};
+      const cadence = definition?.generator?.cadence || {};
+      if (cadence.rareBiomeForced === true || cadence.remarkableGuaranteed === true) return true;
+      return asArray(featuredMicroSceneIds).some((id) => {
+        const scene = BF.MicroScenes?.get?.(id);
+        return scene?.custom === true || ["rare", "story"].includes(String(scene?.rarity || "").toLowerCase());
+      });
+    }
+
+    captureLongExpeditionRemarkableMap(detail = {}, event = {}) {
+      if (detail.isNew !== true || !event.mapId) return false;
+      if (!this.longExpeditionRemarkableMap(event.mapId, event.featuredMicroSceneIds)) return false;
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "long-expedition" || !validation.remarkableFact) continue;
+        if (!this.missionLifecycle(mission.id).active) continue;
+        manager.memory.setFact?.(validation.remarkableFact, {
+          mapId: String(event.mapId),
+          featuredMicroSceneIds: [...asArray(event.featuredMicroSceneIds)],
+          biome: event.biome || null,
+          capturedAt: Date.now()
+        });
+        changed = true;
+      }
+      if (changed) manager.memory.save?.();
+      return changed;
+    }
+
+    reconcileLongExpeditionNavigationTargets() {
+      const manager = this.manager();
+      const network = BF.SpecialObjectRuntime?.routingNetwork?.();
+      if (!manager?.memory || !network?.hub?.mapId) return false;
+      const destinations = asArray(network.destinations)
+        .filter((entry) => entry?.mapId)
+        .sort((left, right) => String(left.mapId).localeCompare(String(right.mapId)));
+      let changed = false;
+
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "long-expedition" || !this.missionLifecycle(mission.id).active) continue;
+
+        if (validation.hubTargetFact) {
+          const key = String(validation.hubTargetFact);
+          const previous = manager.memory.getFact?.(key, null);
+          if (String(previous?.mapId || "") !== String(network.hub.mapId)) {
+            manager.memory.setFact?.(key, { mapId: String(network.hub.mapId), source: "teleporter-network", updatedAt: Date.now() });
+            changed = true;
+          }
+        }
+
+        if (validation.teleportTargetFact) {
+          const key = String(validation.teleportTargetFact);
+          const previous = manager.memory.getFact?.(key, null);
+          const currentMapId = String(BF.currentEngine?.currentMapId || "");
+          const excluded = validation.excludeTeleportMapFact
+            ? String(manager.memory.getFact?.(validation.excludeTeleportMapFact, null)?.mapId || "")
+            : "";
+          const eligible = destinations.filter((entry) =>
+            String(entry.mapId) !== currentMapId && (!excluded || String(entry.mapId) !== excluded)
+          );
+          const previousStillValid = eligible.some((entry) => String(entry.mapId) === String(previous?.mapId || ""));
+          const selected = previousStillValid ? previous : eligible[0] || null;
+          if (selected && String(previous?.mapId || "") !== String(selected.mapId || "")) {
+            manager.memory.setFact?.(key, { mapId: String(selected.mapId), source: "teleporter-network", updatedAt: Date.now() });
+            changed = true;
+          }
+        }
+      }
+      if (changed) manager.memory.save?.();
+      return changed;
+    }
+
+    reconcileLongExpeditionValidations() {
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = this.reconcileLongExpeditionNavigationTargets();
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "long-expedition" || !this.missionLifecycle(mission.id).active) continue;
+        const remarkableSlot = String(validation.remarkableSlot || "");
+        const remarkableFact = String(validation.remarkableFact || "");
+        if (remarkableSlot && remarkableFact && manager.memory.getFact?.(remarkableFact, null)?.mapId) {
+          changed = this.progressRuntimeValidationSlot(mission.id, remarkableSlot, 1) || changed;
+        }
+      }
+      return changed;
+    }
+
+    handleLongExpeditionStudyEvent(event = {}) {
+      if (!["interaction.observe", "interaction.inspect", "interaction.analyze"].includes(String(event.type || ""))) return false;
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "long-expedition" || !validation.studySlot || !validation.remarkableFact) continue;
+        if (!this.missionLifecycle(mission.id).active) continue;
+        const fact = manager.memory.getFact?.(validation.remarkableFact, null);
+        if (!fact?.mapId || String(fact.mapId) !== String(event.mapId || "")) continue;
+        changed = this.progressRuntimeValidationSlot(mission.id, String(validation.studySlot), 1) || changed;
+      }
+      return changed;
+    }
+
+    progressLongExpeditionTeleport(detail = {}) {
+      if (String(detail.source || "") !== "teleporter" || String(detail.mode || "") !== "teleport") return false;
+      const manager = this.manager();
+      if (!manager?.memory) return false;
+      let changed = false;
+      for (const mission of this.allMissions()) {
+        const validation = mission?.runtimeValidation || {};
+        if (validation.type !== "long-expedition" || !validation.distinctTeleportSlot) continue;
+        if (!this.missionLifecycle(mission.id).active) continue;
+        if (validation.distinctTeleportDirection && String(validation.distinctTeleportDirection) !== String(detail.direction || "")) continue;
+        const excluded = validation.excludeTeleportMapFact
+          ? manager.memory.getFact?.(validation.excludeTeleportMapFact, null)?.mapId
+          : null;
+        const targetMapId = String(detail.toMapId || detail.mapId || "");
+        if (!targetMapId || (excluded && String(excluded) === targetMapId)) continue;
+        changed = this.progressRuntimeValidationSlot(mission.id, String(validation.distinctTeleportSlot), 1) || changed;
+      }
+      return changed;
+    }
+
     onSiteEstablished(detail = {}) {
       if (String(detail.kind || "") !== "deployed_beacon") return false;
+      const manager = this.manager();
+      let changed = false;
+
       const mission = this.byId.get("BAL-03");
-      if (!mission || !this.missionLifecycle(mission.id).active) return false;
-      const validation = mission.runtimeValidation || {};
-      if (validation.type !== "bal03-deployed-beacon") return false;
-      const fact = this.manager()?.memory?.getFact?.(validation.requiredMapFact, null);
-      const field = String(validation.requiredMapField || "mapId");
-      const targetMapId = String(fact?.[field] || fact?.mapId || "");
-      if (!targetMapId || String(detail.mapId || "") !== targetMapId) return false;
-      return this.progressRuntimeValidationSlot(
-        mission.id,
-        validation.slot || "deployBeacon",
-        1
-      );
+      if (mission && this.missionLifecycle(mission.id).active) {
+        const validation = mission.runtimeValidation || {};
+        if (validation.type === "bal03-deployed-beacon") {
+          const fact = manager?.memory?.getFact?.(validation.requiredMapFact, null);
+          const field = String(validation.requiredMapField || "mapId");
+          const targetMapId = String(fact?.[field] || fact?.mapId || "");
+          if (targetMapId && String(detail.mapId || "") === targetMapId) {
+            changed = this.progressRuntimeValidationSlot(
+              mission.id,
+              validation.slot || "deployBeacon",
+              1
+            ) || changed;
+          }
+        }
+      }
+
+      for (const entry of this.allMissions()) {
+        const validation = entry?.runtimeValidation || {};
+        if (validation.type !== "long-expedition" || !validation.beaconSlot || !validation.beaconMapFact) continue;
+        if (!this.missionLifecycle(entry.id).active) continue;
+        const required = manager?.memory?.getFact?.(validation.beaconMapFact, null);
+        const targetMapId = String(required?.mapId || required?.toMapId || "");
+        const actualMapId = String(detail.mapId || "");
+        if (!targetMapId || targetMapId !== actualMapId) continue;
+        if (validation.excludeBeaconMapFact) {
+          const excluded = manager?.memory?.getFact?.(validation.excludeBeaconMapFact, null)?.mapId;
+          if (excluded && String(excluded) === actualMapId) continue;
+        }
+        const progressed = this.progressRuntimeValidationSlot(entry.id, String(validation.beaconSlot), 1);
+        if (!progressed) continue;
+        if (validation.beaconFact) {
+          manager?.memory?.setFact?.(validation.beaconFact, {
+            mapId: actualMapId,
+            establishedAt: Date.now(),
+            instanceId: detail.instanceId || null
+          });
+          manager?.memory?.save?.();
+        }
+        changed = true;
+      }
+      return changed;
     }
 
     onObjectEvent(rawEvent) {
@@ -4042,6 +4203,7 @@
       this.handleFaunaSpeciesObjectEvent(rawEvent);
       const normalized = this.normalizeObjectEvent(rawEvent);
       if (!normalized) return;
+      this.handleLongExpeditionStudyEvent(normalized);
       this.recordObservation(rawEvent);
       const droneHistoricalObservation =
         String(rawEvent?.detail?.interactionSource || "") === "drone" &&
@@ -4156,6 +4318,9 @@
         featuredMicroSceneIds,
         amount: 1
       };
+
+      this.captureLongExpeditionRemarkableMap(detail, event);
+      this.progressLongExpeditionTeleport(detail);
 
       const crossing = this.consumeTriggerEvent({
         ...event,
@@ -6624,6 +6789,7 @@
       this.reconcileSlotFactEffects();
       this.reconcileMissionCompletionTriggers();
       this.reconcileMissionProgressValidations();
+      this.reconcileLongExpeditionValidations();
       this.reconcileWorldEventRequirements();
       this.reconcilePersistentWorldScenes();
       this.reconcileWorldTopologyLinks();
