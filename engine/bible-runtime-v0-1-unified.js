@@ -3087,16 +3087,27 @@
     npcEncounterRoot(entry) {
       const roots = BF.NpcRuntime?.list?.(String(entry.cuoType || "")) || [];
       if (!roots.length) return null;
+      const expectedMicroSceneId = String(entry.microSceneId || "");
+      const candidates = expectedMicroSceneId
+        ? roots.filter((root) =>
+            String(
+              root?.userData?.microSceneId ||
+              root?.userData?.worldAnchor?.userData?.microSceneId ||
+              ""
+            ) === expectedMicroSceneId
+          )
+        : roots;
+      if (!candidates.length) return null;
       const currentMapId = String(BF.currentEngine?.currentMapId || "");
-      const exact = roots.find((root) =>
+      const exact = candidates.find((root) =>
         String(root?.userData?.bibleNpcEncounter || "") === String(entry.id || "")
       );
       if (exact) return exact;
-      const unclaimed = roots.find((root) =>
+      const unclaimed = candidates.find((root) =>
         !root?.userData?.bibleNpcEncounter &&
         (!root?.userData?.mapId || String(root.userData.mapId) === currentMapId)
       );
-      const root = unclaimed || roots[roots.length - 1] || null;
+      const root = unclaimed || candidates[candidates.length - 1] || null;
       if (root && entry.id) root.userData.bibleNpcEncounter = String(entry.id);
       return root;
     }

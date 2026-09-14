@@ -11447,6 +11447,308 @@
     })
   });
 
+  // OPP — Opportunités MSC. Data-only: activation strictly follows a real featured MSC.
+  const OPPCIV01 = Object.freeze({
+    id:"OPP-CIV-01", title:"Quelqu’un entre les arbres",
+    description:"Une silhouette réelle aperçue entre les arbres disparaît avant tout contact ; BlueFox examine ensuite les traces laissées sur place.",
+    pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SHADOW-TRANSLUCENT"])}),
+    prerequisites:Object.freeze(["T13"]), bindActivationMap:true, priority:219, passivePriorityAxis:"exploration", ponderation:1.5,
+    autoPrimaryEligible:true, obsessionEligible:false,
+    sequence:Object.freeze([
+      Object.freeze({slot:"presence",title:"Repérer la silhouette sans chercher le contact",action:"observe",target:1,params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"approach",title:"Approcher l’endroit où elle se tenait",action:"observe",target:1,requires:Object.freeze(["presence"]),params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"traces",title:"Observer deux traces récentes dans la végétation",action:"observe",target:2,requires:Object.freeze(["approach"]),params:Object.freeze({cuoType:"fiber",microSceneId:"MSC-CUSTOM-SHADOW-TRANSLUCENT",distinctBy:"instanceId",requiredMapFact:"bibleActivation:OPP-CIV-01",requiredMapField:"mapId"})})
+    ]),
+    proximityContexts:Object.freeze([
+      Object.freeze({id:"opp-civ01-presence",slot:"presence",microSceneId:"MSC-CUSTOM-SHADOW-TRANSLUCENT",radius:16,requiredMapFact:"bibleActivation:OPP-CIV-01",requiredMapField:"mapId"}),
+      Object.freeze({id:"opp-civ01-approach",slot:"approach",microSceneId:"MSC-CUSTOM-SHADOW-TRANSLUCENT",radius:9,requiredMapFact:"bibleActivation:OPP-CIV-01",requiredMapField:"mapId"})
+    ]),
+    npcEncounters:Object.freeze([Object.freeze({id:"opp-civ01-translucent",cuoType:"npc_translucent",microSceneId:"MSC-CUSTOM-SHADOW-TRANSLUCENT",despawnOnDistanceBelow:10})]),
+    narrative:Object.freeze({
+      revealed:Object.freeze([]),
+      progress:Object.freeze([
+        Object.freeze({slot:"presence",atCount:1,text:"Il y avait quelqu’un entre les arbres. Je l’ai vu avant qu’il ne m’aperçoive vraiment."}),
+        Object.freeze({slot:"approach",atCount:1,text:"Plus rien. La présence s’est retirée avant que je puisse l’approcher."})
+      ]),
+      completed:Object.freeze(["Les traces sont trop récentes pour être un hasard. Quelqu’un était bien ici, et a choisi de ne pas rester."])
+    })
+  });
+
+  const OPPFAU01 = Object.freeze({
+    id:"OPP-FAU-01", title:"Les yeux dans la nuit",
+    description:"À la nuit tombée, observer calmement le même animal nocturne avant puis après son léger déplacement.",
+    pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SHADOW-NOCTURAL"])}),
+    bindActivationMap:true, priority:218, passivePriorityAxis:"research", ponderation:1.3, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"firstLook",title:"Observer la présence nocturne sans la faire fuir",action:"observe",target:1,sameTarget:true,params:Object.freeze({cuoType:"nocturnal_animal",microSceneId:"MSC-CUSTOM-SHADOW-NOCTURAL",tagsAll:Object.freeze(["fauna_behavior","period_night"]),requiredMapFact:"bibleActivation:OPP-FAU-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"secondLook",title:"Retrouver le même animal après son déplacement",action:"observe",target:1,requires:Object.freeze(["firstLook"]),sameTarget:true,params:Object.freeze({cuoType:"nocturnal_animal",microSceneId:"MSC-CUSTOM-SHADOW-NOCTURAL",tagsAll:Object.freeze(["fauna_behavior","period_night"]),requiredMapFact:"bibleActivation:OPP-FAU-01",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["Deux yeux reflètent la nuit. Je peux peut-être rester assez calme pour qu’ils ne disparaissent pas." ]),completed:Object.freeze(["Il s’est déplacé, mais il est resté là. Pendant quelques secondes, nous nous sommes observés tous les deux."])})
+  });
+
+  const OPPMET01 = Object.freeze({
+    id:"OPP-MET-01", title:"La pluie qui remonte",
+    description:"Observer un écoulement qui semble remonter, changer de point de vue puis comparer le phénomène à son environnement proche.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-INVERTED-RAIN"])}),
+    bindActivationMap:true, priority:217, passivePriorityAxis:"research", ponderation:1.4, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"water",title:"Observer l’eau qui paraît remonter",action:"observe",target:1,params:Object.freeze({cuoType:"watercourse",microSceneId:"MSC-CUSTOM-INVERTED-RAIN",requiredMapFact:"bibleActivation:OPP-MET-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"viewpoint",title:"Vérifier le phénomène depuis un second point",action:"observe",target:1,requires:Object.freeze(["water"]),params:Object.freeze({cuoType:"pool",microSceneId:"MSC-CUSTOM-INVERTED-RAIN",requiredMapFact:"bibleActivation:OPP-MET-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"context",title:"Comparer avec la végétation ou le sol voisin",action:"analyze",target:1,requires:Object.freeze(["viewpoint"]),params:Object.freeze({cuoTypes:Object.freeze(["thermosap_moss","fluorescent_vegetation","strong_rock"]),microSceneId:"MSC-CUSTOM-INVERTED-RAIN",requiredMapFact:"bibleActivation:OPP-MET-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"change",title:"Rester assez longtemps pour voir le phénomène évoluer",action:"research",target:1,requires:Object.freeze(["context"]),params:Object.freeze({duration:4500,requiredMapFact:"bibleActivation:OPP-MET-01",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["Les gouttes montent. Ou bien quelque chose ici donne cette impression. Je veux vérifier avant de conclure." ]),completed:Object.freeze(["Le phénomène change avec le lieu et l’air autour. Je n’ai pas encore une explication, mais ce n’est pas une simple illusion de passage."])})
+  });
+
+  const OPPMET02 = Object.freeze({
+    id:"OPP-MET-02", title:"L’orage sans voix",
+    description:"Observer un orage lointain dont les éclairs précèdent anormalement le grondement, sans chercher à prendre de hauteur.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-DISTANT-STORM"])}),
+    bindActivationMap:true, priority:216, passivePriorityAxis:"research", ponderation:1.3, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"lightning",title:"Observer les éclairs du front lointain",action:"observe",target:1,params:Object.freeze({cuoType:"electrostatic_storm",microSceneId:"MSC-CUSTOM-DISTANT-STORM",requiredMapFact:"bibleActivation:OPP-MET-02",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"wait",title:"Continuer brièvement l’observation depuis le sol",action:"research",target:1,requires:Object.freeze(["lightning"]),params:Object.freeze({duration:4000,requiredMapFact:"bibleActivation:OPP-MET-02",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["Des éclairs, mais aucun tonnerre. Je reste ici : pas besoin de grimper pour comprendre ce décalage." ]),completed:Object.freeze(["Le grondement finit par arriver. La distance explique une partie du silence ; le front reste assez étrange pour mériter une note."])})
+  });
+
+  const OPPBIO01 = Object.freeze({
+    id:"OPP-BIO-01", title:"La forêt qui respire",
+    description:"Observer deux cycles d’un groupe végétal puis une plante isolée pour comprendre le mouvement collectif sans inventer de mécanisme nouveau.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-BREATHING-GROVE"])}),
+    bindActivationMap:true, priority:215, passivePriorityAxis:"research", ponderation:1.3, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"cycle1",title:"Observer un premier mouvement du bosquet",action:"observe",target:1,params:Object.freeze({cuoType:"lunar_vine",microSceneId:"MSC-CUSTOM-BREATHING-GROVE",requiredMapFact:"bibleActivation:OPP-BIO-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"cycle2",title:"Observer un second mouvement du groupe",action:"observe",target:1,requires:Object.freeze(["cycle1"]),params:Object.freeze({cuoType:"lunar_vine",microSceneId:"MSC-CUSTOM-BREATHING-GROVE",requiredMapFact:"bibleActivation:OPP-BIO-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"plant",title:"Comparer avec une plante isolée",action:"observe",target:1,requires:Object.freeze(["cycle2"]),params:Object.freeze({cuoTypes:Object.freeze(["fern","nature_tree","tree"]),microSceneId:"MSC-CUSTOM-BREATHING-GROVE",requiredMapFact:"bibleActivation:OPP-BIO-01",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["Tout le bosquet bouge presque au même rythme. Le vent seul n’explique peut-être pas ce que je vois." ]),completed:Object.freeze(["Une plante seule ne réagit pas tout à fait comme le groupe. Ce lieu donne l’impression d’un comportement collectif, même si la cause reste naturelle."])})
+  });
+
+  const OPPGEO01 = Object.freeze({
+    id:"OPP-GEO-01", title:"Les pierres qui chantent",
+    description:"Localiser l’origine d’un son, comparer deux formations voisines puis observer la réponse du site au vent.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SINGING-STONES"])}),
+    bindActivationMap:true, priority:214, passivePriorityAxis:"research", ponderation:1.3, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"sound",title:"Localiser l’origine du son",action:"observe",target:1,params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"formations",title:"Observer deux formations voisines",action:"observe",target:2,requires:Object.freeze(["sound"]),params:Object.freeze({cuoType:"eroded_monolith",microSceneId:"MSC-CUSTOM-SINGING-STONES",distinctBy:"instanceId",requiredMapFact:"bibleActivation:OPP-GEO-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"wind",title:"Rester jusqu’à une variation du souffle",action:"research",target:1,requires:Object.freeze(["formations"]),params:Object.freeze({duration:3500,requiredMapFact:"bibleActivation:OPP-GEO-01",requiredMapField:"mapId"})})
+    ]),
+    proximityContexts:Object.freeze([Object.freeze({id:"opp-geo01-sound",slot:"sound",microSceneId:"MSC-CUSTOM-SINGING-STONES",radius:14,requiredMapFact:"bibleActivation:OPP-GEO-01",requiredMapField:"mapId"})]),
+    narrative:Object.freeze({revealed:Object.freeze(["Le son vient bien des pierres. Je veux voir si plusieurs formes réagissent de la même manière." ]),completed:Object.freeze(["Le chant change avec le souffle qui traverse les formations. Pas besoin d’une nouvelle matière : la forme des pierres suffit probablement à l’expliquer."])})
+  });
+
+  const OPPCIV02 = Object.freeze({
+    id:"OPP-CIV-02", title:"Le feu encore chaud",
+    description:"Découvrir un foyer réellement occupé, voir Rocky se retirer avant le contact puis examiner les indices qu’il laisse derrière lui.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SHADOW-ROCKY-001"])}),
+    bindActivationMap:true, priority:219, passivePriorityAxis:"exploration", ponderation:1.6, autoPrimaryEligible:true,
+    souvenir:true, memoryValence:"positive", scoreTrauma:28,
+    sequence:Object.freeze([
+      Object.freeze({slot:"camp",title:"Repérer le foyer et la présence qui l’occupe",action:"observe",target:1,params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"approach",title:"Approcher sans chercher le contact",action:"observe",target:1,requires:Object.freeze(["camp"]),params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"fire",title:"Examiner le foyer encore chaud",action:"inspect",target:1,requires:Object.freeze(["approach"]),params:Object.freeze({cuoType:"base_fire",microSceneId:"MSC-CUSTOM-SHADOW-ROCKY-001",requiredMapFact:"bibleActivation:OPP-CIV-02",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"trace",title:"Observer un second indice d’occupation",action:"observe",target:1,requires:Object.freeze(["fire"]),params:Object.freeze({cuoTypes:Object.freeze(["tree_fallen","eroded_monolith"]),microSceneId:"MSC-CUSTOM-SHADOW-ROCKY-001",requiredMapFact:"bibleActivation:OPP-CIV-02",requiredMapField:"mapId"})})
+    ]),
+    proximityContexts:Object.freeze([
+      Object.freeze({id:"opp-civ02-camp",slot:"camp",microSceneId:"MSC-CUSTOM-SHADOW-ROCKY-001",radius:18,requiredMapFact:"bibleActivation:OPP-CIV-02",requiredMapField:"mapId"}),
+      Object.freeze({id:"opp-civ02-approach",slot:"approach",microSceneId:"MSC-CUSTOM-SHADOW-ROCKY-001",radius:9,requiredMapFact:"bibleActivation:OPP-CIV-02",requiredMapField:"mapId"})
+    ]),
+    npcEncounters:Object.freeze([Object.freeze({id:"opp-civ02-rocky",cuoType:"npc_rocky",microSceneId:"MSC-CUSTOM-SHADOW-ROCKY-001",despawnOnDistanceBelow:10})]),
+    narrative:Object.freeze({revealed:Object.freeze([]),progress:Object.freeze([Object.freeze({slot:"camp",atCount:1,text:"Un feu. Et quelqu’un près de lui. Cette fois, la présence n’est pas une trace ancienne."}),Object.freeze({slot:"approach",atCount:1,text:"Rocky s’est retiré avant que je puisse entrer dans sa distance de contact. Je n’insiste pas."})]),completed:Object.freeze(["Le foyer était encore chaud et les marques autour sont récentes. Quelqu’un vit ou passe ici régulièrement."])})
+  });
+
+  const OPPMET03 = Object.freeze({
+    id:"OPP-MET-03", title:"La mer de brume",
+    description:"Suivre la progression d’une brume réelle sur le relief jusqu’à son maximum puis au début de sa dissipation.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-FOG-SEA-SUSPENDU"])}),
+    bindActivationMap:true, priority:213, passivePriorityAxis:"exploration", ponderation:1.2, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"edge",title:"Observer l’arrivée de la brume",action:"observe",target:1,params:Object.freeze({cuoType:"fog_bank",microSceneId:"MSC-CUSTOM-FOG-SEA-SUSPENDU",requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"landmarks",title:"Voir les repères disparaître dans la brume",action:"observe",target:1,requires:Object.freeze(["edge"]),params:Object.freeze({cuoType:"mobile_islet",microSceneId:"MSC-CUSTOM-FOG-SEA-SUSPENDU",requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"maximum",title:"Attendre le maximum du voile",action:"research",target:1,requires:Object.freeze(["landmarks"]),params:Object.freeze({duration:4500,requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"dissipation",title:"Observer le début de la dissipation",action:"observe",target:1,requires:Object.freeze(["maximum"]),params:Object.freeze({cuoType:"fog_bank",microSceneId:"MSC-CUSTOM-FOG-SEA-SUSPENDU",requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})})
+    ]),
+    narrative:Object.freeze({revealed:Object.freeze(["La brume avance comme une mer basse entre les reliefs. Je veux voir jusqu’où elle efface le paysage." ]),completed:Object.freeze(["Le voile commence déjà à se retirer. Ce n’était pas un mur fixe, mais un phénomène qui traverse réellement le relief."])})
+  });
+
+  const OPPBIO02 = Object.freeze({
+    id:"OPP-BIO-02", title:"La frontière vivante",
+    description:"Comparer deux milieux réellement juxtaposés puis suivre un indice local capable d’expliquer leur frontière.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-BIOME-FRONTIERE"])}),
+    bindActivationMap:true, priority:212, passivePriorityAxis:"research", ponderation:1.3, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"boundary",title:"Repérer la limite entre les deux milieux",action:"observe",target:1,params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"drySide",title:"Observer un élément du côté sec ou minéral",action:"observe",target:1,requires:Object.freeze(["boundary"]),params:Object.freeze({cuoTypes:Object.freeze(["cactus","metallic_dune","resonant_basalt"]),microSceneId:"MSC-CUSTOM-BIOME-FRONTIERE",requiredMapFact:"bibleActivation:OPP-BIO-02",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"wetSide",title:"Observer un élément du côté humide ou végétal",action:"observe",target:1,requires:Object.freeze(["drySide"]),params:Object.freeze({cuoTypes:Object.freeze(["thermosap_moss","adaptive_plant","pool"]),microSceneId:"MSC-CUSTOM-BIOME-FRONTIERE",requiredMapFact:"bibleActivation:OPP-BIO-02",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"cause",title:"Suivre brièvement un indice local de la frontière",action:"observe",target:1,requires:Object.freeze(["wetSide"]),params:Object.freeze({cuoType:"watercourse",microSceneId:"MSC-CUSTOM-BIOME-FRONTIERE",requiredMapFact:"bibleActivation:OPP-BIO-02",requiredMapField:"mapId"})})
+    ]),
+    proximityContexts:Object.freeze([Object.freeze({id:"opp-bio02-boundary",slot:"boundary",microSceneId:"MSC-CUSTOM-BIOME-FRONTIERE",radius:24,requiredMapFact:"bibleActivation:OPP-BIO-02",requiredMapField:"mapId"})]),
+    narrative:Object.freeze({revealed:Object.freeze(["Deux milieux se touchent presque sans transition. Je veux comparer ce qui change exactement de part et d’autre." ]),completed:Object.freeze(["L’eau, le sol et l’exposition donnent une explication plausible à cette limite. Une frontière vivante, mais pas arbitraire."])})
+  });
+
+  const OPPORCHNAT01 = Object.freeze({
+    id:"OPP-ORCH-NAT-01", title:"Quelque chose a poussé ici",
+    description:"Dans un sanctuaire envahi par le vivant, comparer la plante remarquable aux structures anciennes qui l’entourent.",
+    pattern:"SEQUENCE_ACTIONS", trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL"])}),
+    bindActivationMap:true, priority:210, passivePriorityAxis:"research", ponderation:1, autoPrimaryEligible:true, obsessionEligible:true, obsessionIntensity:4,
+    sequence:Object.freeze([
+      Object.freeze({slot:"living",title:"Observer l’orchidée mêlée aux ruines",action:"observe",target:1,params:Object.freeze({cuoType:"prismatic_orchid",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL",requiredMapFact:"bibleActivation:OPP-ORCH-NAT-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"structure",title:"Analyser une structure érodée voisine",action:"analyze",target:1,requires:Object.freeze(["living"]),params:Object.freeze({cuoType:"eroded_monolith",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL",requiredMapFact:"bibleActivation:OPP-ORCH-NAT-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"secondLiving",title:"Observer un second élément vivant du sanctuaire",action:"observe",target:1,requires:Object.freeze(["structure"]),params:Object.freeze({cuoTypes:Object.freeze(["thermosap_moss","lunar_vine","fern"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL",requiredMapFact:"bibleActivation:OPP-ORCH-NAT-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["La végétation n’a pas seulement recouvert ces ruines : elle semble s’être organisée autour d’elles. Je veux revenir sur ce lien."])})
+  });
+
+  const OPPORCHNAT02 = Object.freeze({
+    id:"OPP-ORCH-NAT-02", title:"Gardé vivant",
+    description:"Revenir dans le même sanctuaire pour comparer ses traces techniques à la végétation qui les entoure.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"OPP-ORCH-NAT-01",count:1}), prerequisites:Object.freeze(["OPP-ORCH-NAT-01"]),
+    priority:209, passivePriorityAxis:"research", ponderation:0.9, obsessionEligible:true, obsessionIntensity:4, souvenir:true, memoryValence:"positive", scoreTrauma:36,
+    sequence:Object.freeze([
+      Object.freeze({slot:"memory",title:"Examiner une trace technique conservée",action:"inspect",target:1,params:Object.freeze({cuoTypes:Object.freeze(["memory_capsule","pulse_core"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL",requiredMapFact:"bibleActivation:OPP-ORCH-NAT-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"second",title:"Examiner un second élément significatif",action:"inspect",target:1,requires:Object.freeze(["memory"]),params:Object.freeze({cuoTypes:Object.freeze(["pulse_core","memory_capsule","eroded_monolith"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL",requiredMapFact:"bibleActivation:OPP-ORCH-NAT-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"living",title:"Revenir vers le vivant voisin",action:"observe",target:1,requires:Object.freeze(["second"]),params:Object.freeze({cuoType:"prismatic_orchid",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-NATURAL",requiredMapFact:"bibleActivation:OPP-ORCH-NAT-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["La technique est ancienne ; le vivant, lui, continue. J’aime l’idée que ce lieu soit resté actif sans avoir besoin de rester intact."])})
+  });
+
+  const OPPORCHBAS01 = Object.freeze({
+    id:"OPP-ORCH-BAS-01", title:"Un lieu construit autour de l’eau", description:"Observer le bassin d’un sanctuaire puis comparer deux zones de son architecture.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN"])}), bindActivationMap:true,
+    priority:208, passivePriorityAxis:"research", ponderation:1, autoPrimaryEligible:true, obsessionEligible:true, obsessionIntensity:4,
+    sequence:Object.freeze([
+      Object.freeze({slot:"basin",title:"Observer le bassin et son contexte",action:"observe",target:1,params:Object.freeze({cuoType:"pool",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN",requiredMapFact:"bibleActivation:OPP-ORCH-BAS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"stele",title:"Examiner une structure proche de l’eau",action:"inspect",target:1,requires:Object.freeze(["basin"]),params:Object.freeze({cuoTypes:Object.freeze(["stele","eroded_monolith"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN",requiredMapFact:"bibleActivation:OPP-ORCH-BAS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"zone2",title:"Observer une seconde zone architecturale",action:"observe",target:1,requires:Object.freeze(["stele"]),params:Object.freeze({cuoType:"arch",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN",requiredMapFact:"bibleActivation:OPP-ORCH-BAS-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Le bassin n’est pas un détail ajouté aux ruines. L’architecture semble s’être organisée autour de l’eau."])})
+  });
+
+  const OPPORCHBAS02 = Object.freeze({
+    id:"OPP-ORCH-BAS-02", title:"Ce qui venait boire ici", description:"Dans le même sanctuaire, comparer la végétation du bassin à un autre élément naturel puis revenir au centre construit.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"OPP-ORCH-BAS-01",count:1}), prerequisites:Object.freeze(["OPP-ORCH-BAS-01"]), priority:207, passivePriorityAxis:"research", ponderation:0.9, obsessionEligible:true, obsessionIntensity:4, souvenir:true, memoryValence:"positive", scoreTrauma:34,
+    sequence:Object.freeze([
+      Object.freeze({slot:"bank",title:"Observer la végétation au bord du bassin",action:"observe",target:1,params:Object.freeze({cuoTypes:Object.freeze(["prismatic_orchid","frond","fern"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN",requiredMapFact:"bibleActivation:OPP-ORCH-BAS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"nature2",title:"Comparer un second élément naturel",action:"analyze",target:1,requires:Object.freeze(["bank"]),params:Object.freeze({cuoTypes:Object.freeze(["thermosap_moss","adaptive_plant","spore"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN",requiredMapFact:"bibleActivation:OPP-ORCH-BAS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"center",title:"Revenir à la structure centrale",action:"observe",target:1,requires:Object.freeze(["nature2"]),params:Object.freeze({cuoType:"pool",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-BASSIN",requiredMapFact:"bibleActivation:OPP-ORCH-BAS-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Ce bassin a probablement servi à plus que décorer le sanctuaire. Le vivant continue encore d’y converger."])})
+  });
+
+  const OPPORCHRIV01 = Object.freeze({
+    id:"OPP-ORCH-RIV-01", title:"Elle ne devrait pas être là", description:"Étudier l’orchidée remarquable d’un sanctuaire riverain puis la comparer à deux traces anciennes liées au même lieu.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE"])}), bindActivationMap:true,
+    priority:211, passivePriorityAxis:"research", ponderation:1, autoPrimaryEligible:true, obsessionEligible:true, obsessionIntensity:5,
+    sequence:Object.freeze([
+      Object.freeze({slot:"orchid",title:"Analyser l’orchidée remarquable",action:"analyze",target:1,params:Object.freeze({cuoType:"prismatic_orchid",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"stele",title:"Examiner la stèle ou le monolithe lié",action:"inspect",target:1,requires:Object.freeze(["orchid"]),params:Object.freeze({cuoTypes:Object.freeze(["stele","eroded_monolith"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"ancient2",title:"Comparer une seconde trace ancienne",action:"observe",target:1,requires:Object.freeze(["stele"]),params:Object.freeze({cuoTypes:Object.freeze(["debris","eroded_monolith"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["L’orchidée pousse exactement là où ces traces anciennes se répondent. Ce lien mérite une seconde lecture."])})
+  });
+
+  const OPPORCHRIV02 = Object.freeze({
+    id:"OPP-ORCH-RIV-02", title:"Une réponse sans message", description:"Revenir sur le même site pour comparer un noyau d’impulsion, une capsule mémoire et la plante qui les accompagne.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"OPP-ORCH-RIV-01",count:1}), prerequisites:Object.freeze(["OPP-ORCH-RIV-01"]), priority:210, passivePriorityAxis:"research", ponderation:0.9, obsessionEligible:true, obsessionIntensity:5,
+    sequence:Object.freeze([
+      Object.freeze({slot:"pulse",title:"Examiner le noyau d’impulsion",action:"inspect",target:1,params:Object.freeze({cuoType:"pulse_core",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"memory",title:"Examiner la capsule mémoire",action:"inspect",target:1,requires:Object.freeze(["pulse"]),params:Object.freeze({cuoType:"memory_capsule",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"returnPlant",title:"Revenir à l’orchidée et à son voisinage",action:"observe",target:1,requires:Object.freeze(["memory"]),params:Object.freeze({cuoType:"prismatic_orchid",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Je n’ai trouvé aucun message clair. Pourtant, les éléments du lieu se répondent assez pour que le silence lui-même devienne une information."])})
+  });
+
+  const OPPORCHRIV03 = Object.freeze({
+    id:"OPP-ORCH-RIV-03", title:"Ne rien emporter", description:"Revenir une dernière fois au même sanctuaire, l’observer sans ajouter de collecte obligatoire puis laisser le lieu intact.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"OPP-ORCH-RIV-02",count:1}), prerequisites:Object.freeze(["OPP-ORCH-RIV-02"]), priority:209, passivePriorityAxis:"research", ponderation:0.5, obsessionEligible:false, souvenir:true, memoryValence:"positive", scoreTrauma:52,
+    sequence:Object.freeze([
+      Object.freeze({slot:"final",title:"Observer une dernière fois le sanctuaire",action:"observe",target:1,params:Object.freeze({eventDriven:true,catalogManaged:true})}),
+      Object.freeze({slot:"orchid",title:"Regarder encore l’orchidée avant de repartir",action:"observe",target:1,requires:Object.freeze(["final"]),params:Object.freeze({cuoType:"prismatic_orchid",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})})
+    ]),
+    proximityContexts:Object.freeze([Object.freeze({id:"opp-riv03-final",slot:"final",microSceneId:"MSC-CUSTOM-SANCTUAIRE-OCHIDEE-RIVER-STELLE",radius:10,requiredMapFact:"bibleActivation:OPP-ORCH-RIV-01",requiredMapField:"mapId"})]),
+    narrative:Object.freeze({completed:Object.freeze(["Je pourrais emporter quelque chose. Je préfère garder le lieu comme je l’ai trouvé. Ce choix-là suffit à fermer la parenthèse."])})
+  });
+
+  const OPPADR01 = Object.freeze({
+    id:"OPP-ADR-01", title:"Pas simplement cassé", description:"Examiner un drone abandonné, ses débris et le minerai magnétique présent sur le même site.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-ABANDONED-DRONE-001"])}), bindActivationMap:true,
+    priority:211, passivePriorityAxis:"research", ponderation:1, autoPrimaryEligible:true, obsessionEligible:true, obsessionIntensity:4,
+    sequence:Object.freeze([
+      Object.freeze({slot:"drone",title:"Examiner le drone abandonné",action:"inspect",target:1,params:Object.freeze({cuoType:"abandoned_drone",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"debris",title:"Examiner un débris voisin",action:"inspect",target:1,requires:Object.freeze(["drone"]),params:Object.freeze({cuoType:"debris",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"ore",title:"Analyser le minerai magnétique du site",action:"analyze",target:1,requires:Object.freeze(["debris"]),params:Object.freeze({cuoType:"magnetic_ore",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Ce drone n’est pas tombé n’importe où. Les débris et le minerai racontent une fin plus précise qu’une simple panne."])})
+  });
+
+  const OPPADR02 = Object.freeze({
+    id:"OPP-ADR-02", title:"Dernière tâche", description:"Revenir au même site pour relire le drone, un second débris et son environnement comme les restes d’une dernière activité.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"OPP-ADR-01",count:1}), prerequisites:Object.freeze(["OPP-ADR-01"]), priority:210, passivePriorityAxis:"research", ponderation:0.9, obsessionEligible:true, obsessionIntensity:5,
+    sequence:Object.freeze([
+      Object.freeze({slot:"drone",title:"Réexaminer le même site de drone",action:"inspect",target:1,params:Object.freeze({cuoType:"abandoned_drone",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"debris",title:"Examiner un autre débris du site",action:"inspect",target:1,requires:Object.freeze(["drone"]),params:Object.freeze({cuoType:"debris",microSceneId:"MSC-ABANDONED-DRONE-001",distinctBy:"instanceId",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"environment",title:"Relire l’indice environnemental du site",action:"observe",target:1,requires:Object.freeze(["debris"]),params:Object.freeze({cuoType:"magnetic_ore",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Les pièces ne me donnent pas un plan à reproduire. Elles me donnent quelque chose de plus simple : la trace de ce que ce drone faisait encore ici."])})
+  });
+
+  const OPPADR03 = Object.freeze({
+    id:"OPP-ADR-03", title:"Fin de service", description:"Clore l’étude du même site par une dernière inspection du drone ; toute récupération de débris reste facultative et non bloquante.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"progression.mission_completed",missionId:"OPP-ADR-02",count:1}), prerequisites:Object.freeze(["OPP-ADR-02"]), priority:209, passivePriorityAxis:"research", ponderation:0.5, obsessionEligible:false, souvenir:true, memoryValence:"positive", scoreTrauma:40,
+    sequence:Object.freeze([
+      Object.freeze({slot:"optionalDebris",title:"Récupérer un débris si cela vaut réellement la peine",action:"collect",target:1,optional:true,params:Object.freeze({cuoType:"debris",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"lastLook",title:"Inspecter une dernière fois le drone",action:"inspect",target:1,params:Object.freeze({cuoType:"abandoned_drone",microSceneId:"MSC-ABANDONED-DRONE-001",requiredMapFact:"bibleActivation:OPP-ADR-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Fin de service. Je n’ai pas besoin de transformer cette épave en nouvelle branche de recherche pour que son histoire compte."])})
+  });
+
+  const OPPOASIS01 = Object.freeze({
+    id:"OPP-OASIS-01", title:"Trop calme", description:"Observer le bassin d’une oasis lumineuse puis comparer deux formes de vie qui l’entourent.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-LUMINOUS-OASIS-001"])}), bindActivationMap:true,
+    priority:208, passivePriorityAxis:"exploration", ponderation:1.2, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"pool",title:"Observer le bassin",action:"observe",target:1,params:Object.freeze({cuoType:"pool",microSceneId:"MSC-LUMINOUS-OASIS-001",requiredMapFact:"bibleActivation:OPP-OASIS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"spore",title:"Observer la vie lumineuse voisine",action:"observe",target:1,requires:Object.freeze(["pool"]),params:Object.freeze({cuoType:"spore",microSceneId:"MSC-LUMINOUS-OASIS-001",requiredMapFact:"bibleActivation:OPP-OASIS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"plant",title:"Comparer une seconde plante",action:"observe",target:1,requires:Object.freeze(["spore"]),params:Object.freeze({cuoType:"fern",microSceneId:"MSC-LUMINOUS-OASIS-001",requiredMapFact:"bibleActivation:OPP-OASIS-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"optionalSample",title:"Prélever une fibre si cela reste utile",action:"collect",target:1,optional:true,params:Object.freeze({cuoType:"fiber",microSceneId:"MSC-LUMINOUS-OASIS-001",requiredMapFact:"bibleActivation:OPP-OASIS-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Tout est calme, mais pas vide. L’oasis fonctionne comme un petit monde concentré autour de l’eau."])})
+  });
+
+  const OPPHIDDEN01 = Object.freeze({
+    id:"OPP-HIDDEN-01", title:"Quelqu’un voulait que ça reste là", description:"Examiner deux composants techniques d’un site caché puis leur contexte de débris ou de minerai sans inventer de butin.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-COMP-HIDDEN"])}), bindActivationMap:true,
+    priority:208, passivePriorityAxis:"research", ponderation:1.3, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"tech1",title:"Examiner le premier composant remarquable",action:"inspect",target:1,params:Object.freeze({cuoTypes:Object.freeze(["logic_prism","pulse_core"]),microSceneId:"MSC-CUSTOM-COMP-HIDDEN",requiredMapFact:"bibleActivation:OPP-HIDDEN-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"tech2",title:"Examiner un second composant technique",action:"inspect",target:1,requires:Object.freeze(["tech1"]),params:Object.freeze({cuoTypes:Object.freeze(["pulse_core","logic_prism"]),microSceneId:"MSC-CUSTOM-COMP-HIDDEN",requiredMapFact:"bibleActivation:OPP-HIDDEN-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"context",title:"Observer le contexte qui les dissimule",action:"observe",target:1,requires:Object.freeze(["tech2"]),params:Object.freeze({cuoTypes:Object.freeze(["debris","azure_ferrite"]),microSceneId:"MSC-CUSTOM-COMP-HIDDEN",requiredMapFact:"bibleActivation:OPP-HIDDEN-01",requiredMapField:"mapId"})})
+    ]), narrative:Object.freeze({completed:Object.freeze(["Ces composants n’étaient pas simplement tombés là. Quelqu’un a probablement voulu que l’ensemble reste discret, pas qu’il devienne un coffre à ouvrir."])})
+  });
+
+  const OPPNEST01 = Object.freeze({
+    id:"OPP-NEST-01", title:"On partage ?", description:"Observer un nid protecteur à distance puis deux présences animales distinctes avant de réduire prudemment la distance si elles le permettent.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-NID-PROTECTEUR"])}), bindActivationMap:true,
+    priority:207, passivePriorityAxis:"relations", ponderation:1.2, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"nest",title:"Observer le nid à distance",action:"observe",target:1,params:Object.freeze({cuoType:"abandoned_nest",microSceneId:"MSC-CUSTOM-NID-PROTECTEUR",requiredMapFact:"bibleActivation:OPP-NEST-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"fauna1",title:"Observer la première présence animale",action:"observe",target:1,requires:Object.freeze(["nest"]),params:Object.freeze({cuoType:"nocturnal_animal",microSceneId:"MSC-CUSTOM-NID-PROTECTEUR",requiredMapFact:"bibleActivation:OPP-NEST-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"fauna2",title:"Observer une seconde présence ou un second comportement",action:"observe",target:1,requires:Object.freeze(["fauna1"]),params:Object.freeze({cuoType:"amphibian_species",microSceneId:"MSC-CUSTOM-NID-PROTECTEUR",requiredMapFact:"bibleActivation:OPP-NEST-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"approach",title:"Réduire prudemment la distance si le groupe reste calme",action:"observe",target:1,requires:Object.freeze(["fauna2"]),params:Object.freeze({eventDriven:true,catalogManaged:true})})
+    ]),
+    proximityContexts:Object.freeze([Object.freeze({id:"opp-nest01-approach",slot:"approach",microSceneId:"MSC-CUSTOM-NID-PROTECTEUR",radius:5,requiredMapFact:"bibleActivation:OPP-NEST-01",requiredMapField:"mapId"})]),
+    narrative:Object.freeze({completed:Object.freeze(["Deux espèces autour du même nid, sans conflit immédiat. Je garde mes distances : partager un lieu n’est pas une invitation à intervenir."])})
+  });
+
+  const OPPSANBIG01 = Object.freeze({
+    id:"OPP-SAN-BIG-01", title:"Beaucoup trop grand pour une seule idée", description:"Parcourir un vaste sanctuaire en reliant deux zones construites, un élément naturel intégré puis le centre du site.", pattern:"SEQUENCE_ACTIONS",
+    trigger:Object.freeze({type:"exploration.map_discovered",count:1,uniqueOnly:true,featuredMicroSceneIdsAny:Object.freeze(["MSC-CUSTOM-SANCTUAIRE-BIG"])}), bindActivationMap:true,
+    priority:206, passivePriorityAxis:"research", ponderation:1.2, autoPrimaryEligible:true,
+    sequence:Object.freeze([
+      Object.freeze({slot:"structure1",title:"Observer une première structure importante",action:"observe",target:1,params:Object.freeze({cuoType:"arch",microSceneId:"MSC-CUSTOM-SANCTUAIRE-BIG",requiredMapFact:"bibleActivation:OPP-SAN-BIG-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"structure2",title:"Examiner une seconde zone construite",action:"inspect",target:1,requires:Object.freeze(["structure1"]),params:Object.freeze({cuoTypes:Object.freeze(["stele","eroded_monolith"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-BIG",requiredMapFact:"bibleActivation:OPP-SAN-BIG-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"living",title:"Observer l’élément naturel ou cristallin intégré",action:"observe",target:1,requires:Object.freeze(["structure2"]),params:Object.freeze({cuoTypes:Object.freeze(["crystalline_tree","luminescent_tree","lunar_vine"]),microSceneId:"MSC-CUSTOM-SANCTUAIRE-BIG",requiredMapFact:"bibleActivation:OPP-SAN-BIG-01",requiredMapField:"mapId"})}),
+      Object.freeze({slot:"center",title:"Revenir vers le centre et relire l’ensemble",action:"observe",target:1,requires:Object.freeze(["living"]),params:Object.freeze({eventDriven:true,catalogManaged:true})})
+    ]),
+    proximityContexts:Object.freeze([Object.freeze({id:"opp-san-big-center",slot:"center",microSceneId:"MSC-CUSTOM-SANCTUAIRE-BIG",radius:8,requiredMapFact:"bibleActivation:OPP-SAN-BIG-01",requiredMapField:"mapId"})]),
+    narrative:Object.freeze({completed:Object.freeze(["Ce sanctuaire est trop vaste pour n’avoir servi qu’à une seule chose. Son architecture, sa végétation et ses traces techniques ont été pensées comme un ensemble."])})
+  });
+
+
   const TERRCARN01 = Object.freeze({
     id: "TERR-CARN-01",
     title: "Approcher le phénomène",
@@ -12435,6 +12737,9 @@
     EXP01, EXP02, EXP03, EXP04, EXP05, EXP06, EXP07, EXP08, EXP09, EXP10, EXP11, EXP12,
     ECO01, ECO02, ECO04, SIS01, SIS02, SIS03,
     PROS01, PROS03, PROS02,
+    OPPCIV01, OPPFAU01, OPPMET01, OPPMET02, OPPBIO01, OPPGEO01, OPPCIV02, OPPMET03, OPPBIO02,
+    OPPORCHNAT01, OPPORCHNAT02, OPPORCHBAS01, OPPORCHBAS02, OPPORCHRIV01, OPPORCHRIV02, OPPORCHRIV03,
+    OPPADR01, OPPADR02, OPPADR03, OPPOASIS01, OPPHIDDEN01, OPPNEST01, OPPSANBIG01,
     TERRCARN01, TERRCARN02, TERRCARN03, TERRCARN04, TERRSTORM01, TERRSTORM02, TERRSTORM03, TERRSTORM04,
     POSTDIP01, TP01, TP02, TP03, TP04, TP05, TP06, TP07, TP08, TP09, TP10, TP11,
     TPAFTER01, TPAFTER02, TPAFTER03, TPAFTER04,
