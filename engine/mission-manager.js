@@ -664,7 +664,8 @@
           typeof this.engine?.returnToBase === "function"
         );
       }
-      const route = this.engine?.findKnownRoute?.(currentMapId, targetMapId);
+      const route = (this.engine?.findOptimalRoute?.(currentMapId, targetMapId) ||
+        this.engine?.findKnownRoute?.(currentMapId, targetMapId));
       return Array.isArray(route) && route.length >= 2;
     }
 
@@ -1035,14 +1036,14 @@
         ) return false;
 
         if (frontierMapId !== currentMapId) {
-          const route = this.engine?.findKnownRoute?.(currentMapId, frontierMapId);
+          const route = (this.engine?.findOptimalRoute?.(currentMapId, frontierMapId) ||
+            this.engine?.findKnownRoute?.(currentMapId, frontierMapId));
           if (!Array.isArray(route) || route.length < 2) return false;
-          const nextMapId = String(route[1] || "");
-          if (!nextMapId) return false;
           this.engine.handleNavigationSuggestion({
-            mapId: nextMapId,
+            mapId: frontierMapId,
             source: "mission",
-            missionId: travel.missionId
+            missionId: travel.missionId,
+            allowTeleportOptimization: true
           });
           return true;
         }
@@ -1070,7 +1071,8 @@
         return false;
       }
 
-      const route = this.engine?.findKnownRoute?.(currentMapId, targetMapId);
+      const route = (this.engine?.findOptimalRoute?.(currentMapId, targetMapId) ||
+        this.engine?.findKnownRoute?.(currentMapId, targetMapId));
       if (!Array.isArray(route) || route.length < 2) return false;
 
       if (
@@ -1082,13 +1084,12 @@
         return true;
       }
 
-      const nextMapId = String(route[1] || "");
-      if (!nextMapId || typeof this.engine?.handleNavigationSuggestion !== "function") {
-        return false;
-      }
+      if (typeof this.engine?.handleNavigationSuggestion !== "function") return false;
       this.engine.handleNavigationSuggestion({
-        mapId: nextMapId,
-        source: "mission"
+        mapId: targetMapId,
+        source: "mission",
+        missionId: travel.missionId,
+        allowTeleportOptimization: true
       });
       return true;
     }

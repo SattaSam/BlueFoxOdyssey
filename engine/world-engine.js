@@ -77,6 +77,8 @@
       this.generatedTopology = [];
       this.mapNames = new Map();
       this.navigationRoute = [];
+      this.pendingTeleport = null;
+      this.navigationAllowsTeleport = false;
       this.persistentNavigationIntent = this.restorePersistentNavigationIntent();
       this.returningToBase = false;
       this.__cachedInteractionApproach = null;
@@ -448,6 +450,7 @@
 
       if (!playerNavigation) {
         this.pendingGate = null;
+        this.pendingTeleport = null;
         this.pendingZoneExploration = null;
       }
 
@@ -1658,8 +1661,10 @@
         this.navigationFailures += 1;
         const wasResource = Boolean(this.pendingInteraction);
         const wasGate = Boolean(this.pendingGate);
+        const wasTeleport = Boolean(this.pendingTeleport);
         this.pendingInteraction = null;
         this.pendingGate = null;
+        this.pendingTeleport = null;
         this.pendingZoneExploration = null;
         this.returningToBase = false;
         this.interactionStartedAt = 0;
@@ -1672,11 +1677,13 @@
         this.callbacks.onStatus(
           wasResource
             ? "BlueFox change d’approche : cette ressource est momentanément inaccessible."
-            : wasGate && this.persistentNavigationIntent
+            : (wasGate || wasTeleport) && this.persistentNavigationIntent
               ? "BlueFox diffère ce passage mais conserve la destination suggérée."
-              : wasGate
-                ? "BlueFox interrompt ce trajet vers le passage et réévalue la route."
-                : "BlueFox abandonne ce trajet impossible et choisit une autre destination."
+              : wasTeleport
+                ? "BlueFox interrompt l’accès au réseau de téléportation et réévalue la route."
+                : wasGate
+                  ? "BlueFox interrompt ce trajet vers le passage et réévalue la route."
+                  : "BlueFox abandonne ce trajet impossible et choisit une autre destination."
         );
         if (this.persistentNavigationIntent) {
           this.persistentNavigationIntent.retryAfter = Date.now() + 5000;
@@ -1717,6 +1724,7 @@
       const camp = new this.THREE.Vector3(0, 0, 8);
       this.pendingInteraction = null;
       this.pendingGate = null;
+      this.pendingTeleport = null;
       this.character.setTarget(camp, "run");
       this.showWorldMarker(camp);
       this.callbacks.onStatus("BlueFox revient vers le refuge.");
@@ -1753,6 +1761,7 @@
       this.navigationRoute = [];
       this.clearPersistentNavigationIntent();
       this.pendingGate = null;
+      this.pendingTeleport = null;
       this.pendingZoneExploration = null;
       this.returningToBase = false;
       this.showClickMarker(event);
@@ -1968,6 +1977,7 @@
           missionId: typeof intent.missionId === "string" && intent.missionId
             ? intent.missionId
             : null,
+          allowTeleportOptimization: intent.allowTeleportOptimization === true,
           requestedAt,
           retryAfter: Math.max(0, Number(intent.retryAfter) || 0)
         };
@@ -2001,6 +2011,7 @@
         missionId: typeof detail.missionId === "string" && detail.missionId
           ? detail.missionId
           : null,
+        allowTeleportOptimization: detail.allowTeleportOptimization === true,
         requestedAt: Date.now(),
         retryAfter: 0
       };
@@ -2018,6 +2029,7 @@
 
     clearPersistentNavigationIntent() {
       this.persistentNavigationIntent = null;
+      this.navigationAllowsTeleport = false;
       this.persistNavigationIntent();
     }
 
@@ -2052,8 +2064,11 @@
         return true;
       }
       if (intent.mapId) {
-        const route = this.findKnownRoute(this.currentMapId, intent.mapId);
+        const route = intent.allowTeleportOptimization === true
+          ? this.findOptimalRoute(this.currentMapId, intent.mapId)
+          : this.findKnownRoute(this.currentMapId, intent.mapId);
         if (!route || route.length < 2) return false;
+        this.navigationAllowsTeleport = intent.allowTeleportOptimization === true;
         this.navigationRoute = route.slice(1);
         this.navigateNextRouteStep();
         return true;
@@ -2085,13 +2100,16 @@
         return;
       }
       if (detail.mapId && detail.mapId !== this.currentMapId) {
-        const route = this.findKnownRoute(this.currentMapId, detail.mapId);
+        const route = detail.allowTeleportOptimization === true
+          ? this.findOptimalRoute(this.currentMapId, detail.mapId)
+          : this.findKnownRoute(this.currentMapId, detail.mapId);
         if (!route) {
           this.callbacks.onStatus(
             "Aucun itinéraire exploré ne relie encore ces deux Zones."
           );
           return;
         }
+        this.navigationAllowsTeleport = detail.allowTeleportOptimization === true;
         this.navigationRoute = route.slice(1);
         this.callbacks.onStatus(
           `BlueFox prépare un itinéraire vers ${this.narrativeMapName(detail.mapId)}.`
@@ -2110,7 +2128,7 @@
       this.showWorldMarker(target);
     }
 
-    findKnownRoute(startMapId, targetMapId) {
+    findPhysicalRoute(startMapId, targetMapId) {
       if (startMapId === targetMapId) return [startMapId];
       if (!this.discoveredMaps.has(targetMapId)) return null;
       const queue = [[startMapId]];
@@ -2120,7 +2138,7 @@
         const currentId = route[route.length - 1];
         const exits = Object.values(BF.maps[currentId]?.exits || {});
         for (const exit of exits) {
-          const nextId = exit.targetMap;
+          const nextId = String(exit?.targetMap || "");
           if (!nextId || visited.has(nextId) || !this.discoveredMaps.has(nextId)) {
             continue;
           }
@@ -2131,6 +2149,111 @@
         }
       }
       return null;
+    }
+
+    teleportRoutingNetwork() {
+      const network = BF.SpecialObjectRuntime?.routingNetwork?.();
+      const hubMapId = String(network?.hub?.mapId || "");
+      if (!hubMapId || !network?.hub?.anchor || !this.discoveredMaps.has(hubMapId)) {
+        return null;
+      }
+      const destinations = Array.isArray(network.destinations)
+        ? network.destinations
+            .map((entry) => ({
+              mapId: String(entry?.mapId || ""),
+              anchor: entry?.anchor ? { ...entry.anchor } : null,
+              instanceId: entry?.instanceId || null
+            }))
+            .filter((entry) =>
+              entry.mapId &&
+              entry.mapId !== hubMapId &&
+              entry.anchor &&
+              this.discoveredMaps.has(entry.mapId)
+            )
+        : [];
+      if (!destinations.length) return null;
+      return {
+        hub: {
+          mapId: hubMapId,
+          anchor: { ...network.hub.anchor },
+          instanceId: network.hub.instanceId || null
+        },
+        destinations
+      };
+    }
+
+    teleportRouteNeighbors(mapId, network = this.teleportRoutingNetwork()) {
+      if (!network) return [];
+      const currentId = String(mapId || "");
+      if (currentId === network.hub.mapId) {
+        return network.destinations.map((entry) => entry.mapId);
+      }
+      return network.destinations.some((entry) => entry.mapId === currentId)
+        ? [network.hub.mapId]
+        : [];
+    }
+
+    teleportRouteEdge(fromMapId, toMapId, network = this.teleportRoutingNetwork()) {
+      if (!network) return null;
+      const fromId = String(fromMapId || "");
+      const toId = String(toMapId || "");
+      if (fromId === network.hub.mapId) {
+        const destination = network.destinations.find((entry) => entry.mapId === toId);
+        return destination
+          ? {
+              sourceAnchor: { ...network.hub.anchor },
+              targetMapId: toId,
+              activationRadius: 6.5
+            }
+          : null;
+      }
+      const source = network.destinations.find((entry) => entry.mapId === fromId);
+      if (source && toId === network.hub.mapId) {
+        return {
+          sourceAnchor: { ...source.anchor },
+          targetMapId: toId,
+          activationRadius: 4.0
+        };
+      }
+      return null;
+    }
+
+    findMultimodalRoute(startMapId, targetMapId) {
+      if (startMapId === targetMapId) return [startMapId];
+      if (!this.discoveredMaps.has(targetMapId)) return null;
+      const network = this.teleportRoutingNetwork();
+      if (!network) return this.findPhysicalRoute(startMapId, targetMapId);
+      const queue = [[startMapId]];
+      const visited = new Set([startMapId]);
+      while (queue.length) {
+        const route = queue.shift();
+        const currentId = route[route.length - 1];
+        const physical = Object.values(BF.maps[currentId]?.exits || {})
+          .map((exit) => String(exit?.targetMap || ""))
+          .filter(Boolean);
+        const teleports = this.teleportRouteNeighbors(currentId, network);
+        for (const nextId of [...physical, ...teleports]) {
+          if (visited.has(nextId) || !this.discoveredMaps.has(nextId)) continue;
+          const nextRoute = [...route, nextId];
+          if (nextId === targetMapId) return nextRoute;
+          visited.add(nextId);
+          queue.push(nextRoute);
+        }
+      }
+      return null;
+    }
+
+    findKnownRoute(startMapId, targetMapId) {
+      return this.findPhysicalRoute(startMapId, targetMapId);
+    }
+
+    findOptimalRoute(startMapId, targetMapId) {
+      const physical = this.findPhysicalRoute(startMapId, targetMapId);
+      const multimodal = this.findMultimodalRoute(startMapId, targetMapId);
+      if (!multimodal) return physical;
+      if (!physical || multimodal.length < physical.length) return multimodal;
+      // À coût égal, conserver le chemin historique évite un TP sans gain réel.
+      return physical;
     }
 
     navigateNextRouteStep() {
@@ -2144,17 +2267,126 @@
         (candidate) => candidate.userData.exit.targetMap === destinationId
       );
       if (!gate) {
+        const teleportEdge = this.navigationAllowsTeleport === true
+          ? this.teleportRouteEdge(this.currentMapId, destinationId)
+          : null;
+        if (teleportEdge && typeof BF.SpecialObjectRuntime?.teleportTo === "function") {
+          const anchor = new this.THREE.Vector3(
+            Number(teleportEdge.sourceAnchor?.x) || 0,
+            0,
+            Number(teleportEdge.sourceAnchor?.z) || 0
+          );
+          this.pendingGate = null;
+          this.pendingTeleport = {
+            sourceMapId: String(this.currentMapId || ""),
+            targetMapId: destinationId,
+            sourceAnchor: { ...teleportEdge.sourceAnchor },
+            activationRadius: Number(teleportEdge.activationRadius) || 4,
+            startedAt: Date.now(),
+            inFlight: false
+          };
+          this.character.setTarget(anchor, "run");
+          this.showWorldMarker(anchor);
+          this.callbacks.onStatus(
+            this.currentMapId === this.teleportRoutingNetwork()?.hub?.mapId
+              ? `BlueFox rejoint le téléporteur pour atteindre ${this.narrativeMapName(destinationId)}.`
+              : "BlueFox rejoint la balise pour emprunter le réseau de téléportation."
+          );
+          return;
+        }
         this.navigationRoute = [];
+        this.pendingTeleport = null;
         this.clearPersistentNavigationIntent();
         this.callbacks.onStatus("L’itinéraire mémorisé est devenu impraticable.");
         return;
       }
+      this.pendingTeleport = null;
       this.pendingGate = gate;
       this.character.setTarget(gate.position, "run");
       this.showWorldMarker(gate.position);
       this.callbacks.onStatus(
         `BlueFox rejoint le passage vers ${this.narrativeMapName(destinationId)}.`
       );
+    }
+
+    async executePendingTeleportRouteStep(pending) {
+      if (!pending || pending !== this.pendingTeleport || pending.inFlight !== true) return false;
+      const runtime = BF.SpecialObjectRuntime;
+      const targetMapId = String(pending.targetMapId || "");
+      let success = false;
+      try {
+        success = await runtime?.teleportTo?.(targetMapId) === true;
+      } catch (error) {
+        console.error("Échec du trajet autonome par téléportation", error);
+        success = false;
+      }
+      if (pending !== this.pendingTeleport) return success;
+      this.pendingTeleport = null;
+      if (!success) {
+        this.navigationRoute = [];
+        if (this.persistentNavigationIntent) {
+          this.persistentNavigationIntent.retryAfter = Date.now() + 5000;
+          this.persistNavigationIntent();
+        }
+        this.callbacks.onStatus(
+          "Le réseau de téléportation n’est momentanément pas utilisable. BlueFox réévaluera son trajet."
+        );
+        return false;
+      }
+      if (this.navigationRoute[0] === this.currentMapId) {
+        this.navigationRoute.shift();
+      }
+      if (this.navigationRoute.length) {
+        window.setTimeout(() => this.navigateNextRouteStep(), 900);
+      } else if (this.persistentNavigationIntent) {
+        window.setTimeout(() => this.resumePersistentNavigation(), 450);
+      } else if (this.returningToBase && this.currentMapId === "crystal") {
+        this.returningToBase = false;
+        window.setTimeout(() => this.moveToBaseCamp(), 450);
+      }
+      return true;
+    }
+
+    updatePendingTeleportRoute(now) {
+      const pending = this.pendingTeleport;
+      if (!pending || pending.inFlight || this.transitioning) return false;
+      if (String(this.currentMapId || "") !== String(pending.sourceMapId || "")) {
+        this.pendingTeleport = null;
+        return false;
+      }
+      const edge = this.teleportRouteEdge(this.currentMapId, pending.targetMapId);
+      if (!edge) {
+        this.pendingTeleport = null;
+        this.navigationRoute = [];
+        if (this.persistentNavigationIntent) {
+          this.persistentNavigationIntent.retryAfter = Date.now() + 5000;
+          this.persistNavigationIntent();
+        }
+        return false;
+      }
+      const anchor = new this.THREE.Vector3(
+        Number(edge.sourceAnchor?.x) || 0,
+        0,
+        Number(edge.sourceAnchor?.z) || 0
+      );
+      const distance = this.character.root.position.distanceTo(anchor);
+      const activationRadius = Math.max(
+        0.8,
+        Math.min(Number(edge.activationRadius) || Number(pending.activationRadius) || 4, 6.5)
+      );
+      if (distance > activationRadius) {
+        if (this.character.speed <= 0.08 && now - Number(pending.lastApproachAt || 0) >= 1200) {
+          this.character.setTarget(anchor, "run");
+          this.showWorldMarker(anchor);
+          pending.lastApproachAt = now;
+        }
+        return false;
+      }
+      this.character.stop?.();
+      this.character.setTarget(this.character.root.position);
+      pending.inFlight = true;
+      this.executePendingTeleportRouteStep(pending);
+      return true;
     }
 
     interactionWorldPosition(object) {
@@ -3403,6 +3635,15 @@
     ensureActivity(now) {
       if (!this.autonomyAllowed(now)) return;
       if (this.missionManager?.hasPrimaryMissionAuthority?.()) return;
+      if (this.pendingTeleport) {
+        if (this.character.speed > 0.08 || this.pendingTeleport.inFlight) {
+          this.lastActivityAt = now;
+          return;
+        }
+        this.updatePendingTeleportRoute(now);
+        this.lastActivityAt = now;
+        return;
+      }
       if (this.pendingGate) {
         if (this.character.speed > 0.08) {
           this.lastActivityAt = now;
@@ -3519,6 +3760,13 @@
       }
       if (this.transitioning) {
         return { key: "map-transition", label: "Passage vers une nouvelle zone cartographiée.", speech: "Je franchis le passage vers la zone suivante." };
+      }
+      if (this.pendingTeleport) {
+        return {
+          key: `teleport-${this.pendingTeleport.targetMapId}`,
+          label: "Déplacement vers un point d’accès au réseau de téléportation.",
+          speech: "Je peux raccourcir ce trajet en passant par le réseau de balises."
+        };
       }
       if (this.pendingGate) {
         const targetMapId = this.pendingGate.userData.exit.targetMap;
@@ -3640,6 +3888,7 @@
         this.transitioning = false;
         this.transitionStartedAt = 0;
         this.pendingGate = null;
+        this.pendingTeleport = null;
         this.gateCooldownUntil = now + 2600;
         this.callbacks.onStatus(
           "Le passage a été interrompu proprement. BlueFox reprend son activité."
@@ -3654,6 +3903,7 @@
       this.updatePerformanceGovernor(dt);
       this.updateRoutine(now);
       this.updateInteraction(now);
+      this.updatePendingTeleportRoute(now);
       if (
         this.semiAutonomousGateLock &&
         this.pendingZoneExploration
@@ -3670,6 +3920,7 @@
         now >= this.startupQuietUntil &&
         !this.transitioning &&
         !this.pendingGate &&
+        !this.pendingTeleport &&
         !this.navigationRoute.length
       ) {
         this.resumePersistentNavigation();

@@ -1482,6 +1482,29 @@
       .filter(Boolean);
   };
 
+  // Vue en lecture seule destinée au propriétaire navigation.
+  // L'autonomie n'accède au réseau qu'une fois l'arc TP réellement finalisé :
+  // TP-AFTER-04 est la clôture canonique ; TP-01→TP-AFTER reste inchangé.
+  const teleportRoutingNetwork = () => {
+    if (!teleporterActive() || missionStatus("TP-AFTER-04") !== "completed") return null;
+    const hub = hubRecord();
+    if (!hub?.anchor || !discoveredMap(hub.mapId)) return null;
+    const destinations = teleportDestinations();
+    if (!destinations.length) return null;
+    return {
+      hub: {
+        mapId: String(hub.mapId || ""),
+        anchor: { ...hub.anchor },
+        instanceId: hub.instanceId || null
+      },
+      destinations: destinations.map((entry) => ({
+        mapId: String(entry.mapId || ""),
+        anchor: { ...entry.anchor },
+        instanceId: entry.instanceId || null
+      }))
+    };
+  };
+
   const TELEPORTER_MINERAL_KEYS = Object.freeze([
     "magnetic_ore", "azure_ferrite", "resonant_basalt", "stellar_iridium", "crystal", "energy_crystal"
   ]);
@@ -2133,6 +2156,7 @@
     getPlanetMapMarkers,
     hubRecord,
     destinations: teleportDestinations,
+    routingNetwork: teleportRoutingNetwork,
     isTeleporterActive: teleporterActive,
     isTeleporterCalibrated: teleporterCalibrated,
     canAssembleTeleporter,

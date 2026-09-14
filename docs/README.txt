@@ -7,6 +7,7 @@ Ces fichiers sont les documents de référence officiels maintenus :
 - RECOVERY_CHECKPOINT_2026-08-28.md
 - RECOVERY_CHECKPOINT_2026-09-01.md
 - GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md
+- TP_AUTONOMY_CONTRACT_2026-09-14.md
 
 Base technique auditée au 12/09/2026 :
 - checkpoint moteur R-HEALTH : 560249fb91ed2d5c719a4aafa5eabe88b6ee1e46
@@ -52,7 +53,7 @@ Points encore ouverts au moment de l'interruption :
 Règle de priorité documentaire :
 1. décision utilisateur la plus récente ;
 2. validation runtime en jeu / comportement observable ;
-3. Contrat Gameplay Opérationnel V2 + addendum courant ;
+3. Contrat Gameplay Opérationnel V2 + addenda courants, dont TP_AUTONOMY_CONTRACT_2026-09-14.md ;
 4. MASTER / ARCHITECTURE / ROADMAP / DEV_HISTORIQUE ;
 5. annexes et documents historiques.
 
