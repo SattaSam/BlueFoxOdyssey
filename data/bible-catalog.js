@@ -8860,6 +8860,88 @@
   });
 
 
+  // ANN-ARCH-W — scènes architecturales remarquables.
+  // Les MSC existent par la population normale : aucune génération missionnelle.
+  const ANNARCHW01 = Object.freeze({
+    id: "ANN-ARCH-W01",
+    title: "Une ligne dans les ruines",
+    description: "Lire un fragment de mur ancien et ses débris comme une structure cohérente plutôt que comme un amas d’objets isolés.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", count: 1, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-CUSTOM-WALL-RUIN-STRAIGHT"]) }),
+    prerequisites: Object.freeze(["ARCH-02"]),
+    bindActivationMap: true, triggerOnly: true,
+    priority: 240, passivePriorityAxis: "research", ponderation: 0.45,
+    obsessionEligible: false, obsessionIntensity: 2, souvenir: true, memoryValence: "positive", scoreTrauma: 32,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "wall", title: "Observer le mur", action: "observe", target: 1, params: Object.freeze({ cuoType: "wall", microSceneId: "MSC-CUSTOM-WALL-RUIN-STRAIGHT", requiredMapFact: "bibleActivation:ANN-ARCH-W01", requiredMapField: "mapId", completionSiteFact: "annArchW01:site" }) }),
+      Object.freeze({ slot: "debris", title: "Observer au moins deux débris appartenant à la même MSC", action: "observe", target: 2, requires: Object.freeze(["wall"]), params: Object.freeze({ cuoType: "debris", microSceneId: "MSC-CUSTOM-WALL-RUIN-STRAIGHT", distinctBy: "instanceId", allowPassiveMSCObject: true, requiredMapFact: "bibleActivation:ANN-ARCH-W01", requiredMapField: "mapId", requiredSiteFact: "annArchW01:site" }) }),
+      Object.freeze({ slot: "axis", title: "Analyser l’axe général de la construction", action: "analyze", target: 1, requires: Object.freeze(["debris"]), params: Object.freeze({ cuoType: "wall", microSceneId: "MSC-CUSTOM-WALL-RUIN-STRAIGHT", requiredMapFact: "bibleActivation:ANN-ARCH-W01", requiredMapField: "mapId", requiredSiteFact: "annArchW01:site" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Les pierres sont dispersées, mais le mur garde une direction nette. Je peux encore lire la structure derrière les dégâts."]),
+      progress: Object.freeze([Object.freeze({ slot: "debris", atCount: 2, text: "Les gravats suivent l’ancien axe. Même abîmée, la construction conserve une logique." })]),
+      completed: Object.freeze(["Je peux restituer une limite et une orientation. Si je retrouve la même manière de bâtir ailleurs, son état pourra raconter ce qui lui est arrivé.", Object.freeze({ route: "journal", text: "Une ligne dans les ruines — Un fragment de mur ancien conserve suffisamment de cohérence pour restituer une orientation et une limite. Les gravats ne sont pas seulement des objets isolés : leur position permet encore de reconstruire une partie de la structure disparue." })])
+    })
+  });
+
+  const ANNARCHW02 = Object.freeze({
+    id: "ANN-ARCH-W02", title: "Le même langage, brisé",
+    description: "Reconnaître dans un mur effondré le même vocabulaire architectural que dans le premier site, puis distinguer vieillissement et destruction structurale.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "exploration.map_discovered", count: 1, uniqueOnly: true, featuredMicroSceneIdsAny: Object.freeze(["MSC-CUSTOM-WALL-RUIN-COLLAPSED"]) }),
+    prerequisites: Object.freeze(["ANN-ARCH-W01"]), bindActivationMap: true, triggerOnly: true,
+    priority: 239, passivePriorityAxis: "research", ponderation: 0.5, obsessionEligible: true, obsessionIntensity: 3,
+    sequence: Object.freeze([
+      Object.freeze({ slot: "wall", title: "Observer le mur effondré", action: "observe", target: 1, params: Object.freeze({ cuoType: "wall", microSceneId: "MSC-CUSTOM-WALL-RUIN-COLLAPSED", requiredMapFact: "bibleActivation:ANN-ARCH-W02", requiredMapField: "mapId", completionSiteFact: "annArchW02:site" }) }),
+      Object.freeze({ slot: "debris", title: "Observer au moins deux débris de cette MSC", action: "observe", target: 2, requires: Object.freeze(["wall"]), params: Object.freeze({ cuoType: "debris", microSceneId: "MSC-CUSTOM-WALL-RUIN-COLLAPSED", distinctBy: "instanceId", allowPassiveMSCObject: true, requiredMapFact: "bibleActivation:ANN-ARCH-W02", requiredMapField: "mapId", requiredSiteFact: "annArchW02:site" }) }),
+      Object.freeze({ slot: "compare", title: "Comparer l’organisation avec le souvenir de W01", action: "analyze", target: 1, requires: Object.freeze(["debris"]), params: Object.freeze({ cuoType: "wall", microSceneId: "MSC-CUSTOM-WALL-RUIN-COLLAPSED", requiredMapFact: "bibleActivation:ANN-ARCH-W02", requiredMapField: "mapId", requiredSiteFact: "annArchW02:site" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Je connais cette manière de construire. Mais ici, ce n’est pas seulement plus vieux : quelque chose a changé la structure entière."]),
+      progress: Object.freeze([Object.freeze({ slot: "debris", atCount: 2, text: "Les matériaux et le vocabulaire correspondent. L’état, lui, raconte une rupture." })]),
+      completed: Object.freeze(["Avant d’imaginer une intervention, je dois demander au terrain ce qu’il peut expliquer."])
+    })
+  });
+
+  const ANNARCHW03 = Object.freeze({
+    id: "ANN-ARCH-W03", title: "La roche comme témoin",
+    description: "Quitter le mur effondré et utiliser les acquis géologiques existants pour mesurer ce que le terrain peut réellement expliquer de sa destruction.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ANN-ARCH-W02", count: 1 }),
+    prerequisites: Object.freeze(["ANN-ARCH-W02"]), priority: 238, passivePriorityAxis: "research", ponderation: 0.45, obsessionEligible: false, obsessionIntensity: 2,
+    navigation: Object.freeze({ autonomousKnownDestination: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "leave", title: "Quitter le site et rejoindre un indice géologique déjà connu", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, knownDestination: Object.freeze({ family: "geology" }), completionArrivalFact: "annArchW03:geologyMap", completionArrivalField: "mapId" }) }),
+      Object.freeze({ slot: "geology", title: "Observer ou analyser un indice géologique existant", action: "analyze", target: 1, requires: Object.freeze(["leave"]), params: Object.freeze({ family: "geology", requiredMapFact: "annArchW03:geologyMap", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "compare", title: "Comparer cette signature aux déformations mémorisées du mur", action: "research", target: 1, requires: Object.freeze(["geology"]), params: Object.freeze({ requiredMapFact: "annArchW03:geologyMap", requiredMapField: "mapId" }) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Avant d’inventer une histoire, je dois laisser parler le terrain. Une rupture géologique laisse des signatures que les pierres d’un bâtiment ne peuvent pas masquer."]),
+      progress: Object.freeze([Object.freeze({ slot: "geology", atCount: 1, text: "Le terrain peut expliquer une partie des contraintes. Pas encore la distribution complète des gravats." })]),
+      completed: Object.freeze(["J’ai une cause naturelle plausible pour une partie de la chute. Il faut retourner voir ce qui reste inexpliqué."])
+    })
+  });
+
+  const ANNARCHW04 = Object.freeze({
+    id: "ANN-ARCH-W04", title: "Ce qui manque dans les gravats",
+    description: "Revenir au même mur effondré avec la référence géologique acquise et déterminer si la disposition actuelle résulte uniquement d’une destruction naturelle.",
+    pattern: "SEQUENCE_ACTIONS",
+    trigger: Object.freeze({ type: "progression.mission_completed", missionId: "ANN-ARCH-W03", count: 1 }),
+    prerequisites: Object.freeze(["ANN-ARCH-W03"]), priority: 237, passivePriorityAxis: "research", ponderation: 0.7, obsessionEligible: true, obsessionIntensity: 4, souvenir: true, memoryValence: "positive", scoreTrauma: 60,
+    navigation: Object.freeze({ autonomousKnownDestination: true }),
+    sequence: Object.freeze([
+      Object.freeze({ slot: "return", title: "Revenir dans la même instance persistante de W02", action: "travel", target: 1, params: Object.freeze({ eventDriven: true, knownDestinationFact: "annArchW02:site" }) }),
+      Object.freeze({ slot: "reexamine", title: "Réexaminer le mur et ses gravats", action: "analyze", target: 1, requires: Object.freeze(["return"]), params: Object.freeze({ cuoType: "wall", microSceneId: "MSC-CUSTOM-WALL-RUIN-COLLAPSED", requiredSiteFact: "annArchW02:site" }) }),
+      Object.freeze({ slot: "compare", title: "Comparer la distribution finale aux contraintes géologiques acquises", action: "research", target: 1, requires: Object.freeze(["reexamine"]), params: Object.freeze({}) })
+    ]),
+    narrative: Object.freeze({
+      revealed: Object.freeze(["Le sol explique une partie de la chute. Pas tout. Si le mur s’était seulement effondré ici, certaines pierres devraient encore être à leur place."]),
+      progress: Object.freeze([Object.freeze({ slot: "reexamine", atCount: 1, text: "La destruction naturelle est réelle, mais la distribution actuelle suppose une autre transformation." })]),
+      completed: Object.freeze(["Une partie de la structure avait peut-être déjà été démontée, récupérée ou déplacée avant — ou après — l’effondrement. Je ne peux pas encore choisir entre ces histoires.", Object.freeze({ route: "journal", text: "Une ruine a plusieurs histoires — Le mur effondré porte au moins deux histoires différentes. Le terrain explique une partie de sa destruction, mais pas la disparition ou le déplacement de certains éléments. Une construction ancienne peut continuer à être transformée bien après son édification : par la planète, par ses occupants ou par ceux qui viennent après eux." })])
+    })
+  });
+
+
   const contactNpcEntries = (id, options = {}) => {
     const selectionFact = String(options.selectionFact || "civilization:arch-selected");
     const selectionField = String(options.selectionField || "civilizationId");
@@ -12659,6 +12741,7 @@
     ARCH38,
     ARCH39,
     ARCH40,
+    ANNARCHW01, ANNARCHW02, ANNARCHW03, ANNARCHW04,
     CONTACT01, CONTACT02, CONTACT03, CONTACT04, CONTACT05, CONTACT06, CONTACT07, CONTACT08, CONTACT09,
     CONTACT10, CONTACT11, CONTACT12, CONTACT13, CONTACT14, CONTACT15,
     DIP01, GAME_CONTACT_FIRST, GAME_CONTACT_CAUTIOUS, GAME_CONTACT_AMBASSADOR, DIP02, DIP03,

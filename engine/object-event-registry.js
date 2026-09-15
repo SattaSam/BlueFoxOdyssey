@@ -276,6 +276,10 @@
   BF.ObjectEvents = Object.freeze({
     types: EVENT_TYPES,
     emit,
+    siteContext(source, detail = {}) {
+      const root = source?.userData?.worldAnchor || source?.userData?.worldRoot || source;
+      return resolveMicroSceneContext(source, root, detail);
+    },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     history() { return history.slice(); },
     clear() { history.length = 0; }

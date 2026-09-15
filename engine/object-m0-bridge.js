@@ -251,7 +251,8 @@
     // contextuelle reste limitée aux trois verbes d'étude et à un objet que le
     // moteur sait au minimum étudier.
     if (missionRequested && ["observe", "inspect", "analyze"].includes(requested)) {
-      return canStudy(resolved.definition) ? requested : null;
+      const passiveMissionStudy = resolved?.object?.userData?.missionPassiveStudy === true;
+      return canStudy(resolved.definition) || passiveMissionStudy ? requested : null;
     }
     if (requested === "analyze") return caps.analyzable ? "analyze" : null;
     if (requested === "inspect") return caps.inspectable ? "inspect" : null;
@@ -635,6 +636,65 @@
     return Boolean(expectedMapId) && String(mapId || "") === expectedMapId;
   };
 
+  const missionSiteFact = (manager, node) => {
+    const factKey = String(node?.params?.requiredSiteFact || "").trim();
+    if (!factKey) return null;
+    const fact = manager?.memory?.getFact?.(factKey, null);
+    return fact && typeof fact === "object" ? fact : null;
+  };
+
+  const siteFactMatchesContext = (fact, context = {}, mapId = null) => {
+    if (!fact) return true;
+    const actualSiteId = String(context?.microSceneInstanceId || "");
+    const expectedSiteId = String(fact.siteId || "");
+    if (expectedSiteId) return Boolean(actualSiteId) && actualSiteId === expectedSiteId;
+    if (fact.mapId && String(mapId || "") !== String(fact.mapId)) return false;
+    if (fact.microSceneId && String(context?.microSceneId || "") !== String(fact.microSceneId)) return false;
+    if (fact.persistentMicroSceneId &&
+        String(context?.persistentMicroSceneId || "") !== String(fact.persistentMicroSceneId)) return false;
+    return Boolean(fact.mapId || fact.microSceneId || fact.persistentMicroSceneId);
+  };
+
+  const requiredSiteMatchesEvent = (manager, node, event) => {
+    const fact = missionSiteFact(manager, node);
+    if (!fact) return !String(node?.params?.requiredSiteFact || "").trim();
+    return siteFactMatchesContext(fact, {
+      microSceneInstanceId: event?.microSceneInstanceId,
+      microSceneId: event?.microSceneId,
+      persistentMicroSceneId: event?.persistentMicroSceneId
+    }, event?.mapId);
+  };
+
+  const requiredSiteMatchesResolved = (manager, node, resolved, mapId) => {
+    const factKey = String(node?.params?.requiredSiteFact || "").trim();
+    if (!factKey) return true;
+    const fact = missionSiteFact(manager, node);
+    if (!fact) return false;
+    const context = BF.ObjectEvents?.siteContext?.(resolved?.object, { mapId }) || null;
+    return siteFactMatchesContext(fact, context || {}, mapId);
+  };
+
+  const rememberCompletionSiteFact = (manager, missionId, node, event) => {
+    const factKey = String(node?.params?.completionSiteFact || "").trim();
+    if (!factKey || !node?.isComplete) return false;
+    const siteId = String(event?.microSceneInstanceId || "");
+    if (!siteId) return false;
+    const next = {
+      siteId,
+      mapId: event?.mapId || null,
+      microSceneId: event?.microSceneId || null,
+      persistentMicroSceneId: event?.persistentMicroSceneId || null,
+      anchor: event?.microSceneAnchor ? { ...event.microSceneAnchor } : null,
+      sourceMissionId: missionId,
+      sourceNodeId: node.id,
+      acquiredAt: Number(event?.at) || Date.now()
+    };
+    const previous = manager?.memory?.getFact?.(factKey, null);
+    if (previous?.siteId === next.siteId && previous?.mapId === next.mapId) return false;
+    manager?.memory?.setFact?.(factKey, next);
+    return true;
+  };
+
   const applyObjectEventProgress = (manager, event) => {
     if (!manager || manager.memory?.hasProcessedObjectEvent?.(event.id)) {
       return { changed: 0, currentMatched: false };
@@ -657,9 +717,11 @@
       let treeChanged = false;
       tree.availableLeaves().forEach((node) => {
         if (!requiredMapMatches(manager, node, event.mapId)) return;
+        if (!requiredSiteMatchesEvent(manager, node, event)) return;
         if (node.isComplete || !eventMatchesNode(event, node, missionId, tree)) return;
         if (progressNodeFromEvent(node, event)) {
           rememberRelationEvidence(tree, node, event);
+          rememberCompletionSiteFact(manager, missionId, node, event);
           changed += 1;
           treeChanged = true;
           if (current?.missionId === missionId && current?.nodeId === node.id) {
@@ -1001,8 +1063,42 @@
     return 100;
   };
 
+  const passiveMissionSceneObjects = (engine, action) => {
+    if (action?.params?.allowPassiveMSCObject !== true) return [];
+    const sceneIds = new Set([
+      ...asArray(action?.params?.microSceneIds),
+      action?.params?.microSceneId
+    ].filter(Boolean).map(String));
+    const scenes = Array.isArray(engine.currentMap?.group?.userData?.microScenes)
+      ? engine.currentMap.group.userData.microScenes
+      : [];
+    const objects = [];
+    scenes.forEach((scene) => {
+      if (sceneIds.size && !sceneIds.has(String(scene?.id || ""))) return;
+      asArray(scene?.records).forEach((record) => {
+        const object = record?.root || record?.pivot || record?.objectRoot || null;
+        if (!object?.userData) return;
+        const resolved = resolveMissionCandidate(object);
+        if (!resolved?.definition) return;
+        if (!metadataMatchesMissionCriteria(
+          definitionMissionMetadata(resolved.definition, resolved),
+          action.params || {},
+          { skipSubject: true }
+        )) return;
+        object.userData.active = true;
+        object.userData.missionPassiveStudy = true;
+        objects.push(object);
+      });
+    });
+    return objects;
+  };
+
   const selectObservable = (engine, action) => {
-    const candidates = (engine.currentMap?.interactables || [])
+    const sourceObjects = [
+      ...(engine.currentMap?.interactables || []),
+      ...passiveMissionSceneObjects(engine, action)
+    ];
+    const candidates = [...new Set(sourceObjects)]
       .map((object) => {
         if (!object.userData.active) return null;
         const resolved = resolveMissionCandidate(object);
@@ -1011,10 +1107,13 @@
         const node = tree?.find?.(action.nodeId);
         if (node?.params?.siteProgressionKind) return null;
         if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return null;
+        if (!requiredSiteMatchesResolved(engine?.missionManager, node, resolved, engine?.currentMapId)) return null;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return null;
         const distinctValue = node ? distinctValueFromResolved(node, resolved, engine?.currentMapId) : null;
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return null;
-        if (!(definition && canStudy(definition))) return null;
+        const passiveMissionStudy = object?.userData?.missionPassiveStudy === true &&
+          action?.params?.allowPassiveMSCObject === true;
+        if (!(definition && (canStudy(definition) || passiveMissionStudy))) return null;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, resolved), action.params || {}, { skipSubject: true })) return null;
         if (!matchesStudySubject(definition, action.params?.subject)) return null;
         if (!matchesBoundTarget(engine, action.missionId, resolved)) return null;
@@ -1046,6 +1145,7 @@
         const tree = engine?.missionManager?.trees?.get?.(action.missionId);
         const node = tree?.find?.(action.nodeId);
         if (!definition || !caps.collectable) return false;
+        if (!requiredSiteMatchesResolved(engine?.missionManager, node, resolved, engine?.currentMapId)) return false;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return false;
         if (
           action.type === Missions.ActionType.EXTRACT &&
@@ -1086,6 +1186,7 @@
       for (const node of tree.availableLeaves()) {
         if (!isStudyAction(node.type) || node.params?.siteProgressionKind) continue;
         if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
+        if (!requiredSiteMatchesResolved(manager, node, missionResolved, engine.currentMapId)) continue;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, missionResolved), node.params || {}, { skipSubject: true })) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(missionResolved, engine.currentMapId))) continue;
