@@ -392,26 +392,6 @@
       refreshGates(engine);
     });
 
-    // Garde physique légère : si une ancienne routine écrit directement dans
-    // root.position, BlueFox est immédiatement replacé à la limite autorisée.
-    const boundaryGuard = () => {
-      if (engine.disposed) return;
-      if (!engine.transitioning && engine.character && engine.currentMap) {
-        const beforeX = engine.character.root.position.x;
-        const beforeZ = engine.character.root.position.z;
-        engine.character.constrainToWalkable(engine.character.root.position);
-        if (
-          beforeX !== engine.character.root.position.x ||
-          beforeZ !== engine.character.root.position.z
-        ) {
-          engine.character.stop?.();
-          engine.character.lastSafePosition?.copy?.(engine.character.root.position);
-        }
-      }
-      global.requestAnimationFrame(boundaryGuard);
-    };
-    global.requestAnimationFrame(boundaryGuard);
-
     console.info(
       "[BlueFox] Correctif environnement actif : portails sur plateaux, labels explorés, mur invisible et panorama restauré.",
       { version: VERSION, panoramaLowering: PANORAMA_LOWERING }

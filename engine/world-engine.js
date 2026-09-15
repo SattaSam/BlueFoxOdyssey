@@ -776,7 +776,9 @@
       this.currentMapId = saved.map;
       await this.loadMap(this.currentMapId, saved, false);
       this.character.root.position.set(saved.x, 0, saved.z);
+      this.character.constrainToWalkable(this.character.root.position);
       this.character.setTarget(this.character.root.position);
+      this.character.lastSafePosition.copy(this.character.root.position);
 
       this.cameraController = new BF.CameraController(
         THREE,
@@ -3361,6 +3363,7 @@
             await this.loadMap(previousMapId, null, true);
             if (previousPosition) {
               this.character.root.position.copy(previousPosition);
+              this.character.constrainToWalkable(this.character.root.position);
               this.character.setTarget(this.character.root.position);
               this.character.lastSafePosition.copy(this.character.root.position);
             }
@@ -3368,6 +3371,7 @@
           throw new Error("teleport-no-safe-arrival");
         }
         this.character.root.position.set(spawn.x, 0, spawn.z);
+        this.character.constrainToWalkable(this.character.root.position);
         this.character.setTarget(this.character.root.position);
         this.character.lastSafePosition.copy(this.character.root.position);
         this.character.facePoint(new this.THREE.Vector3(
@@ -3404,6 +3408,7 @@
             await this.loadMap(previousMapId, null, true);
             if (previousPosition) {
               this.character.root.position.copy(previousPosition);
+              this.character.constrainToWalkable(this.character.root.position);
               this.character.setTarget(this.character.root.position);
               this.character.lastSafePosition.copy(this.character.root.position);
             }
@@ -3472,6 +3477,7 @@
           exit.targetEntry
         );
         this.character.root.position.set(spawn.x, 0, spawn.z);
+        this.character.constrainToWalkable(this.character.root.position);
         this.character.setTarget(this.character.root.position);
         this.character.lastSafePosition.copy(this.character.root.position);
         this.character.facePoint(new this.THREE.Vector3(0, 0, 0));
