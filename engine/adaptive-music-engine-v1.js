@@ -2,13 +2,12 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!cat){console.warn("[BlueFox Music] catalogue absent");return;}
-const VERSION="1.3.8",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const VERSION="1.3.9",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
 const introOwnsAudio=()=>{
  const root=global.document?.documentElement;
  return Boolean(root?.classList?.contains("bluefox-first-launch-open")||root?.classList?.contains("bluefox-intro-open"));
 };
 
-const ACTIVE_PENDING_HOLD_SEC=20;
 const THEME_HOLD_BASE_MS=75000;
 const THEME_HOLD_STRONG_MS=110000;
 const THEME_SWITCH_STREAK=3;
@@ -81,6 +80,7 @@ class AdaptiveMusicEngine{
   this.decks=[this.deck("A"),this.deck("B")];this.active=-1;this.context=cat.contexts.EXPLORATION_CALM;this.priority=10;
   this.sequenceId=null;this.sequence=[];this.index=0;this.repeats=0;this.history=[];this.pending=null;this.started=false;this.unlocked=false;this.disposed=false;
   this.signal={axis:"exploration",activation:0,event:null,decisionAt:0};this.lastSignalChange=0;this.activityStreak={axis:"exploration",count:0,lastAt:0};this.themeHold={theme:null,axis:null,until:0,strength:0};
+  this.currentTheme=null;this.themeStartedAt=null;this.perceptualRun={key:null,count:0};
   this.timer=null;this.fadeTimer=null;this.pendingTimer=null;this.retryTimer=null;this.retryCount=0;this.transitioningAudio=false;this.playGeneration=0;this.segmentStartedAt=0;this.sequenceStartedAt=0;this.lastTransition=null;this.lastError=null;this.settings=this.loadSettings();
   this.cueAudio=this.audioFactory();this.cueAudio.preload="auto";this.cueAudio.loop=false;this.cueAudio.volume=0;this.cueBusyUntil=0;this.cueHistory=[];this.lastCueFile=new Map();this.lastCue=null;this.cueEnvelopeTimer=null;this.cueEnvelopeGeneration=0;
   this.cueAudio.addEventListener?.("ended",()=>this.clearCueEnvelope());
@@ -211,6 +211,48 @@ class AdaptiveMusicEngine{
   if(this.activityStreak.count>=THEME_SWITCH_STREAK){const strength=this.activityStreak.count>=5?2:1;this.themeHold={theme:sequenceTheme(id),axis:this.activityStreak.axis,until:Date.now()+(strength>=2?THEME_HOLD_STRONG_MS:THEME_HOLD_BASE_MS),strength};}
   return true;}
  currentStep(){return this.sequence[this.index]?resolveAnyStep(this.sequence[this.index]):null;}
+ themeAgeSec(){return Number.isFinite(this.themeStartedAt)?Math.max(0,(clock()-this.themeStartedAt)/1000):0;}
+ requiredThemeHoldSec(step=this.currentStep()){
+  const minimum=Math.max(0,Number(cat.transitions.minimumListenSec)||0),preferred=Math.max(minimum,Number(cat.transitions.preferredDevelopmentSec)||minimum);
+  return step?.segment?.protected||step?.segment?.role==="development"?preferred:minimum;
+ }
+ holdCurrentThemeUntilEligible(step=this.currentStep()){
+  if(!this.currentTheme)return false;
+  const remaining=Math.max(0,this.requiredThemeHoldSec(step)-this.themeAgeSec());
+  if(remaining<=0)return false;
+  this.themeHold={theme:this.currentTheme,axis:this.activityStreak.axis,until:Date.now()+remaining*1000,strength:Math.max(1,this.themeHold.strength||0)};
+  return true;
+ }
+ stepKey(step){
+  if(!step)return null;
+  const segment=step.segment||{};
+  return [step.track?.file||step.track?.id||"",Number(segment.startSec)||0,Number(segment.endSec)||0].join("|");
+ }
+ notePerceptualStep(step){
+  const key=this.stepKey(step);if(!key)return;
+  this.perceptualRun=key===this.perceptualRun.key?{key,count:Math.min(99,this.perceptualRun.count+1)}:{key,count:1};
+ }
+ sequenceDurationSec(id){
+  const sequence=sequenceById(id)||[];
+  return sequence.reduce((total,ref)=>{const resolved=resolveAnyStep(ref);return total+(resolved?Math.max(0,resolved.segment.endSec-resolved.segment.startSec):0);},0);
+ }
+ selectThemeContinuation(theme,previousStep=this.currentStep()){
+  const recent=this.history.slice(-cat.transitions.recentTrackHistorySize),maxRepeats=Math.max(1,Number(cat.transitions.maxConsecutiveLoopRepeats)||3);
+  const previousKey=this.stepKey(previousStep),repeatLimitReached=Boolean(previousKey&&this.perceptualRun.key===previousKey&&this.perceptualRun.count>=maxRepeats);
+  const pool=theme==="active"?Object.keys(ACTIVE_SEQUENCES):(cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme);
+  if(!pool.length)return false;
+  const ranked=pool.map(id=>{
+   const firstRef=sequenceById(id)?.[0],firstStep=firstRef?resolveAnyStep(firstRef):null;
+   const sameStep=Boolean(previousKey&&firstStep&&previousKey===this.stepKey(firstStep));
+   return{id,sameStep,recent:recent.includes(id),long:Boolean(ACTIVE_PROFILES[id]?.long),duration:this.sequenceDurationSec(id)};
+  }).sort((a,b)=>Number(a.sameStep)-Number(b.sameStep)||Number(a.recent)-Number(b.recent)||Number(b.long)-Number(a.long)||b.duration-a.duration);
+  let chosen=ranked[0]?.id||pool[0];
+  if(ranked.every(item=>item.sameStep)&&!repeatLimitReached){const nonRecent=ranked.find(item=>!item.recent);if(nonRecent)chosen=nonRecent.id;}
+  const sequence=sequenceById(chosen);if(!chosen||!sequence)return false;
+  this.sequenceId=chosen;this.sequence=sequence.slice();this.index=0;this.repeats=0;this.history.push(chosen);if(this.history.length>12)this.history.shift();
+  this.lastSelection={mode:"theme-continuation",heldTheme:theme,chosen,repeatLimitReached,perceptualRun:{...this.perceptualRun},candidates:ranked.slice(0,4),at:Date.now()};
+  return true;
+ }
  setMusicalState(detail={}){
   const next={axis:detail.axis||this.signal.axis,activation:Math.max(0,Math.min(5,Number(detail.activation??this.signal.activation)||0)),event:detail.event||null,decisionAt:Number(detail.decisionAt)||this.signal.decisionAt};
   const changed=next.axis!==this.signal.axis||next.activation!==this.signal.activation||next.event!==this.signal.event;
@@ -228,7 +270,7 @@ class AdaptiveMusicEngine{
  schedulePendingTransition(){
   if(this.pendingTimer)global.clearTimeout(this.pendingTimer);this.pendingTimer=null;
   if(!this.pending?.sequenceId?.startsWith("active-")||this.sequenceId?.startsWith("active-")||!this.started)return false;
-  const listened=Math.max(0,(clock()-this.segmentStartedAt)/1000),delay=Math.max(0,ACTIVE_PENDING_HOLD_SEC-listened);
+  const delay=Math.max(0,this.requiredThemeHoldSec()-this.themeAgeSec());
   this.pendingTimer=global.setTimeout(()=>{
    this.pendingTimer=null;
    if(this.pending?.sequenceId?.startsWith("active-")&&!this.sequenceId?.startsWith("active-"))this.applyPending();
@@ -268,7 +310,9 @@ class AdaptiveMusicEngine{
   next.step=step;next.audio.src=step.track.file;next.audio.currentTime=seg.startSec;next.audio.volume=fade?0:this.targetVolume(step);
   this.transitioningAudio=true;
   try{await Promise.resolve(next.audio.play());}catch(error){if(generation===this.playGeneration)this.transitioningAudio=false;if(token!==next.token||generation!==this.playGeneration)return false;this.lastError=String(error?.message||error);this.retryCount++;global.clearTimeout(this.retryTimer);this.retryTimer=global.setTimeout(()=>this.playCurrent(overrideFade),Math.min(1500,250*this.retryCount));return false;}
-  if(generation===this.playGeneration)this.transitioningAudio=false;if(token!==next.token||generation!==this.playGeneration)return false;this.clearTimer();this.retryCount=0;this.lastError=null;this.active=nextIndex;this.segmentStartedAt=clock();if(this.index===0)this.sequenceStartedAt=this.segmentStartedAt;this.lastTransition={at:Date.now(),context:this.context,sequence:this.sequenceId,track:step.track.id,segment:seg.id,fadeSec:fade};
+  if(generation===this.playGeneration)this.transitioningAudio=false;if(token!==next.token||generation!==this.playGeneration)return false;this.clearTimer();this.retryCount=0;this.lastError=null;this.active=nextIndex;this.segmentStartedAt=clock();if(this.index===0)this.sequenceStartedAt=this.segmentStartedAt;
+  const theme=sequenceTheme(this.sequenceId);if(theme!==this.currentTheme){this.currentTheme=theme;this.themeStartedAt=this.segmentStartedAt;}this.notePerceptualStep(step);
+  this.lastTransition={at:Date.now(),context:this.context,sequence:this.sequenceId,track:step.track.id,segment:seg.id,fadeSec:fade};
   this.crossfade(previous,next,fade);const duration=Math.max(.05,seg.endSec-seg.startSec);this.timer=global.setTimeout(()=>this.advance(),Math.max(20,(duration-fade)*1000));return true;
  }
  crossfade(previous,next,duration){
@@ -279,16 +323,25 @@ class AdaptiveMusicEngine{
  }
  advance(){
   if(!this.started||this.disposed)return;const step=this.currentStep();if(!step)return;
-  const sequenceAge=(clock()-this.sequenceStartedAt)/1000,pendingAge=this.pending?(Date.now()-Number(this.pending.requestedAt||Date.now()))/1000:0;
-  const sequenceEnding=this.index+1>=this.sequence.length,minimumReached=sequenceAge>=cat.transitions.minimumListenSec,maximumPendingReached=pendingAge>=cat.transitions.maximumPendingSec;
-  if(this.pending&&((sequenceEnding&&minimumReached)||maximumPendingReached)){if(this.applyPending())return;}
+  const pendingAge=this.pending?(Date.now()-Number(this.pending.requestedAt||Date.now()))/1000:0;
+  const sequenceEnding=this.index+1>=this.sequence.length,themeReady=this.themeAgeSec()>=this.requiredThemeHoldSec(step),maximumPendingReached=pendingAge>=cat.transitions.maximumPendingSec;
+  if(this.pending&&((sequenceEnding&&themeReady)||maximumPendingReached)){if(this.applyPending())return;}
+  if(this.pending&&!themeReady&&!maximumPendingReached)this.holdCurrentThemeUntilEligible(step);
   if(this.sequence.length===1&&step.segment.loopable&&this.repeats<cat.transitions.maxConsecutiveLoopRepeats-1)this.repeats++;
-  else{this.repeats=0;this.index++;if(this.index>=this.sequence.length){if(this.pending&&this.applyPending())return;this.selectSequence(true);}}
+  else{
+   this.repeats=0;this.index++;
+   if(this.index>=this.sequence.length){
+    const holdTheme=this.themeHold.until>Date.now()?this.themeHold.theme:null;
+    if(!themeReady&&!maximumPendingReached&&holdTheme&&holdTheme===this.currentTheme){
+     if(!this.selectThemeContinuation(holdTheme,step))this.index=0;
+    }else this.selectSequence(true);
+   }
+  }
   this.playCurrent();
  }
  clearTimer(){if(this.timer)global.clearTimeout(this.timer);this.timer=null;}
  stop(){this.started=false;this.playGeneration++;this.transitioningAudio=false;this.clearTimer();if(this.pendingTimer)global.clearTimeout(this.pendingTimer);this.pendingTimer=null;global.clearTimeout(this.retryTimer);this.retryTimer=null;if(this.fadeTimer)global.clearInterval(this.fadeTimer);this.fadeTimer=null;this.clearCueEnvelope();this.decks.forEach(d=>{d.token++;d.audio.pause();d.audio.volume=0;});this.cueAudio.pause?.();this.cueAudio.volume=0;this.cueBusyUntil=0;}
- diagnostics(){const d=this.active>=0?this.decks[this.active]:null;return{version:VERSION,enabled:this.settings.enabled,unlocked:this.unlocked,started:this.started,context:this.context,priority:this.priority,pending:this.pending,signal:this.signal,sequence:this.sequenceId,index:this.index,track:d?.step?.track?.id||null,segment:d?.step?.segment?.id||null,volume:d?.audio?.volume||0,cue:this.lastCue?{id:this.lastCue.id,file:this.lastCue.file,at:this.lastCue.at,reason:this.lastCue.reason}:null,bac:this.bacSnapshot(),controlMode:this.bacControlMode(),themePersistence:{activityStreak:this.activityStreak,hold:this.themeHold,remainingMs:Math.max(0,this.themeHold.until-Date.now())},activeLibrary:{tracks:Object.keys(ACTIVE_TRACKS),sequences:Object.keys(ACTIVE_SEQUENCES)},selection:this.lastSelection||null,lastTransition:this.lastTransition,lastError:this.lastError};}
+ diagnostics(){const d=this.active>=0?this.decks[this.active]:null;return{version:VERSION,enabled:this.settings.enabled,unlocked:this.unlocked,started:this.started,context:this.context,priority:this.priority,pending:this.pending,signal:this.signal,sequence:this.sequenceId,index:this.index,track:d?.step?.track?.id||null,segment:d?.step?.segment?.id||null,volume:d?.audio?.volume||0,cue:this.lastCue?{id:this.lastCue.id,file:this.lastCue.file,at:this.lastCue.at,reason:this.lastCue.reason}:null,bac:this.bacSnapshot(),controlMode:this.bacControlMode(),themePersistence:{activityStreak:this.activityStreak,hold:this.themeHold,currentTheme:this.currentTheme,themeAgeSec:this.themeAgeSec(),requiredHoldSec:this.requiredThemeHoldSec(),perceptualRun:this.perceptualRun,remainingMs:Math.max(0,this.themeHold.until-Date.now())},activeLibrary:{tracks:Object.keys(ACTIVE_TRACKS),sequences:Object.keys(ACTIVE_SEQUENCES)},selection:this.lastSelection||null,lastTransition:this.lastTransition,lastError:this.lastError};}
  dispose(){this.disposed=true;this.stop();global.removeEventListener?.("pointerdown",this.onUnlock);global.removeEventListener?.("keydown",this.onUnlock);global.removeEventListener?.("bluefox:music-context",this.onContext);global.removeEventListener?.("bluefox:sound-volume",this.onSoundVolume);}
 }
 const validation=cat.validateCatalog();if(!validation.valid){console.error("[BlueFox Music] catalogue invalide",validation.errors);return;}
