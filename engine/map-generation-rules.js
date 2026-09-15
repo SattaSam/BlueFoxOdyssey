@@ -166,7 +166,7 @@
     eligibleAfterDiscovery: 3,
     rareBiomeInterval: record({ min: 7, max: 8 }),
     decorativeSceneInterval: record({ min: 8, max: 10 }),
-    remarkableSceneInterval: record({ min: 12, max: 15 }),
+    remarkableSceneInterval: record({ min: 4, max: 5 }),
     lowMissionActiveMaximum: 1,
     rareBiomeIds: freeze([
       "frozen", "volcanic", "magnetic", "electrical", "city",
