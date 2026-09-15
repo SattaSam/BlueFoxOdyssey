@@ -76,6 +76,9 @@
       this.lastPlanAt = 0;
       this.retryAfter = 0;
       this.idleRetryUntil = 0;
+      // R-STAB recovery: runtime-only pressure for actions that repeatedly fail
+      // to start or complete on the same mission node and map. Never persisted.
+      this.executionRecovery = new Map();
       this.enabled = true;
       if (!this.persistenceHydrationBlocked && !this.hasActivePrimaryMission()) {
         this.primaryMissionId = "";
@@ -536,6 +539,130 @@
       return true;
     }
 
+    executionRecoveryKey(missionId, nodeId, mapId = null) {
+      const currentMapId = String(
+        mapId ?? this.engine?.currentMapId ?? ""
+      );
+      return `${String(missionId || "")}|${String(nodeId || "")}|${currentMapId}`;
+    }
+
+    executionRecoveryStore() {
+      if (!(this.executionRecovery instanceof Map)) {
+        this.executionRecovery = new Map();
+      }
+      return this.executionRecovery;
+    }
+
+    pruneExecutionRecovery(now = performance.now()) {
+      const store = this.executionRecoveryStore();
+      store.forEach((entry, key) => {
+        const stale = now - Number(entry?.lastAt || 0) > 60000;
+        const expired = Boolean(
+          entry?.suppressedUntil && now >= Number(entry.suppressedUntil)
+        );
+        if (stale || expired) store.delete(key);
+      });
+      return store.size;
+    }
+
+    executionRecoveryNodeProgress(missionId, nodeId) {
+      const node = this.trees?.get?.(missionId)?.find?.(nodeId);
+      return Number(node?.progress) || 0;
+    }
+
+    executionRecoveryEntry(missionId, nodeId, mapId = null, now = performance.now()) {
+      if (!missionId || !nodeId) return null;
+      const store = this.executionRecoveryStore();
+      const key = this.executionRecoveryKey(missionId, nodeId, mapId);
+      const entry = store.get(key);
+      if (!entry) return null;
+
+      const progress = this.executionRecoveryNodeProgress(missionId, nodeId);
+      if (progress > Number(entry.progressAtFailure || 0)) {
+        store.delete(key);
+        return null;
+      }
+      if (entry.suppressedUntil && now >= entry.suppressedUntil) {
+        store.delete(key);
+        return null;
+      }
+      return entry;
+    }
+
+    isExecutionNodeSuppressed(missionId, nodeId, context = null, now = performance.now()) {
+      const mapId = String(
+        context?.mapId || context?.currentMapId || this.engine?.currentMapId || ""
+      );
+      const entry = this.executionRecoveryEntry(missionId, nodeId, mapId, now);
+      return Boolean(entry?.suppressedUntil && now < entry.suppressedUntil);
+    }
+
+    missionRunnableAction(missionId, tree, context, now = performance.now()) {
+      if (!tree || tree.root?.isComplete) return null;
+      const availableLeaves = () => tree.availableLeaves().filter((node) =>
+        !this.isExecutionNodeSuppressed(missionId, node.id, context, now)
+      );
+      return this.planner.nextAction({ availableLeaves }, context);
+    }
+
+    recordExecutionFailure(action, reason = "execution-failed", now = performance.now()) {
+      const missionId = String(action?.missionId || "");
+      const nodeId = String(action?.nodeId || "");
+      if (!missionId || !nodeId) return null;
+
+      const mapId = String(this.engine?.currentMapId || "");
+      this.pruneExecutionRecovery(now);
+      const key = this.executionRecoveryKey(missionId, nodeId, mapId);
+      const store = this.executionRecoveryStore();
+      const progress = this.executionRecoveryNodeProgress(missionId, nodeId);
+      const previous = this.executionRecoveryEntry(missionId, nodeId, mapId, now);
+      const withinWindow = previous &&
+        now - Number(previous.firstAt || now) <= 60000 &&
+        progress <= Number(previous.progressAtFailure || 0);
+      const count = withinWindow ? Number(previous.count || 0) + 1 : 1;
+      const entry = {
+        missionId,
+        nodeId,
+        mapId,
+        count,
+        firstAt: withinWindow ? Number(previous.firstAt || now) : now,
+        lastAt: now,
+        lastReason: reason,
+        progressAtFailure: progress,
+        suppressedUntil: count >= 3 ? now + 20000 : 0
+      };
+      store.set(key, entry);
+      if (entry.suppressedUntil) {
+        this.memory?.remember?.("action-recovery-suppressed", {
+          missionId, nodeId, mapId, reason, count, durationMs: 20000
+        });
+      }
+      return entry;
+    }
+
+    clearExecutionRecovery(action) {
+      const missionId = String(action?.missionId || "");
+      const nodeId = String(action?.nodeId || "");
+      if (!missionId || !nodeId) return false;
+      const store = this.executionRecoveryStore();
+      let changed = false;
+      [...store.keys()].forEach((key) => {
+        if (!key.startsWith(`${missionId}|${nodeId}|`)) return;
+        store.delete(key);
+        changed = true;
+      });
+      return changed;
+    }
+
+    executionCancellationIsFailure(reason) {
+      return new Set([
+        "object-inactive",
+        "object-definition-missing",
+        "interaction-inaccessible",
+        "mission-acquisition-invalid"
+      ]).has(String(reason || ""));
+    }
+
     primaryEventDrivenTravel() {
       if (!this.primaryMissionId) return null;
       const tree = this.trees.get(this.primaryMissionId);
@@ -974,7 +1101,7 @@
           return Boolean(
             tree &&
             !tree.root.isComplete &&
-            this.planner.nextAction(tree, context)
+            this.missionRunnableAction(id, tree, context)
           );
         });
     }
@@ -1508,7 +1635,7 @@
     historicalCollectionTransitionOpportunity(missionId, context) {
       const tree = this.trees.get(missionId);
       if (!tree || tree.root.isComplete) return false;
-      const action = this.planner.nextAction(tree, context);
+      const action = this.missionRunnableAction(missionId, tree, context);
       if (
         !action ||
         ![Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(action.type)
@@ -1546,7 +1673,9 @@
       const tree = this.trees.get(missionId);
       const definition = this.definition(missionId);
       const lifecycle = this.ensureLifecycle(missionId, "active");
-      let action = tree?.root.isComplete ? null : this.planner.nextAction(tree, context);
+      let action = tree?.root.isComplete
+        ? null
+        : this.missionRunnableAction(missionId, tree, context);
       if (action && missionId !== this.primaryMissionId && !this.travelAllowsSecondaryMission(missionId, context)) {
         action = null;
       }
@@ -2031,6 +2160,11 @@
             reason: "engine-idle-with-current-action",
             ageMs: actionAge
           });
+          this.recordExecutionFailure(
+            orphan,
+            "engine-idle-with-current-action",
+            now
+          );
           this.currentAction = null;
           this.retryAfter = now + 650;
           this.idleRetryUntil = 0;
@@ -2067,6 +2201,7 @@
       };
       const tree = this.trees.get(selected.missionId);
       if (!tree || !this.bridge.execute(action, now)) {
+        if (tree) this.recordExecutionFailure(action, "execute-false", now);
         this.retryAfter = now + 4000;
         this.idleRetryUntil = 0;
         return false;
@@ -2112,6 +2247,7 @@
       }
       this.memory.remember(type, detail);
       this.memory.remember("action-completed", completedAction);
+      this.clearExecutionRecovery(completedAction);
       this.currentAction = null;
       this.retryAfter = performance.now() + 650;
       this.idleRetryUntil = 0;
@@ -2208,6 +2344,9 @@
         ...cancelledAction,
         reason
       });
+      if (this.executionCancellationIsFailure(reason)) {
+        this.recordExecutionFailure(cancelledAction, reason, performance.now());
+      }
       this.currentAction = null;
       this.retryAfter = performance.now() + 1800;
       this.idleRetryUntil = 0;
