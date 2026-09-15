@@ -660,12 +660,12 @@
           (Number(this.state.campStorage[key]) || 0), 0);
     }
 
-    consumeInventoryPool(keys, amount = 1) {
+    consumeInventoryPoolState(keys, amount = 1) {
       const safeKeys = [...new Set(
         (Array.isArray(keys) ? keys : [keys]).map(cleanKey)
       )];
       const requested = Math.max(0, Number(amount) || 0);
-      if (!requested || this.availableInventory(safeKeys) < requested) return 0;
+      if (!requested || this.availableInventory(safeKeys) < requested) return null;
       let remaining = requested;
       const removedByKey = {};
       [this.state.inventory, this.state.campStorage].forEach((bucket) => {
@@ -682,13 +682,19 @@
         this.increment(this.state.consumed, key, removed)
       );
       this.normalizeExpeditionAllocation();
-      this.save();
-      this.publishChange("inventory-pool-consumed", {
+      return {
         inventoryKeys: safeKeys,
         quantity: requested,
         removedByKey
-      });
-      return requested;
+      };
+    }
+
+    consumeInventoryPool(keys, amount = 1) {
+      const detail = this.consumeInventoryPoolState(keys, amount);
+      if (!detail) return 0;
+      this.save();
+      this.publishChange("inventory-pool-consumed", detail);
+      return detail.quantity;
     }
 
     consumeInventoryPoolOnce(transactionId, keys, amount = 1) {
@@ -697,19 +703,20 @@
       if (this.state.transactions[safeId]) {
         return Number(this.state.transactions[safeId].quantity) || 0;
       }
-      const removed = this.consumeInventoryPool(keys, amount);
-      if (removed !== Math.max(0, Number(amount) || 0)) return 0;
+      const detail = this.consumeInventoryPoolState(keys, amount);
+      if (!detail) return 0;
       this.state.transactions[safeId] = {
         id: safeId,
-        quantity: removed,
+        quantity: detail.quantity,
         keys: [...(Array.isArray(keys) ? keys : [keys])],
         at: Date.now()
       };
       this.save();
-      return removed;
+      this.publishChange("inventory-pool-consumed", detail);
+      return detail.quantity;
     }
 
-    depositInventory(key, amount = 1) {
+    depositInventoryState(key, amount = 1) {
       const safeKey = cleanKey(key);
       const requested = Math.max(0, Number(amount) || 0);
       const available = Math.max(0, Number(this.state.inventory[safeKey]) || 0);
@@ -717,12 +724,17 @@
       this.state.inventory[safeKey] = available - moved;
       this.increment(this.state.campStorage, safeKey, moved);
       this.increment(this.state.deposited, safeKey, moved);
-      this.save();
-      this.publishChange("inventory-deposited", {
+      return {
         inventoryKey: safeKey,
         quantity: moved
-      });
-      return moved;
+      };
+    }
+
+    depositInventory(key, amount = 1) {
+      const detail = this.depositInventoryState(key, amount);
+      this.save();
+      this.publishChange("inventory-deposited", detail);
+      return detail.quantity;
     }
 
     withdrawInventory(key, amount = 1) {
@@ -742,9 +754,17 @@
 
     depositAllInventory() {
       let moved = 0;
-      Object.entries({ ...this.state.inventory }).forEach(([key, amount]) => {
-        moved += this.depositInventory(key, Number(amount) || 0);
+      const changes = Object.entries({ ...this.state.inventory }).map(([key, amount]) => {
+        const detail = this.depositInventoryState(key, Number(amount) || 0);
+        moved += detail.quantity;
+        return detail;
       });
+      if (changes.length) {
+        this.save();
+        changes.forEach((detail) =>
+          this.publishChange("inventory-deposited", detail)
+        );
+      }
       return moved;
     }
 
