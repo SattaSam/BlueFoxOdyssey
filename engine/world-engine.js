@@ -3207,9 +3207,10 @@
           }
         );
       }
+      const playerZoneNumber = this.discoveryNumber(this.currentMapId) || 1;
       this.callbacks.onZoneChange(
         this.currentMapId,
-        `Zone ${this.currentMap.definition.number || 1}`
+        `Zone ${String(playerZoneNumber).padStart(2, "0")}`
       );
     }
 

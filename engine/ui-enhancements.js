@@ -116,9 +116,23 @@
 
   const discoveryNumber = (mapId) => {
     if (!mapId) return null;
+
+    // Le rang joueur est celui de la mémoire runtime canonique : Crystal = 01,
+    // puis chaque map réellement découverte dans l'ordre du Set. Les ordinals
+    // techniques des maps générées et les souvenirs obsolètes ne doivent jamais
+    // décaler le numéro de Zone affiché.
+    const engineMemory = global.BlueFox3D?.discoveredMaps;
+    if (engineMemory instanceof Set) {
+      const index = [...engineMemory].indexOf(mapId);
+      if (index >= 0) return index + 1;
+    }
+
     const memories = discoveryMemories();
     const chronologicalMemories = memories
-      .filter((item) => item?.id)
+      .filter((item) => item?.id && global.BlueFox3D?.maps?.[item.id])
+      .filter((item, index, list) =>
+        list.findIndex((candidate) => candidate.id === item.id) === index
+      )
       .map((item, index) => ({ item, index }))
       .sort((left, right) => {
         const leftTime = Number(left.item.discoveredAt);
@@ -138,11 +152,7 @@
     const chronologicalIndex = chronologicalMemories
       .findIndex(({ item }) => item.id === mapId);
     if (chronologicalIndex >= 0) return chronologicalIndex + 1;
-    const engineMemory = global.BlueFox3D?.discoveredMaps;
-    if (engineMemory instanceof Set) {
-      const index = [...engineMemory].indexOf(mapId);
-      if (index >= 0) return index + 1;
-    }
+
     const engineNumber =
       global.BlueFox3D?.currentEngine?.discoveryNumber?.(mapId);
     return Number.isFinite(engineNumber) ? engineNumber : null;
@@ -2047,8 +2057,9 @@
     }
 
     viewport._bluefoxCenterCurrent = () => {
+      const currentId = currentMapId(panel);
       const currentZone = [...world.querySelectorAll(".planet-map-zone")]
-        .find((zone) => zone.dataset.mapId === currentMapId(panel));
+        .find((zone) => zone.dataset.mapId === currentId);
       if (!currentZone) return;
       const view = viewport._bluefoxView;
       const rect = viewport.getBoundingClientRect();
@@ -2056,6 +2067,7 @@
       view.zoom = 1;
       view.x = rect.width / 2 - Number.parseFloat(currentZone.style.left);
       view.y = rect.height / 2 - Number.parseFloat(currentZone.style.top);
+      viewport.dataset.centeredMap = currentId;
       viewport._bluefoxApplyTransform();
       return true;
     };
@@ -2067,14 +2079,10 @@
       let attempts = 0;
       const applyInitialView = () => {
         attempts += 1;
-        if (viewport._bluefoxView?.restored) {
-          if (!viewport.getBoundingClientRect().width && attempts < 12) {
-            requestAnimationFrame(applyInitialView);
-            return;
-          }
-          viewport._bluefoxApplyTransform();
-          return;
-        }
+        // À chaque création/ouverture du menu Planète, la vue part de BlueFox.
+        // Aucun événement de changement de map ne passe par ce bloc : pendant
+        // que le menu reste ouvert, un déplacement de BlueFox ne recentre pas
+        // la carte sans action explicite du joueur.
         if (!viewport._bluefoxCenterCurrent() && attempts < 12) {
           requestAnimationFrame(applyInitialView);
           return;
