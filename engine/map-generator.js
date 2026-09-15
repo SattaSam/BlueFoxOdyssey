@@ -122,13 +122,19 @@
     return created;
   };
 
-  const catalogTemplates = () => Object.values(BF.maps || {}).filter((map) =>
+  const isGenerationTemplateEligible = (map) => Boolean(
     map?.id &&
     map.id !== "crystal" &&
     !map.generated &&
     map.sceneUrl &&
-    (map.terrainUrls?.length || map.terrainUrl)
+    (map.terrainUrls?.length || map.terrainUrl) &&
+    map.generationTemplateEligible !== false &&
+    map.missionOnly !== true &&
+    map.civilizationRole !== "city"
   );
+
+  const catalogTemplates = () =>
+    Object.values(BF.maps || {}).filter(isGenerationTemplateEligible);
 
   const COMPATIBLE_PROFILES = Object.freeze({
     grassland: Object.freeze(["forest", "desert"]),
