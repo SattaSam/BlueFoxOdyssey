@@ -243,6 +243,28 @@
       }
     }
 
+    canonicalExitMatches(mapId, direction, targetMapId) {
+      const delta = DELTAS[direction];
+      const map = BF.maps?.[mapId];
+      if (!delta || !map) return false;
+      const placement = {
+        north: { x: 0, z: -26 },
+        south: { x: 0, z: 26 },
+        east: { x: 26, z: 0 },
+        west: { x: -26, z: 0 }
+      };
+      const expected = placement[direction];
+      const exit = map.exits?.[direction];
+      return Boolean(
+        exit?.generated === true &&
+        exit.targetMap === targetMapId &&
+        exit.targetEntry === delta.opposite &&
+        Number(exit.x) === expected.x &&
+        Number(exit.z) === expected.z &&
+        Number(exit.topologyVersion) === VERSION
+      );
+    }
+
     setCanonicalLink(fromMapId, direction, toMapId) {
       const delta = DELTAS[direction];
       const fromMap = BF.maps?.[fromMapId];
@@ -282,6 +304,7 @@
 
     reconcileGeneratedExits() {
       const canonicalLinks = [];
+      let runtimeChanged = false;
 
       for (const [mapId, point] of this.coordinates.entries()) {
         const definition = BF.maps?.[mapId];
@@ -308,7 +331,14 @@
               return;
             }
 
-            if (existing?.targetMap !== neighborId) {
+            const reverseMatches = this.canonicalExitMatches(
+              neighborId,
+              delta.opposite,
+              mapId
+            );
+            const canonicalMatches =
+              this.canonicalExitMatches(mapId, direction, neighborId) && reverseMatches;
+            if (!canonicalMatches) {
               this.repairs.push({
                 type: "generated-exit-rewired",
                 from: mapId,
@@ -316,8 +346,9 @@
                 oldTarget: existing?.targetMap || null,
                 canonicalTarget: neighborId
               });
+              this.setCanonicalLink(mapId, direction, neighborId);
+              runtimeChanged = true;
             }
-            this.setCanonicalLink(mapId, direction, neighborId);
             canonicalLinks.push({ from: mapId, direction, to: neighborId });
           } else if (existing?.generated === true) {
             const targetPoint = this.coordinateOf(existing.targetMap);
@@ -336,6 +367,7 @@
                 oldTarget: existing.targetMap
               });
               delete definition.exits[direction];
+              runtimeChanged = true;
             }
           }
         });
@@ -352,8 +384,51 @@
         )) return;
         unique.push(link);
       });
-      this.engine.generatedTopology = unique;
-      localStorage.setItem(LEGACY_KEY, JSON.stringify(unique));
+      const legacyJson = JSON.stringify(unique);
+      const engineLegacyJson = JSON.stringify(
+        Array.isArray(this.engine.generatedTopology) ? this.engine.generatedTopology : []
+      );
+      let storedLegacyJson = "[]";
+      try {
+        const stored = JSON.parse(localStorage.getItem(LEGACY_KEY) || "[]");
+        storedLegacyJson = JSON.stringify(Array.isArray(stored) ? stored : []);
+      } catch {
+        storedLegacyJson = "";
+      }
+      if (engineLegacyJson !== legacyJson) this.engine.generatedTopology = unique;
+      if (storedLegacyJson !== legacyJson) {
+        localStorage.setItem(LEGACY_KEY, legacyJson);
+      }
+      return runtimeChanged;
+    }
+
+    currentCoordinates() {
+      const coordinates = {};
+      this.coordinates.forEach((point, mapId) => {
+        coordinates[mapId] = { x: point.x, y: point.y };
+      });
+      return coordinates;
+    }
+
+    persistIfNeeded() {
+      const coordinates = this.currentCoordinates();
+      let stored = null;
+      try {
+        stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      } catch {
+        stored = null;
+      }
+      const storedCoordinates = stored?.coordinates && typeof stored.coordinates === "object"
+        ? stored.coordinates
+        : null;
+      const unchanged =
+        Number(stored?.version) === VERSION &&
+        stored?.origin === "crystal" &&
+        storedCoordinates &&
+        JSON.stringify(storedCoordinates) === JSON.stringify(coordinates);
+      if (unchanged) return false;
+      this.persist();
+      return true;
     }
 
     persist() {
@@ -388,6 +463,28 @@
       });
     }
   }
+
+  const runtimeGeneratedGatesMatch = (engine) => {
+    const map = engine.currentMap;
+    const definition = BF.maps?.[engine.currentMapId];
+    if (!map?.group || !definition) return true;
+
+    const expected = Object.entries(definition.exits || {})
+      .filter(([, exit]) => exit?.generated === true)
+      .map(([direction, exit]) => `${direction}:${exit.targetMap || ""}`)
+      .sort();
+    const actual = (map.gates || [])
+      .filter((gate) =>
+        gate?.userData?.exit?.generated === true ||
+        gate?.userData?.runtimeGenerated === true
+      )
+      .map((gate) => {
+        const exit = gate?.userData?.exit || {};
+        return `${exit.direction || ""}:${exit.targetMap || ""}`;
+      })
+      .sort();
+    return JSON.stringify(actual) === JSON.stringify(expected);
+  };
 
   const rebuildRuntimeGeneratedGates = (engine) => {
     const map = engine.currentMap;
@@ -557,9 +654,11 @@
       mapAt: (x, y) => topology.mapAt(x, y),
       snapshot: () => topology.snapshot(),
       reconcile: () => {
-        topology.reconcileGeneratedExits();
-        topology.persist();
-        rebuildRuntimeGeneratedGates(engine);
+        const exitsChanged = topology.reconcileGeneratedExits();
+        topology.persistIfNeeded();
+        if (exitsChanged || !runtimeGeneratedGatesMatch(engine)) {
+          rebuildRuntimeGeneratedGates(engine);
+        }
         return topology.snapshot();
       }
     });
