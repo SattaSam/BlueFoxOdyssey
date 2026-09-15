@@ -6,7 +6,8 @@
   const TOPOLOGY_KEY = "bluefox_world_topology_v2";
   const GENERATED_MAPS_KEY = "bluefox_generated_maps_v1";
   const ENGINE_DISCOVERY_KEY = "bluefox_engine_discovered_maps_v2";
-  const POSITION_KEY = "bluefox_position_v1";
+  const POSITION_KEY = "bluefox_world_position_v2";
+  const LEGACY_POSITION_KEY = "bluefox_world_position_v1";
   const CHECK_INTERVAL_MS = 15000;
 
   const diagnostics = {
@@ -84,9 +85,12 @@
       });
     }
 
-    const position = readJson(POSITION_KEY, null);
-    if (position?.mapId && BF.maps?.[position.mapId] && !coordinates[position.mapId]) {
-      errors.push(`Map de reprise sans coordonnée : ${position.mapId}.`);
+    const position =
+      readJson(POSITION_KEY, null) ||
+      readJson(LEGACY_POSITION_KEY, null);
+    const positionMapId = position?.map || null;
+    if (positionMapId && BF.maps?.[positionMapId] && !coordinates[positionMapId]) {
+      errors.push(`Map de reprise sans coordonnée : ${positionMapId}.`);
     }
 
     diagnostics.lastValidationAt = Date.now();
