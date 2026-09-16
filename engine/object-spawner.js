@@ -194,10 +194,13 @@
           // partout ailleurs.
           if (
             template.id === "MSC-CUSTOM-ASTROLOGY" &&
-            entry.type === "arch" &&
-            Array.isArray(instance.colliders)
+            entry.type === "arch"
           ) {
-            instance.colliders.length = 0;
+            if (Array.isArray(instance.colliders)) instance.colliders.length = 0;
+            if (instance.hitbox) {
+              instance.hitbox.removeFromParent?.();
+              instance.hitbox = null;
+            }
           }
           const objectRoot = instance.root;
           const objectPivot = new this.THREE.Group();

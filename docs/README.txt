@@ -17,6 +17,13 @@ Base technique auditée au 12/09/2026 :
 - ROADMAP_TODO.md reste la seule TODO active ;
 - aucun nouveau recovery checkpoint séparé n'est créé : le checkpoint R-HEALTH est enregistré dans les documents maintenus.
 
+Synchronisation documentaire du 16/09/2026 :
+- HEAD moteur de départ vérifié : 3b01f2bf87ce0ffa5f2c385f21dce16866d6a518 — CPU P3 ;
+- le chantier de test TP est considéré clos ;
+- TP-01→11 et TP-AFTER-01→04 sont des acquis à préserver, non des travaux TP encore ouverts ;
+- l'autonomie TP reste interdite pendant l'arc d'apprentissage et d'appropriation, puis devient disponible uniquement après TP-AFTER-04 completed, selon TP_AUTONOMY_CONTRACT_2026-09-14.md ;
+- les futures validations TP relèvent de la non-régression ordinaire lorsqu'un chantier traverse ce périmètre, pas d'un chantier TP dédié encore ouvert.
+
 État R-HEALTH :
 - 13 domaines VERT ;
 - 3 domaines VERT ÉVOLUÉ ;
@@ -48,7 +55,7 @@ Points encore ouverts au moment de l'interruption :
 - traiter le raccord CONTACT-10→CONTACT-11 dans le lot missionnel prévu ;
 - compléter les quatre domaines ORANGE uniquement lorsqu'un chantier traverse leur périmètre : tutoriel complet, maps/population, UI visuelle, audio/caméra/déplacement/physique ;
 - poursuivre le profilage CPU global séparément de R-HEALTH ;
-- revalider les scénarios multi-map/reload complexes drones, balise et Save lorsque ces périmètres seront touchés.
+- revalider les scénarios multi-map/reload complexes drones, balise, Save et TP uniquement lorsque ces périmètres seront de nouveau touchés.
 
 Règle de priorité documentaire :
 1. décision utilisateur la plus récente ;

@@ -222,6 +222,20 @@
   opacity: 1;
 }
 
+.map-transition.teleport {
+  color: #6f5b1d;
+  text-shadow: 0 0 12px rgba(255, 255, 255, .95);
+  background:
+    repeating-linear-gradient(
+      112deg,
+      rgba(255, 238, 154, 0) 0 9%,
+      rgba(255, 238, 154, .28) 9% 13%,
+      rgba(255, 248, 205, .1) 13% 20%
+    ),
+    radial-gradient(circle at 50% 46%, #fffef2 0 24%, #fffbdc 52%, #fff 100%);
+  box-shadow: inset 0 0 120px rgba(255, 239, 157, .42);
+}
+
 @media (max-width: 900px) {
 .journal-layout {
     grid-template-columns: 1fr;

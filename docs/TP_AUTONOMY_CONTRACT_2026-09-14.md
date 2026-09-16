@@ -1,13 +1,17 @@
 # BlueFox Odyssey — Contrat Téléportation autonome post-arc
 
 Date : 14 septembre 2026
-Base de décision : HEAD `a4acde1df0e93b84f55f5d28530b82c59be93e4a` + décision utilisateur postérieure au HEAD.
+Mise à jour de statut : 16 septembre 2026
+Base de décision initiale : HEAD `a4acde1df0e93b84f55f5d28530b82c59be93e4a` + décision utilisateur postérieure au HEAD.
+Base de synchronisation de clôture : HEAD `3b01f2bf87ce0ffa5f2c385f21dce16866d6a518` — `CPU P3`.
 
 ## Statut documentaire
 
 Ce contrat est un addendum officiel maintenu. Il **remplace explicitement**, pour l'état courant du projet, les formulations antérieures imposant « téléportation initiée par le joueur uniquement » ou « aucune autonomie de téléportation » dans `ROADMAP_TODO.md`, `DEV_HISTORIQUE.md` et `GAMEPLAY_CONTRACT_ADDENDUM_2026-08-28.md`.
 
 Ces formulations restent utiles pour comprendre la phase d'apprentissage historique TP-10/TP-11, mais ne constituent plus le contrat gameplay après finalisation de l'arc TP.
+
+Le **chantier de test TP est clos au 16 septembre 2026**. TP-01→11 et TP-AFTER-01→04 sont désormais des acquis à préserver. Les validations futures sur ce périmètre relèvent de la non-régression ordinaire lorsqu'un chantier traverse la téléportation ; elles ne maintiennent pas un chantier TP dédié ouvert.
 
 ## Point d'ouverture canonique
 
@@ -60,6 +64,8 @@ Le routage TP autonome est **opt-in**. `WorldEngine.findKnownRoute()` conserve s
 Une navigation autonome ne peut utiliser le réseau TP que si son consommateur demande explicitement l'optimisation multimodale. Le premier consommateur autorisé par ce lot est la transition missionnelle autonome portée par `MissionManager`.
 
 Les consommateurs historiques non audités — navigation joueur ordinaire, retours historiques, autres routages — ne changent pas implicitement de sémantique.
+
+La clôture du chantier TP ne supprime pas ces garde-fous : elle signifie que ce contrat et les comportements correspondants constituent désormais la référence à préserver.
 
 ## EXP-LONG
 

@@ -34,7 +34,7 @@
     drones: {},
     harvestFleet: [],
     resources: {},
-    teleporter: { active: false, activatedAt: 0, calibratedAt: 0, calibratedBeaconMapId: null, calibratedNetworkSize: 0, firstOutboundAt: 0 },
+    teleporter: { active: false, activatedAt: 0, calibratedAt: 0, calibratedBeaconMapId: null, calibratedBeaconInstanceId: null, calibratedNetworkSize: 0, firstOutboundAt: 0 },
     lastRuntimeAt: Date.now()
   });
   const loadState = () => {
@@ -1047,6 +1047,7 @@
     const allEntries = worldEntries(entries);
     updateRespawns(allEntries);
     updateDrones(allEntries);
+    updateTeleporterGuidance();
   };
 
   const canCraft = (type) => {
@@ -1470,6 +1471,27 @@
     BF.currentEngine?.missionManager?.memory?.state?.missionLifecycle?.[missionId]?.status || null;
   const teleporterCalibrated = () => Boolean(state.teleporter?.calibratedAt && state.teleporter?.calibratedBeaconMapId);
   const discoveredMap = (mapId) => BF.currentEngine?.discoveredMaps?.has?.(String(mapId || "")) === true;
+  let teleporterGuidanceKey = "";
+  const updateTeleporterGuidance = () => {
+    const engine = BF.currentEngine;
+    const hub = hubRecord();
+    if (!engine || !hub || String(engine.currentMapId || "") !== String(hub.mapId || "")) return false;
+    const tp10Status = missionStatus("TP-10");
+    const tp11Status = missionStatus("TP-11");
+    let key = "";
+    let message = "";
+    if (!teleporterActive() && tp10Status === "active" && playerNear(hub.anchor, 7)) {
+      key = "tp10-planet-menu";
+      message = "ASTROLOGY est prête. Ouvrez le menu Planète pour assembler et activer le téléporteur.";
+    } else if (teleporterActive() && tp11Status === "active" && !teleporterCalibrated() && playerNear(hub.anchor, 7)) {
+      key = "tp11-planet-menu";
+      message = "ASTROLOGY attend sa synchronisation. Ouvrez le menu Planète et choisissez une balise déployée.";
+    }
+    if (!key || teleporterGuidanceKey === key) return false;
+    teleporterGuidanceKey = key;
+    announce(message);
+    return true;
+  };
   const teleportDestinations = () => {
     const hub = hubRecord();
     if (!hub) return [];
@@ -1689,6 +1711,7 @@
       activatedAt: Date.now(),
       calibratedAt: 0,
       calibratedBeaconMapId: null,
+      calibratedBeaconInstanceId: null,
       calibratedNetworkSize: 0,
       firstOutboundAt: 0
     };
@@ -1731,6 +1754,7 @@
         ...state.teleporter,
         calibratedAt: Date.now(),
         calibratedBeaconMapId: target,
+        calibratedBeaconInstanceId: destination.instanceId || null,
         calibratedNetworkSize: destinations.length,
         firstOutboundAt: 0
       };
@@ -1805,7 +1829,7 @@
     return null;
   };
 
-  const teleportTo = async (targetMapId) => {
+  const teleportTo = async (targetMapId, options = {}) => {
     const engine = BF.currentEngine;
     const hub = hubRecord();
     const target = String(targetMapId || "");
@@ -1817,16 +1841,35 @@
     let targetRecord = null;
     let outbound = false;
     if (current === hub.mapId) {
-      targetRecord = teleportDestinations().find((entry) => entry.mapId === target) || null;
+      const calibratedInstanceId =
+        String(state.teleporter?.calibratedBeaconMapId || "") === target
+          ? String(state.teleporter?.calibratedBeaconInstanceId || "")
+          : "";
+      const persistentRecord = calibratedInstanceId
+        ? deployedBeaconRecords(target).find((record) =>
+            String(record?.instanceId || "") === calibratedInstanceId
+          ) || null
+        : null;
+      targetRecord = persistentRecord?.anchor
+        ? { mapId: target, anchor: { ...persistentRecord.anchor }, instanceId: persistentRecord.instanceId || null }
+        : teleportDestinations().find((entry) => entry.mapId === target) || null;
       if (!targetRecord || !playerNear(hub.anchor, 7)) return false;
       if (
         tp11Status === "active" &&
-        (!teleporterCalibrated() || String(state.teleporter.calibratedBeaconMapId || "") !== target)
+        (!teleporterCalibrated() ||
+          String(state.teleporter.calibratedBeaconMapId || "") !== target ||
+          (state.teleporter.calibratedBeaconInstanceId &&
+            String(targetRecord.instanceId || "") !== String(state.teleporter.calibratedBeaconInstanceId || "")))
       ) return false;
       sourceRecord = hub;
       outbound = true;
     } else if (target === hub.mapId && hasDeployedBeacon(current)) {
-      sourceRecord = deployedBeaconRecords(current)[0] || null;
+      const requestedSourceInstanceId = String(options.sourceBeaconInstanceId || "");
+      sourceRecord = requestedSourceInstanceId
+        ? deployedBeaconRecords(current).find((record) =>
+            String(record?.instanceId || "") === requestedSourceInstanceId
+          ) || null
+        : deployedBeaconRecords(current)[0] || null;
       targetRecord = hub;
       if (!sourceRecord?.anchor || !playerNear(sourceRecord.anchor, 4.5)) return false;
       if (
@@ -1885,6 +1928,46 @@
     );
   };
   const hasDeployedBeacon = (mapId) => deployedBeaconRecords(String(mapId || "")).length > 0;
+  const deployedBeaconRecordForObject = (object) => {
+    const mapId = String(BF.currentEngine?.currentMapId || "");
+    const persistentId = String(
+      object?.userData?.persistentMicroSceneId ||
+      object?.userData?.instanceId ||
+      ""
+    );
+    if (!mapId || !persistentId) return null;
+    return deployedBeaconRecords(mapId).find((record) =>
+      String(record?.instanceId || "") === persistentId
+    ) || null;
+  };
+  const requestBeaconTeleport = async (object) => {
+    const engine = BF.currentEngine;
+    const hub = hubRecord();
+    const current = String(engine?.currentMapId || "");
+    const record = deployedBeaconRecordForObject(object);
+    if (!engine || !hub || !record?.anchor || !teleporterActive()) {
+      announce("Cette balise BlueFox n’est pas encore reliée à un réseau de téléportation actif.");
+      return false;
+    }
+    const tp11Status = missionStatus("TP-11");
+    const returnReady = tp11Status === "completed" || (
+      tp11Status === "active" &&
+      Boolean(state.teleporter?.firstOutboundAt) &&
+      String(state.teleporter?.calibratedBeaconMapId || "") === current &&
+      (!state.teleporter?.calibratedBeaconInstanceId ||
+        String(state.teleporter.calibratedBeaconInstanceId) === String(record.instanceId || ""))
+    );
+    if (!returnReady) {
+      announce("Cette balise n’est pas encore synchronisée pour un retour vers ASTROLOGY.");
+      return false;
+    }
+    if (!playerNear(record.anchor, 4.5) || teleportBusy()) return false;
+    const confirmed = typeof global.confirm === "function"
+      ? global.confirm("Se téléporter vers ASTROLOGY ?")
+      : false;
+    if (!confirmed) return false;
+    return teleportTo(hub.mapId, { sourceBeaconInstanceId: record.instanceId || null });
+  };
   const getPlanetMapMarkers = (mapId) => {
     const target = String(mapId || "");
     const markers = [];
@@ -2164,6 +2247,7 @@
     calibrateTeleporter,
     teleportUiAction,
     teleportTo,
+    requestBeaconTeleport,
     disposeTeleportFx,
     invalidate(scene) { if (scene) sceneCache.delete(scene); }
   });

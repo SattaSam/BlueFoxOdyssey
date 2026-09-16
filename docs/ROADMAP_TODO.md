@@ -1,14 +1,14 @@
 # BlueFox Odyssey — Roadmap et TODO
 
-Mise à jour : **14 septembre 2026**
+Mise à jour : **16 septembre 2026**
 
 Cette page est la **seule TODO active**.
 
 ## Base courante
 
 - [x] Checkpoint moteur R-HEALTH audité : `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — `fix Save`.
-- [x] HEAD missionnel vérifié pour la présente synchronisation : `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` — `restaure CARN/STORM`.
-- [x] TP complet intégré au commit `e76af8f6bfba8dd599912c50e50ce641338c5985` puis réconcilié avec CARN/STORM sur `bca4b01b…`.
+- [x] HEAD moteur vérifié pour la présente synchronisation : `3b01f2bf87ce0ffa5f2c385f21dce16866d6a518` — `CPU P3`.
+- [x] TP complet intégré au commit `e76af8f6bfba8dd599912c50e50ce641338c5985`, réconcilié avec CARN/STORM sur `bca4b01b…`, puis prolongé par TP-AFTER et l'autonomie post-arc au HEAD courant.
 - [x] CARN/STORM + correctif CUO Lab intégrés au commit `d521af2f3d6e5f221975d64729ec7eff8cc11606` ; coexistence catalogue restaurée sur `bca4b01b…`.
 - [x] HEAD GitHub courant = seule base technique ; le checkpoint R-HEALTH reste une référence de santé, pas une base alternative.
 - [x] MissionManager reste propriétaire du lifecycle et du choix missionnel.
@@ -54,28 +54,31 @@ Cette page est la **seule TODO active**.
 - [x] POSTDIP / TP-01→09 présents avant la passe finale TP.
 - [x] TP-10 / TP-11 intégrées : construction du téléporteur, calibration, transfert de matière inerte puis trajet réel hub→balise→hub.
 - [x] Hub téléporteur = `MSC-CUSTOM-ASTROLOGY`, avec arches traversables uniquement dans cette MSC ; pas de modification globale des arches.
-- [x] Téléportation joueur uniquement, hub↔balise persistante ; aucune téléportation autonome BAC et aucun beacon↔beacon.
+- [x] Pendant TP-01→11 puis TP-AFTER-01→04, l'usage du réseau reste dans le cadre d'apprentissage/appropriation prévu ; aucune autonomie TP anticipée avant la clôture canonique.
+- [x] Après `TP-AFTER-04 completed`, l'autonomie peut utiliser le routage TP **opt-in** conformément à `TP_AUTONOMY_CONTRACT_2026-09-14.md` ; le BAC ne possède pas le téléporteur et `SpecialObjectRuntime.teleportTo()` reste l'unique primitive de transfert.
 - [x] TP-11 exige au moins 4 balises persistantes déployées, non consommées.
 - [x] Ressources TP préservées : 100 minerais, 50 composants, 20 cores, 100 fibres, 50 biocapital végétal Thermosève/plantes fluorescentes uniquement, 10 accumulateurs, plus sous-assemblages issus des blueprints déjà acquis.
 - [x] Autorité TP corrigée : les étapes catalogue gérées par le runtime ne peuvent plus être complétées par une action RESEARCH générique du Planner.
+- [x] TP-AFTER-01→04 intégrées et closes comme arc d'appropriation du téléporteur.
+- [x] Chantier de test TP clos au 16/09/2026 ; les contrôles futurs TP relèvent de la non-régression ordinaire lorsqu'un chantier traverse ce périmètre.
 - [x] TERR-CARN-01→04 et TERR-STORM-01→04 intégrées comme rencontres dangereuses opportunistes progressives.
 - [x] CARN/STORM : progression exposition irréfléchie → récidive moins exposée → observation prudente sous contrainte d'énergie → maîtrise/observation brève sans exposition prolongée.
 - [x] CARN/STORM : occurrence MSC déclenchée par progression 1→2→3→4 avec `uniqueOnly`, ciblage d'observation réel et poids renforcé sur trajets missionnels longs.
 - [x] Régression inter-chantier TP/CARN détectée après commit puis corrigée : le catalogue HEAD contient désormais TP et CARN/STORM simultanément.
 - [x] CUO Lab : fenêtre de test des mouvements PNJ fermable et visible uniquement lorsqu'un PNJ est sélectionné.
 
-## P0-A — Continuité Téléportation / maturation / fin de jeu
+## P0-A — Maturation post-TP / fin de jeu
 
-Le chantier TP ne s'arrête pas à TP-11. La séquence suivante est explicitement conservée comme prochain arc à industrialiser.
+Le chantier TP et sa campagne de test sont clos. TP-AFTER n'est plus un arc à industrialiser ; il constitue un acquis moteur à préserver. La continuité principale ouverte commence désormais après cet arc.
 
-### TP-AFTER — appropriation du téléporteur
+### TP-AFTER — appropriation du téléporteur — CLOS
 
-- [ ] `TP-AFTER-01 — Le monde paraît plus petit` : utiliser réellement le téléporteur vers une balise ancienne/déjà connue.
-- [ ] `TP-AFTER-02 — Le chemin du retour` / formulation documentaire équivalente : revenir balise→hub sans refaire physiquement le trajet.
-- [ ] `TP-AFTER-03 — Cela peut servir à autre chose` : utiliser le téléporteur comme outil transversal pour reprendre une mission/branche déjà ouverte sur une map balisée.
-- [ ] `TP-AFTER-04 — Et maintenant ?` : clôture psychologique du projet ; satisfaction, baisse forte du poids/obsession Téléportation puis retour du BAC vers les autres axes encore ouverts.
-- [ ] Préserver la règle : après TP-AFTER, le téléporteur devient une **infrastructure transversale**, pas une branche dominante ni un substitut automatique aux déplacements ordinaires.
-- [ ] Toute utilisation reste initiée par le joueur ; aucune autonomie BAC de téléportation.
+- [x] `TP-AFTER-01 — Le monde paraît plus petit` : utiliser réellement le téléporteur vers une balise ancienne/déjà connue.
+- [x] `TP-AFTER-02 — Le chemin du retour` / formulation documentaire équivalente : revenir balise→hub sans refaire physiquement le trajet.
+- [x] `TP-AFTER-03 — Cela peut servir à autre chose` : utiliser le téléporteur comme outil transversal pour reprendre une mission/branche déjà ouverte sur une map balisée.
+- [x] `TP-AFTER-04 — Et maintenant ?` : clôture psychologique du projet ; satisfaction, baisse forte du poids/obsession Téléportation puis retour du BAC vers les autres axes encore ouverts.
+- [x] Après TP-AFTER, le téléporteur devient une **infrastructure transversale**, pas une branche dominante ni un substitut automatique aux déplacements ordinaires.
+- [x] L'autonomie TP n'est autorisée qu'après `TP-AFTER-04 completed`, en mode opt-in et sous les propriétaires définis par `TP_AUTONOMY_CONTRACT_2026-09-14.md`.
 
 ### EXP-LONG — expéditions lointaines / maturation
 
@@ -101,7 +104,7 @@ Le chantier TP ne s'arrête pas à TP-11. La séquence suivante est explicitemen
 
 ## P0-B — Missions OPPORTUNITÉS / MSC remarquables
 
-Chantier documentaire validé à industrialiser en parallèle de la continuité principale, sans remplacer TP-AFTER/EXP-LONG/END-FIN.
+Chantier documentaire validé à industrialiser en parallèle de la continuité principale, sans remplacer EXP-LONG/END-FIN.
 
 ### Principes de fonctionnement
 
@@ -170,7 +173,7 @@ Ces éléments ne sont pas déclarés cassés ; leur validation complète reste 
 - [x] Console réseau côté Recherche.
 - [x] Récolte distante et dépôt cargo raccordés au runtime existant.
 - [ ] Revalider en jeu les usages multi-map longue durée, reload et cas de plusieurs drones simultanés avant d'étendre davantage le réseau.
-- [ ] Revalider au chantier TP-AFTER la coexistence réseau balises / destinations téléporteur sur plusieurs maps et après reload.
+- [x] La coexistence réseau balises / destinations téléporteur fait partie des acquis TP clos ; ne la revalider spécifiquement que lorsqu'un futur chantier touche ce périmètre.
 - [ ] Toute nouvelle capacité drone doit rester dans `special-object-runtime.js` ou ses propriétaires existants, jamais dans un runtime parallèle.
 
 ## P1 — Save / reload
@@ -178,7 +181,7 @@ Ces éléments ne sont pas déclarés cassés ; leur validation complète reste 
 - [x] Protection contre l'écrasement d'une mission sauvegardée dont la définition n'est pas encore chargée.
 - [x] Hydratation conservée dans MissionManager.
 - [ ] Revalider lors des prochains chantiers Save : changement de slot, reload avec plusieurs missions actives, sites/MSC persistants, constructions, directive joueur et réseau drone/balise.
-- [ ] Revalider explicitement hub téléporteur, balises destinations et mini-séries OPP SAME-INSTANCE après reload.
+- [ ] Revalider explicitement hub téléporteur, balises destinations et mini-séries OPP SAME-INSTANCE après reload uniquement lorsqu'un chantier Save/TP/OPP traverse ces comportements.
 - [ ] Ne pas réintroduire de migration artificielle d'états rejetée par le runtime.
 
 ## P1 — Kit d'expédition
@@ -197,7 +200,8 @@ Ces éléments ne sont pas déclarés cassés ; leur validation complète reste 
 - [x] Enrichissement seulement après évolution significative.
 - [x] Pas de polling ajouté.
 - [x] ANN-07 raccorde son premier catalogue à la branche Faune/Nature sans créer de journal parallèle.
-- [ ] TP-AFTER, OPP et END/FIN devront enrichir les branches existantes sans créer de second journal.
+- [x] TP-AFTER est désormais clos ; ses effets documentaires doivent rester intégrés aux branches existantes sans second journal.
+- [ ] OPP et END/FIN devront enrichir les branches existantes sans créer de second journal.
 - [ ] Continuer à vérifier la stabilité du contenu au fur et à mesure de l'industrialisation des nouvelles branches.
 
 ## P2 — Performance globale
@@ -239,7 +243,7 @@ R-STAB et R-HEALTH ne remplacent pas un profilage global.
 - [ ] MSC/sites persistants après reload.
 - [ ] WORKBENCH.
 - [ ] Accumulateurs / balises / drones / cargo.
-- [ ] TP-10/11 + hub ASTROLOGY + réseau destinations + aller/retour.
+- [x] TP-01→11 + TP-AFTER-01→04 + hub ASTROLOGY + réseau destinations + aller/retour + autonomie post-arc : chantier TP clos, acquis à préserver ; revalidation ciblée seulement si un futur chantier traverse ce périmètre.
 - [ ] CARN/STORM 01→04 pour les deux phénomènes.
 - [x] Journal lazy/persistant confirmé structurellement.
 - [ ] ARCH-01→40.

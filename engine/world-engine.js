@@ -2668,6 +2668,25 @@
       const functional = data.functional || {};
       const interaction = functional.interaction || data.interaction || {};
       const gameplay = functional.gameplay || data.gameplay || {};
+      const deployedBeacon =
+        String(data.contextRole || "") === "deployed_beacon" &&
+        String(data.libraryType || functional.type || "") === "survey_beacon";
+      if (deployedBeacon) {
+        const label = "la balise BlueFox déployée";
+        return {
+          kind: "deployed_beacon",
+          action: "inspect",
+          label,
+          collectable: false,
+          removeFromWorld: false,
+          respawnMs: null,
+          animationHints: [],
+          actionText: `BlueFox consulte ${label}.`,
+          approachText: `BlueFox approche ${label}.`,
+          speechText: "Cette balise est reliée au réseau BlueFox.",
+          specialAction: "teleport-return"
+        };
+      }
       const actions = new Set(interaction.actions || []);
       const kind = String(
         functional.resource?.inventoryKey ||
@@ -3247,12 +3266,16 @@
       return new this.THREE.Vector3(targetMap.entry.x, 0, targetMap.entry.z);
     }
 
-    beginCanonicalMapTransition() {
+    beginCanonicalMapTransition(options = {}) {
       if (this.transitioning) return null;
       this.transitioning = true;
       this.transitionStartedAt = performance.now();
       this.character.enabled = false;
       this.character.stop();
+      this.transitionElement?.classList?.toggle?.(
+        "teleport",
+        options.mode === "teleport" || options.source === "teleporter"
+      );
       this.transitionElement?.classList?.add?.("active");
       return {
         preservedCameraView: this.cameraController?.captureViewState?.() || null
@@ -3285,6 +3308,7 @@
 
     releaseCanonicalMapTransition() {
       this.transitionElement?.classList?.remove?.("active");
+      this.transitionElement?.classList?.remove?.("teleport");
       this.character.enabled = true;
       this.transitioning = false;
       this.transitionStartedAt = 0;
@@ -3343,7 +3367,7 @@
       const previousPosition = this.character?.root?.position?.clone?.() || null;
       if (targetId === previousMapId) return false;
 
-      const transition = this.beginCanonicalMapTransition();
+      const transition = this.beginCanonicalMapTransition(options);
       if (!transition) return false;
       const { preservedCameraView } = transition;
       let loadedTarget = false;
@@ -3570,6 +3594,19 @@
         return;
       }
       this.character.stop();
+      if (profile.specialAction === "teleport-return") {
+        this.callbacks.onAction(profile.actionText);
+        this.pendingInteraction = null;
+        this.interactionStartedAt = 0;
+        this.interactionApproachStartedAt = 0;
+        this.interactionApproachAttempts = 0;
+        object.userData.requestedMovementMode = null;
+        object.userData.requestedInteractionSource = null;
+        Promise.resolve(
+          BF.SpecialObjectRuntime?.requestBeaconTeleport?.(object)
+        ).catch((error) => console.error("Échec de l’interaction balise TP", error));
+        return;
+      }
       if (!this.interactionStartedAt) {
         this.interactionStartedAt = now;
         this.character.facePoint(anchorPosition);

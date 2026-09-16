@@ -2,17 +2,18 @@
 
 ## État de référence
 
-Dernière mise à jour : **14 septembre 2026**
+Dernière mise à jour : **16 septembre 2026**
 
 ### Version de travail
-- HEAD missionnel/documentaire courant vérifié : commit `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` — `restaure CARN/STORM`.
-- TP complet : `e76af8f6bfba8dd599912c50e50ce641338c5985`.
+- HEAD moteur courant vérifié pour cette synchronisation : commit `3b01f2bf87ce0ffa5f2c385f21dce16866d6a518` — `CPU P3`.
+- TP complet : `e76af8f6bfba8dd599912c50e50ce641338c5985`, puis continuité TP-AFTER et autonomie post-arc présentes au HEAD courant.
 - CARN/STORM + correctif CUO Lab : `d521af2f3d6e5f221975d64729ec7eff8cc11606`, puis restauration de coexistence sur `bca4b01b…`.
 - Checkpoint moteur R-HEALTH sain conservé : commit `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` — `fix Save`.
 - Le HEAD GitHub courant reste la seule base technique de reprise ; le checkpoint R-HEALTH sert de référence de santé, jamais de base de codage à la place du HEAD.
 - Les recovery checkpoints existants restent historiques et ne priment pas sur le HEAD courant.
 - `ROADMAP_TODO.md` reste la seule TODO active.
 - La Bible documentaire est la source de contenu missionnel ; les coches moteur ne doivent refléter que les définitions réellement intégrées et validées.
+- Le chantier de test TP est clos au 16 septembre 2026 ; TP-01→11 et TP-AFTER-01→04 sont des acquis à préserver.
 
 ## Gouvernance documentaire officielle
 
@@ -132,10 +133,14 @@ Navigation ordinaire :
 - absence de chemin = échec de navigation, pas marche infinie contre obstacle.
 
 Téléportation :
-- le téléporteur est un **outil joueur**, jamais une décision autonome du BAC ;
+- pendant TP-01→11 puis TP-AFTER-01→04, aucune autonomie TP anticipée n'est autorisée ;
+- après `TP-AFTER-04.status === "completed"`, le réseau devient une infrastructure générale que l'autonomie peut exploiter **uniquement en opt-in** selon `TP_AUTONOMY_CONTRACT_2026-09-14.md` ;
+- le BAC peut participer au choix de l'objectif/destination mais ne possède jamais le téléporteur et n'appelle pas directement `teleportTo()` ;
+- `WorldEngine` reste propriétaire du calcul/exécution des itinéraires inter-map ;
+- `SpecialObjectRuntime` reste propriétaire du réseau TP et de l'exécution réelle du transfert ;
 - hub unique = `MSC-CUSTOM-ASTROLOGY` ;
 - destinations = maps connues possédant une balise réellement déployée et persistante ;
-- liaisons hub↔balise uniquement ; aucun beacon↔beacon ;
+- aucune liaison directe balise↔balise : le hub ASTROLOGY reste obligatoire ;
 - BlueFox doit être près de la source ;
 - refus pendant action/séquence non interruptible et refus du double transfert ;
 - arrivée sur zone marchable sûre ; aucune création de map, découverte synthétique ou augmentation artificielle de l'exploration ;
@@ -147,13 +152,15 @@ Téléportation :
 ### Acquis moteur
 - POSTDIP / TP-01→09 déjà présents avant la passe finale ;
 - TP-10 / TP-11 intégrées ;
+- TP-AFTER-01→04 intégrées et clôturées comme arc d'appropriation ;
 - ressources TP : 100 minerais, 50 composants, 20 cores, 100 fibres, 50 biocapital végétal exclusivement Thermosève/plantes fluorescentes, 10 accumulateurs, sous-assemblages issus des blueprints géographiques/fragmentation ;
 - au moins 4 balises persistantes déployées requises et non consommées ;
 - ASTROLOGY conserve ses arches visuelles mais leurs colliders sont neutralisés **uniquement dans cette MSC** ;
-- l'autorité des étapes runtime TP est protégée contre un fallback RESEARCH générique du Planner.
+- l'autorité des étapes runtime TP est protégée contre un fallback RESEARCH générique du Planner ;
+- après TP-AFTER-04, le routage autonome TP opt-in est autorisé conformément au contrat dédié ;
+- chantier de test TP clos au 16/09/2026 : aucune validation TP dédiée ne reste ouverte hors non-régression future lorsqu'un chantier traverse ce périmètre.
 
-### Continuité documentaire à industrialiser
-- `TP-AFTER-01→04` : appropriation du réseau, retour réel, usage transversal, puis baisse forte du poids/obsession Téléportation ;
+### Continuité documentaire encore ouverte
 - `EXP-LONG` : expéditions lointaines et maturation du parcours sans déclencher artificiellement la fin ;
 - `END-CHOICE — Là où je suis arrivé` : choix Rester / Trouver un moyen de rentrer ;
 - `FIN-01 — Ce qu'ils m'ont appris` : Temple + connaissances finales + adieux Rocky/Translucides ;
@@ -228,10 +235,11 @@ Lots intégrés et à préserver :
 - chaîne GAME contact : `GAME-contact_first`, `GAME-contact_cautious`, `GAME-contact_ambassador` ;
 - ANN-01→07 ;
 - POSTDIP / TP-01→11 ;
+- TP-AFTER-01→04 ;
 - TERR-CARN-01→04 ;
 - TERR-STORM-01→04.
 
-Les projets documentaires sans définition moteur — notamment TP-AFTER, EXP-LONG, END/FIN et le lot OPP restant — restent volontairement sans statut moteur validé.
+Les projets documentaires sans définition moteur — notamment EXP-LONG, END/FIN et le lot OPP restant — restent volontairement sans statut moteur validé.
 
 ## Lot ANN — contrat acquis
 
@@ -287,13 +295,13 @@ Le Journal est lazy et persistant :
 - enrichissement uniquement après évolution significative ;
 - aucun polling.
 
-TP-AFTER, OPP et END/FIN devront enrichir les branches existantes plutôt que créer un second Journal.
+TP-AFTER est clos et ses enrichissements doivent rester dans les branches existantes. OPP et END/FIN devront également enrichir les branches existantes plutôt que créer un second Journal.
 
 ## Continuité
 
 - `560249fb91ed2d5c719a4aafa5eabe88b6ee1e46` reste le **checkpoint moteur R-HEALTH sain** ;
-- `bca4b01b8606b630b8ccbae7e5bd3356d3ac0c31` est le **HEAD missionnel vérifié de cette synchronisation** ;
-- prochaine continuité principale : TP-AFTER → EXP-LONG → END-CHOICE/FIN ;
+- `3b01f2bf87ce0ffa5f2c385f21dce16866d6a518` est le **HEAD moteur vérifié de cette synchronisation documentaire** ;
+- TP et TP-AFTER sont clos ; prochaine continuité principale ouverte : EXP-LONG → END-CHOICE/FIN ;
 - chantier parallèle officiel : missions OPPORTUNITÉS / MSC remarquables ;
 - aucun chantier général de réparation moteur n'est ouvert ;
 - les quatre domaines ORANGE restent des zones de validation à compléter lorsqu'un chantier les traverse.
