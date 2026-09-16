@@ -19,10 +19,17 @@
   const SHELTER_NORMAL_ENERGY_FLOOR = 50;
   const TRAIT_THOUGHT_COOLDOWN_MS = 18000;
   const LOCAL_OPPORTUNITY_RADIUS = 14;
+  const TRAIT_LOCAL_ACTION_MAX = 5;
+  const TRAIT_LOCAL_ACTION_WINDOW_MS = 35000;
+  const TRAIT_LOCAL_OPPORTUNITY_COOLDOWN_MS = 45000;
   const preferenceMemory = new Map();
   let lastTargetDecision = null;
   let lastResearchRoutineSourceAt = 0;
   let lastTraitThoughtAt = 0;
+  const traitRuntimeNow = () => {
+    const value = Number(global.performance?.now?.());
+    return Number.isFinite(value) ? value : Date.now();
+  };
 
   const getBAC = () => BF.BAC || null;
   const traitBalance = (left, right) => {
@@ -74,6 +81,62 @@
     engine.callbacks.onSpeak(phrases[Math.floor(Math.random() * phrases.length)]);
     lastTraitThoughtAt = now;
     return true;
+  };
+  const clearTraitLocalActionWindow = (engine, reason = "completed", now = traitRuntimeNow()) => {
+    if (!engine?.__traitLocalActionWindow) return false;
+    const previous = engine.__traitLocalActionWindow;
+    engine.__traitLocalActionWindow = null;
+    if (previous.kind === "opportunity") {
+      engine.__traitLocalOpportunityCooldownUntil = now + TRAIT_LOCAL_OPPORTUNITY_COOLDOWN_MS;
+    }
+    engine.__lastTraitLocalActionWindow = {
+      ...previous,
+      endedAt: now,
+      endReason: reason
+    };
+    return true;
+  };
+  const activeTraitLocalActionWindow = (engine, now = traitRuntimeNow()) => {
+    const state = engine?.__traitLocalActionWindow || null;
+    if (!state) return null;
+    if (Number(state.remaining) <= 0 || Number(state.expiresAt) <= now) {
+      clearTraitLocalActionWindow(engine, Number(state.remaining) <= 0 ? "budget-consumed" : "expired", now);
+      return null;
+    }
+    return state;
+  };
+  const boundedLocalActionBudget = ({ opposition = 0, trust = 0, opportunism = 0 } = {}) => {
+    const resistance = Math.max(0, Math.min(1, Number(opposition) || 0));
+    const distrust = Math.max(0, Math.min(1, -(Number(trust) || 0) / 100));
+    const opportunity = Math.max(0, Math.min(1, Number(opportunism) || 0));
+    const raw = opportunity > 0
+      ? 1 + Math.floor(opportunity * 3)
+      : 1 + Math.floor(resistance * 2.5 + distrust * 2.5);
+    return Math.max(1, Math.min(TRAIT_LOCAL_ACTION_MAX, raw));
+  };
+  const beginTraitLocalActionWindow = (engine, options = {}) => {
+    if (!engine) return null;
+    const now = traitRuntimeNow();
+    const next = {
+      kind: options.kind === "opportunity" ? "opportunity" : "player-opposition",
+      reason: String(options.reason || ""),
+      targetMissionId: options.targetMissionId || null,
+      remaining: Math.max(1, Math.min(TRAIT_LOCAL_ACTION_MAX, Number(options.remaining) || 1)),
+      startedAt: now,
+      expiresAt: now + TRAIT_LOCAL_ACTION_WINDOW_MS
+    };
+    engine.__traitLocalActionWindow = next;
+    return next;
+  };
+  const consumeTraitLocalAction = (engine, actionId) => {
+    const now = traitRuntimeNow();
+    const state = activeTraitLocalActionWindow(engine, now);
+    if (!state) return null;
+    state.remaining = Math.max(0, Number(state.remaining) - 1);
+    state.lastActionId = actionId || null;
+    state.lastActionAt = now;
+    if (state.remaining <= 0) clearTraitLocalActionWindow(engine, "budget-consumed", now);
+    return engine.__traitLocalActionWindow || null;
   };
   const normalizeAxis = (value) => {
     const key = String(value || "").trim().toLowerCase();
@@ -1037,6 +1100,15 @@
               actionAxis(this.trees?.get(missionId)?.availableLeaves?.()[0]?.type) ||
               "exploration";
             const beforePrimary = this.primaryMissionId;
+            const engine = this.engine || BF.currentEngine || null;
+            const existingWindow = activeTraitLocalActionWindow(engine);
+            const repeatedDirective = Boolean(
+              existingWindow?.kind === "player-opposition" &&
+              existingWindow.targetMissionId === missionId
+            );
+            if (repeatedDirective) {
+              clearTraitLocalActionWindow(engine, "player-reissued-directive");
+            }
             const result = originalSuggest.call(this, missionId);
             ensurePriorityState.call(this);
             const bac = getBAC();
@@ -1056,9 +1128,26 @@
                 /(^|[-_])OPP(?:[-_]|$)/i.test(String(missionId || ""))
               )
             }) || { state: "neutral" };
-            if (result && alignment.state === "opposed" && beforePrimary && missionId !== beforePrimary) {
+            if (
+              result &&
+              !repeatedDirective &&
+              alignment.state === "opposed" &&
+              beforePrimary &&
+              missionId !== beforePrimary
+            ) {
+              const trust = Number(bac?.getDiagnostics?.().relation?.trustGeneral) || 0;
+              const remaining = boundedLocalActionBudget({
+                opposition: Math.abs(Number(alignment.score) || 0),
+                trust
+              });
+              beginTraitLocalActionWindow(engine, {
+                kind: "player-opposition",
+                reason: `trait:${alignment.trait || "opposition"}`,
+                targetMissionId: missionId,
+                remaining
+              });
               this.selectionReason =
-                `BlueFox a bien pris en compte la nouvelle priorité, mais termine d'abord ce qu'il fait localement.`;
+                `BlueFox a bien pris en compte la nouvelle priorité, mais termine ${remaining > 1 ? "quelques actions" : "une action"} très locale avant de changer de cap.`;
               this.publish?.();
             }
             return result;
@@ -1274,15 +1363,33 @@
           return this.targetInteraction(object);
         }
       }
+      if (
+        this.transitioning ||
+        this.pendingGate ||
+        this.pendingZoneExploration ||
+        this.persistentNavigationIntent ||
+        this.missionManager?.currentAction
+      ) {
+        clearTraitLocalActionWindow(this, "higher-authority-action");
+      }
       if (this.transitioning || this.pendingInteraction || this.pendingGate || this.pendingZoneExploration || this.currentRoutine || this.missionManager?.currentAction) {
         if (this.persistentNavigationIntent && !this.transitioning && !this.pendingInteraction && !this.currentRoutine && !this.missionManager?.currentAction) {
           this.resumePersistentNavigation?.();
         }
         return;
       }
+      let traitLocalWindow = activeTraitLocalActionWindow(this, now);
       if (now < this.postActionRecoveryUntil || now - this.lastAutonomyAt < 5000) return;
       if (this.character.root.position.distanceTo(this.character.target) > 0.2) return;
       const survival = BF.getSurvivalState?.() || {};
+      if (
+        survival.needs?.criticalRest ||
+        survival.needs?.rest ||
+        survival.needs?.food
+      ) {
+        clearTraitLocalActionWindow(this, "survival-priority");
+      }
+      traitLocalWindow = activeTraitLocalActionWindow(this, now);
       const fatigue = survival.fatigue || { level: "normal", movement: 1, actionDuration: 1 };
       this.character.fatigueSpeedMultiplier = fatigue.movement || 1;
       const survivalDecision = BAC.evaluateSurvivalDecision?.({
@@ -1376,6 +1483,10 @@
         return;
       }
 
+      if (primaryMissionOwnsAction && traitLocalWindow) {
+        clearTraitLocalActionWindow(this, "primary-mission-authority");
+        traitLocalWindow = null;
+      }
       if (
         primaryMissionOwnsAction &&
         rationCandidate?.allowDuringPrimaryMission !== true &&
@@ -1403,6 +1514,12 @@
         research: interactables.filter((object) => objectAxis(this, object) === "research"),
         relations: interactables.filter((object) => objectAxis(this, object) === "relations")
       };
+      const localByAxis = Object.fromEntries(
+        Object.entries(byAxis).map(([axis, objects]) => [
+          axis,
+          objects.filter((object) => routeCost(this, object) <= LOCAL_OPPORTUNITY_RADIUS)
+        ])
+      );
 
       const interests = {
         collection: bestInterest(this, byAxis.collection, "collection", decision),
@@ -1433,6 +1550,21 @@
           objectTags(object).some((tag) => /rare|unique|crystal|relic|valuable/.test(tag))
         );
       });
+      if (
+        !traitLocalWindow &&
+        !primaryMissionOwnsAction &&
+        opportunism >= 0.35 &&
+        localOpportunityCollectables.length >= 2 &&
+        now >= Number(this.__traitLocalOpportunityCooldownUntil || 0)
+      ) {
+        traitLocalWindow = beginTraitLocalActionWindow(this, {
+          kind: "opportunity",
+          reason: "opportuniste:opportunite",
+          remaining: boundedLocalActionBudget({ opportunism })
+        });
+        speakTraitThought(this, "opportuniste:opportunite");
+      }
+
       const personalityWeight = (baseWeight, balance, maxRatio, positiveReason, negativeReason = null) => {
         const ratio = Math.max(-maxRatio, Math.min(maxRatio, balance * maxRatio));
         return {
@@ -1507,7 +1639,7 @@
           available: interests.relations > 0,
           execute: () => commitTarget(
             this,
-            chooseLocalTarget(this, byAxis.relations, "relations", decision),
+            chooseLocalTarget(this, traitLocalWindow ? localByAxis.relations : byAxis.relations, "relations", decision),
             "relations"
           )
         },
@@ -1522,11 +1654,18 @@
             "respectueux:mesure"
           ),
           available: interests.collection > 0,
-          execute: () => commitTarget(
-            this,
-            chooseLocalTarget(this, byAxis.collection, "collection", decision),
-            "collection"
-          )
+          execute: () => {
+            const collectionPool = traitLocalWindow?.kind === "opportunity"
+              ? localOpportunityCollectables
+              : traitLocalWindow
+                ? localByAxis.collection
+                : byAxis.collection;
+            return commitTarget(
+              this,
+              chooseLocalTarget(this, collectionPool, "collection", decision),
+              "collection"
+            );
+          }
         },
         {
           id: "research-object",
@@ -1535,7 +1674,7 @@
           available: interests.research > 0,
           execute: () => commitTarget(
             this,
-            chooseLocalTarget(this, byAxis.research, "research", decision),
+            chooseLocalTarget(this, traitLocalWindow ? localByAxis.research : byAxis.research, "research", decision),
             "research"
           )
         },
@@ -1590,9 +1729,29 @@
           experimentationCandidate?.missionDriven !== true
         );
 
-      const selected = preferenceCommitmentActive
-        ? preferredCollectionOption
-        : weightedPick(options);
+      const localActionOptions = options.filter((option) =>
+        ["collection-object", "research-object", "relations-object"].includes(option.id) &&
+        option.available !== false &&
+        (localByAxis[option.axis]?.length || 0) > 0
+      );
+      let selected = null;
+      if (traitLocalWindow?.kind === "opportunity") {
+        selected = localOpportunityCollectables.length ? preferredCollectionOption : null;
+      } else if (traitLocalWindow?.kind === "player-opposition") {
+        selected = weightedPick(localActionOptions);
+      } else {
+        selected = preferenceCommitmentActive
+          ? preferredCollectionOption
+          : weightedPick(options);
+      }
+      if (traitLocalWindow && !selected) {
+        clearTraitLocalActionWindow(this, "no-local-action");
+        traitLocalWindow = null;
+        if (primaryMissionOwnsAction) return;
+        selected = preferenceCommitmentActive
+          ? preferredCollectionOption
+          : weightedPick(options);
+      }
       if (!selected) return originalAutonomy(now);
       if (lastTargetDecision) {
         lastTargetDecision.preferenceActivityBoosts = { ...preferenceBoosts };
@@ -1604,6 +1763,13 @@
         };
       }
       const selectedResult = selected.execute();
+      if (
+        selectedResult !== false &&
+        traitLocalWindow &&
+        ["collection-object", "research-object", "relations-object"].includes(selected.id)
+      ) {
+        consumeTraitLocalAction(this, selected.id);
+      }
       if (lastTargetDecision) {
         lastTargetDecision.traitReason = selected.traitReason || null;
         lastTargetDecision.traitRatio = Number(selected.traitRatio) || 0;
@@ -1690,6 +1856,10 @@
         lastTargetDecision,
         traitThoughtCooldownMs: TRAIT_THOUGHT_COOLDOWN_MS,
         lastTraitThoughtAt,
+        traitLocalActionWindow: activeTraitLocalActionWindow(engine),
+        lastTraitLocalActionWindow: engine?.__lastTraitLocalActionWindow || null,
+        traitLocalActionMax: TRAIT_LOCAL_ACTION_MAX,
+        traitLocalActionWindowMs: TRAIT_LOCAL_ACTION_WINDOW_MS,
         shelterOpportunity: autonomousShelterOpportunity(engine, BF.getSurvivalState?.() || {}),
         preferenceCommitment: (() => {
           const e = preferredEntry();
