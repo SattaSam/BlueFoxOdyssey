@@ -35,6 +35,13 @@ const AX = {
   "repos/survie": "survival"
 };
 
+const traitStorageName = (value) =>
+  norm(value) === "opportuniste" ? "destructeur" : norm(value);
+const traitDisplayName = (value) =>
+  norm(value) === "destructeur" ? "Opportuniste" : String(value || "");
+const traitPairKey = (left, right) =>
+  `${traitStorageName(left)}|${traitStorageName(right)}`;
+
 const PAIR_TIP = {
   "curieux|prudent":
     "Curieux : Observe spontanément ce qui l'entoure. ↑ Exploration, observation et recherche.\n" +
@@ -46,8 +53,8 @@ const PAIR_TIP = {
     "Empathique : S'intéresse aux êtres vivants. ↑ Relations, faune et PNJ.\n" +
     "Indifférent : Reste focalisé sur ses objectifs. ↑ Ignore plus souvent les interactions sociales.",
   "respectueux|destructeur":
-    "Respectueux : Préserve davantage son environnement. ↑ Réduit les destructions inutiles.\n" +
-    "Destructeur : Exploite les ressources sans hésiter. ↑ Collecte rapide, impact environnemental plus important."
+    "Respectueux : S'arrête plus volontiers à l'interaction utile et tient compte de ses conséquences.\n" +
+    "Opportuniste : Saisit plus volontiers une occasion locale utile, rare ou avantageuse."
 };
 
 let lock = false;
@@ -90,7 +97,7 @@ function readTraitPairs() {
 }
 
 function writeTraitPair(left, right, leftValue) {
-  const key = `${norm(left)}|${norm(right)}`;
+  const key = traitPairKey(left, right);
   if (!Object.prototype.hasOwnProperty.call(DEFAULT_TRAIT_PAIRS, key)) return false;
   const next = readTraitPairs();
   next[key] = clamp(leftValue);
@@ -105,6 +112,7 @@ function readTraitProfile() {
     const [leftName, rightName] = key.split("|");
     profile[leftName] = left;
     profile[rightName] = 100 - left;
+    if (rightName === "destructeur") profile.opportuniste = 100 - left;
   });
   return Object.freeze(profile);
 }
@@ -182,11 +190,11 @@ function updateTrait(row) {
   const names =
     row.dataset.traitLeft && row.dataset.traitRight
       ? [row.dataset.traitLeft, row.dataset.traitRight]
-      : split(label?.textContent);
+      : split(label?.textContent).map(traitDisplayName);
 
   if (!input || !output || names.length !== 2) return;
-  row.dataset.traitLeft = names[0];
-  row.dataset.traitRight = names[1];
+  row.dataset.traitLeft = traitDisplayName(names[0]);
+  row.dataset.traitRight = traitDisplayName(names[1]);
 
   const left = clamp(input.value);
   const right = 100 - left;
@@ -206,9 +214,9 @@ function tooltips(row) {
   row.querySelectorAll("[title]").forEach((element) => element.removeAttribute("title"));
   row.querySelectorAll(".bac-trait-info").forEach((element) => element.remove());
 
-  const left = norm(row.dataset.traitLeft);
-  const right = norm(row.dataset.traitRight);
-  const text = PAIR_TIP[`${left}|${right}`] || "";
+  const left = row.dataset.traitLeft;
+  const right = row.dataset.traitRight;
+  const text = PAIR_TIP[traitPairKey(left, right)] || "";
 
   if (text) {
     row.dataset.tooltip = text;
@@ -671,7 +679,7 @@ function enhance() {
     const input = row.querySelector('input[type="range"]');
     const rawNames = split(row.querySelector("span")?.textContent || "");
     if (input && rawNames.length === 2 && input.dataset.bluefoxTraitRestored !== "1") {
-      const key = `${norm(rawNames[0])}|${norm(rawNames[1])}`;
+      const key = traitPairKey(rawNames[0], rawNames[1]);
       if (global.localStorage.getItem(TRAIT_STORAGE_KEY)) {
         const stored = readTraitPairs();
         if (Object.prototype.hasOwnProperty.call(stored, key)) input.value = String(stored[key]);

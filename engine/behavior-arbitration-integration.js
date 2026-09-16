@@ -17,11 +17,64 @@
   // et seuil d'énergie du profil de fatigue normal = 50.
   const SHELTER_TRAVEL_ENERGY_COST = 1.2;
   const SHELTER_NORMAL_ENERGY_FLOOR = 50;
+  const TRAIT_THOUGHT_COOLDOWN_MS = 18000;
+  const LOCAL_OPPORTUNITY_RADIUS = 14;
   const preferenceMemory = new Map();
   let lastTargetDecision = null;
   let lastResearchRoutineSourceAt = 0;
+  let lastTraitThoughtAt = 0;
 
   const getBAC = () => BF.BAC || null;
+  const traitBalance = (left, right) => {
+    const BAC = getBAC();
+    if (typeof BAC?.traitBalance === "function") return BAC.traitBalance(left, right);
+    const traits = BF.getPlayerTraitProfile?.() || {};
+    const value = (name) => Math.max(0, Math.min(100, Number(traits?.[name]) || 50));
+    return Math.max(-1, Math.min(1, (value(left) - value(right)) / 100));
+  };
+  const traitThoughts = Object.freeze({
+    "curieux:detour": [
+      "Tiens… je ferais bien un détour.",
+      "Il y a encore quelque chose à découvrir par là."
+    ],
+    "prudent:proximite": [
+      "Je préfère ne pas trop m'éloigner pour l'instant.",
+      "Je garde une marge avant d'aller plus loin."
+    ],
+    "courageux:nouvel-axe": [
+      "Je ne sais pas où ça mène… allons voir.",
+      "C'est nouveau. J'ai envie de tenter cette piste."
+    ],
+    "craintif:continuite": [
+      "Je préfère continuer sur ma voie pour le moment.",
+      "Je dois rester concentré sur mon objectif."
+    ],
+    "opportuniste:opportunite": [
+      "Je ne vais pas passer à côté de cette opportunité.",
+      "Tant que je suis ici, autant en profiter."
+    ],
+    "empathique:souvenir": [
+      "Je n'arrive pas à laisser cette piste de côté.",
+      "Ce que j'ai vécu ici compte encore pour moi."
+    ],
+    "indifferent:objectif": [
+      "Je dois rester concentré sur mon objectif.",
+      "Je préfère m'en tenir à ce qui est utile maintenant."
+    ],
+    "respectueux:mesure": [
+      "Pas besoin d'en prendre plus.",
+      "Je préfère laisser le reste tranquille."
+    ]
+  });
+  const speakTraitThought = (engine, reason) => {
+    const phrases = traitThoughts[reason];
+    if (!phrases?.length || !engine?.speechVisible || !engine?.callbacks?.onSpeak) return false;
+    const now = Date.now();
+    if (now - lastTraitThoughtAt < TRAIT_THOUGHT_COOLDOWN_MS) return false;
+    engine.callbacks.onSpeak(phrases[Math.floor(Math.random() * phrases.length)]);
+    lastTraitThoughtAt = now;
+    return true;
+  };
   const normalizeAxis = (value) => {
     const key = String(value || "").trim().toLowerCase();
     if (["exploration", "explore"].includes(key)) return "exploration";
@@ -983,8 +1036,31 @@
               normalizeAxis(definition.domain) ||
               actionAxis(this.trees?.get(missionId)?.availableLeaves?.()[0]?.type) ||
               "exploration";
+            const beforePrimary = this.primaryMissionId;
             const result = originalSuggest.call(this, missionId);
             ensurePriorityState.call(this);
+            const bac = getBAC();
+            const narrativeAxis = String(definition.narrativeAxis || "").trim();
+            const alignment = bac?.temperamentAlignment?.(axis, {
+              missionId,
+              continuity: missionId === beforePrimary,
+              novelNarrative: Boolean(
+                narrativeAxis &&
+                missionId !== beforePrimary &&
+                Math.max(0, Number(BF.getNarrativeAxisScore?.(narrativeAxis)) || 0) <= 0
+              ),
+              psychological: Boolean(definition.obsessionEligible || narrativeAxis),
+              opportunity: Boolean(
+                definition.opportunity === true ||
+                definition.opportunistic === true ||
+                /(^|[-_])OPP(?:[-_]|$)/i.test(String(missionId || ""))
+              )
+            }) || { state: "neutral" };
+            if (result && alignment.state === "opposed" && beforePrimary && missionId !== beforePrimary) {
+              this.selectionReason =
+                `BlueFox a bien pris en compte la nouvelle priorité, mais termine d'abord ce qu'il fait localement.`;
+              this.publish?.();
+            }
             return result;
           };
       }
@@ -993,8 +1069,16 @@
       if (typeof originalSelectBestPrimary === "function") {
         Manager.prototype.selectBestPrimary =
           function selectBestPrimaryWithQueue(now, force) {
+            const beforePrimary = this.primaryMissionId;
             const result = originalSelectBestPrimary.call(this, now, force);
             const primary = this.primaryMissionId;
+            if (primary && primary !== beforePrimary) {
+              const assessment = this.assessMission?.(primary, this.bridge?.context?.());
+              const traitReason = assessment?.bac?.temperament?.reason || null;
+              if (traitReason && Math.abs(Number(assessment?.bac?.temperament?.modifier) || 0) >= 0.5) {
+                speakTraitThought(BF.currentEngine, traitReason);
+              }
+            }
             const ranked = (this.activeMissionIds || [])
               .filter((id) => id !== primary)
               .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
@@ -1338,6 +1422,26 @@
       const objectWeight = (interest, preferenceBoost = 0) =>
         Math.max(0, 6 + interest * 0.22 + preferenceBoost * 0.35);
 
+      const curiosity = traitBalance("curieux", "prudent");
+      const opportunism = traitBalance("opportuniste", "respectueux");
+      const localOpportunityCollectables = byAxis.collection.filter((object) => {
+        if (routeCost(this, object) > LOCAL_OPPORTUNITY_RADIUS) return false;
+        const interest = targetInterest(this, object, "collection", decision);
+        return interest.score >= 30 && (
+          interest.reasons.includes("new-resource") ||
+          interest.reasons.includes("new-object") ||
+          objectTags(object).some((tag) => /rare|unique|crystal|relic|valuable/.test(tag))
+        );
+      });
+      const personalityWeight = (baseWeight, balance, maxRatio, positiveReason, negativeReason = null) => {
+        const ratio = Math.max(-maxRatio, Math.min(maxRatio, balance * maxRatio));
+        return {
+          baseWeight: Math.max(0.001, Number(baseWeight) * (1 + ratio)),
+          traitReason: ratio >= 0.06 ? positiveReason : ratio <= -0.06 ? negativeReason : null,
+          traitRatio: ratio
+        };
+      };
+
       const hasFreshLocalInterest =
         interests.collection >= 30 ||
         interests.research >= 30 ||
@@ -1410,7 +1514,13 @@
         {
           id: "collection-object",
           axis: "collection",
-          baseWeight: objectWeight(interests.collection, preferenceBoosts.collection),
+          ...personalityWeight(
+            objectWeight(interests.collection, preferenceBoosts.collection),
+            localOpportunityCollectables.length ? opportunism : 0,
+            0.28,
+            "opportuniste:opportunite",
+            "respectueux:mesure"
+          ),
           available: interests.collection > 0,
           execute: () => commitTarget(
             this,
@@ -1432,7 +1542,7 @@
         {
           id: "known-gate",
           axis: "exploration",
-          baseWeight: 12,
+          ...personalityWeight(12, curiosity, 0.16, "curieux:detour", "prudent:proximite"),
           available:
             gateUseful &&
             this.canStartAutonomousGate?.() !== false,
@@ -1449,7 +1559,7 @@
         {
           id: "patrol",
           axis: "exploration",
-          baseWeight: exploration.next ? 24 : 0,
+          ...personalityWeight(exploration.next ? 24 : 0, curiosity, 0.22, "curieux:detour", "prudent:proximite"),
           available: Boolean(exploration.next),
           execute: () => {
             const target = new this.THREE.Vector3(
@@ -1494,6 +1604,14 @@
         };
       }
       const selectedResult = selected.execute();
+      if (lastTargetDecision) {
+        lastTargetDecision.traitReason = selected.traitReason || null;
+        lastTargetDecision.traitRatio = Number(selected.traitRatio) || 0;
+        lastTargetDecision.localOpportunityCollectables = localOpportunityCollectables.length;
+      }
+      if (selectedResult !== false && selected.traitReason && Math.abs(Number(selected.traitRatio) || 0) >= 0.06) {
+        speakTraitThought(this, selected.traitReason);
+      }
       if (selected.id !== "known-gate" && selectedResult !== false) {
         this.noteLocalAutonomousDecision?.();
       }
@@ -1570,6 +1688,8 @@
         autonomyUnderlyingHook: "",
         rationAutonomyDecision: engine?.__lastRationAutonomyDecision || null, targetPreference: (() => { const e = preferredEntry(); return e ? { kind:e.kind, count:e.count, strength:Number(e.strength.toFixed(2)), ageMs:Date.now()-e.lastAt, lastAxis:e.lastAxis } : null; })(),
         lastTargetDecision,
+        traitThoughtCooldownMs: TRAIT_THOUGHT_COOLDOWN_MS,
+        lastTraitThoughtAt,
         shelterOpportunity: autonomousShelterOpportunity(engine, BF.getSurvivalState?.() || {}),
         preferenceCommitment: (() => {
           const e = preferredEntry();

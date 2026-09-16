@@ -16,7 +16,8 @@
   const RELATION_STORAGE_KEY = "bluefox_bac_relation_v1";
   const TRUST_TUNING = Object.freeze({
     alignedSuccess: 1.15,
-    opposedSuccess: -0.35,
+    neutralSuccess: 0.75,
+    opposedSuccess: 0.55,
     alignedFailure: -1.25,
     opposedFailure: -3.25,
     opposedUseless: -2.5,
@@ -24,7 +25,16 @@
     highTrustSoftCap: 55,
     highTrustGainFactor: 0.35,
     awarenessSuggestionGain: 0.35,
-    awarenessResolutionGain: 0.2
+    awarenessResolutionGain: 0.2,
+    alignedSuggestion: 0.30,
+    opposedSuggestion: -0.55,
+    suggestionGeneralRatio: 0.40
+  });
+  const TRAIT_TUNING = Object.freeze({
+    psychologyMaxRatio: 0.18,
+    missionNoveltyMaxRatio: 0.06,
+    missionContinuityMaxRatio: 0.05,
+    opportunityMaxRatio: 0.05
   });
 
   const AXES = Object.freeze([
@@ -81,6 +91,62 @@
   const clone = (value) => value == null
     ? value
     : JSON.parse(JSON.stringify(value));
+
+  const readTraits = () => {
+    const raw = BF.getPlayerTraitProfile?.() || {};
+    const value = (name) => clamp(raw?.[name] ?? 50);
+    const destructeur = value("destructeur");
+    return {
+      curieux: value("curieux"),
+      prudent: value("prudent"),
+      courageux: value("courageux"),
+      craintif: value("craintif"),
+      empathique: value("empathique"),
+      indifferent: value("indifferent"),
+      respectueux: value("respectueux"),
+      opportuniste: clamp(raw?.opportuniste ?? destructeur)
+    };
+  };
+
+  const traitBalance = (left, right) => {
+    const traits = readTraits();
+    return Math.max(-1, Math.min(1, ((traits[left] ?? 50) - (traits[right] ?? 50)) / 100));
+  };
+
+  const opportunityMission = (missionId, definition = {}, lifecycle = null) => Boolean(
+    definition.opportunity === true ||
+    definition.opportunistic === true ||
+    /opportunity/i.test(String(lifecycle?.source || "")) ||
+    /opportunity/i.test(String(lifecycle?.discoveryReason || "")) ||
+    /(^|[-_])OPP(?:[-_]|$)/i.test(String(missionId || ""))
+  );
+
+  const temperamentAlignment = (axis, detail = {}) => {
+    const signals = [];
+    if (detail.longTravel === true || detail.detour === true) {
+      signals.push({ trait: "curieux", score: traitBalance("curieux", "prudent") });
+    }
+    if (detail.novelNarrative === true) {
+      signals.push({ trait: "courageux", score: traitBalance("courageux", "craintif") });
+    } else if (detail.continuity === true) {
+      signals.push({ trait: "craintif", score: -traitBalance("courageux", "craintif") });
+    }
+    if (detail.psychological === true) {
+      signals.push({ trait: "empathique", score: traitBalance("empathique", "indifferent") });
+    }
+    if (detail.opportunity === true || detail.extraCollection === true) {
+      signals.push({ trait: "opportuniste", score: traitBalance("opportuniste", "respectueux") });
+    }
+    const strongest = signals
+      .filter((entry) => Math.abs(entry.score) >= 0.18)
+      .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))[0] || null;
+    if (!strongest) return { state: "neutral", score: 0, trait: null };
+    return {
+      state: strongest.score > 0 ? "aligned" : "opposed",
+      score: strongest.score,
+      trait: strongest.trait
+    };
+  };
 
   const loadLegacySave = () => {
     try {
@@ -220,14 +286,30 @@
 
   const recordPlayerSuggestion = (axis, detail = {}) => {
     const normalized = normalizeAxis(axis) || "exploration";
+    const temperament = temperamentAlignment(normalized, detail);
     relation.awareness = clamp(
       relation.awareness + TRUST_TUNING.awarenessSuggestionGain,
       0,
       100
     );
+    const immediateDelta = temperament.state === "aligned"
+      ? TRUST_TUNING.alignedSuggestion
+      : temperament.state === "opposed"
+        ? TRUST_TUNING.opposedSuggestion
+        : 0;
+    if (immediateDelta) {
+      relation.trustByAxis[normalized] = clampTrust(
+        relation.trustByAxis[normalized] + immediateDelta
+      );
+      relation.trustGeneral = clampTrust(
+        relation.trustGeneral + immediateDelta * TRUST_TUNING.suggestionGeneralRatio
+      );
+    }
     relation.lastPlayerSuggestion = {
       axis: normalized,
       detail: clone(detail),
+      temperament,
+      immediateDelta,
       at: Date.now(),
       resolved: false
     };
@@ -243,13 +325,20 @@
     const axisPriority = priorities[suggestion.axis] ?? 50;
     const useful = result.useful !== false;
     const successful = result.success !== false;
-    const aligned = axisPriority >= 50;
+    const temperamentState = suggestion.temperament?.state || "neutral";
+    const priorityAligned = axisPriority >= 50;
+    const alignment = temperamentState === "opposed"
+      ? "opposed"
+      : temperamentState === "aligned" || priorityAligned
+        ? "aligned"
+        : "neutral";
     let delta = 0;
 
-    if (successful && useful && aligned) delta = TRUST_TUNING.alignedSuccess;
-    else if (successful && useful) delta = TRUST_TUNING.opposedSuccess;
-    else if (!successful && !aligned) delta = TRUST_TUNING.opposedFailure;
-    else if (!useful && !aligned) delta = TRUST_TUNING.opposedUseless;
+    if (successful && useful && alignment === "aligned") delta = TRUST_TUNING.alignedSuccess;
+    else if (successful && useful && alignment === "opposed") delta = TRUST_TUNING.opposedSuccess;
+    else if (successful && useful) delta = TRUST_TUNING.neutralSuccess;
+    else if (!successful && alignment === "opposed") delta = TRUST_TUNING.opposedFailure;
+    else if (!useful && alignment === "opposed") delta = TRUST_TUNING.opposedUseless;
     else delta = TRUST_TUNING.alignedFailure;
 
     const currentAxisTrust = clampTrust(relation.trustByAxis[suggestion.axis]);
@@ -270,6 +359,7 @@
     suggestion.resolved = true;
     suggestion.result = {
       ...clone(result),
+      alignment,
       delta,
       at: Date.now()
     };
@@ -325,7 +415,7 @@
         ? "Tu avais raison. Cette voie me correspond."
         : "Je t’écoute, mais cette décision ne me ressemble pas.";
     }
-    if (rebellious) return "Non. Cette fois, je préfère suivre mon propre jugement.";
+    if (rebellious) return "D’accord… mais je préfère finir ce que j’ai commencé avant de changer de cap.";
     return positive
       ? "Ton ordre s’est révélé utile."
       : "Tu me donnes encore un ordre contraire à ce que je suis.";
@@ -496,8 +586,10 @@
         })) || 0
       )
     );
+    const empathyBalance = traitBalance("empathique", "indifferent");
+    const psychologyFactor = 1 + empathyBalance * TRAIT_TUNING.psychologyMaxRatio;
     const memoryModifier =
-      score * MISSION_PSYCHOLOGY_TUNING.memoryRatio * (memoryScore / 100);
+      score * MISSION_PSYCHOLOGY_TUNING.memoryRatio * (memoryScore / 100) * psychologyFactor;
 
     const narrativeScore = definition?.narrativeAxis
       ? Math.max(0, Number(BF.getNarrativeAxisScore?.(definition.narrativeAxis)) || 0)
@@ -510,10 +602,10 @@
 
     const intensity = Math.max(1, Math.min(5, Number(definition?.obsessionIntensity) || 1));
     const obsessionBaseModifier = definition?.obsessionEligible === true
-      ? score * (MISSION_PSYCHOLOGY_TUNING.obsessionBaseRatios[intensity] || 0)
+      ? score * (MISSION_PSYCHOLOGY_TUNING.obsessionBaseRatios[intensity] || 0) * psychologyFactor
       : 0;
     const obsessionPressure = definition?.obsessionEligible === true
-      ? Math.max(0, Number(BF.getMissionObsessionPressure?.(missionId)) || 0)
+      ? Math.max(0, Number(BF.getMissionObsessionPressure?.(missionId)) || 0) * psychologyFactor
       : 0;
 
     const parts = {
@@ -521,11 +613,45 @@
       memory: memoryModifier,
       narrative: narrativeModifier,
       obsessionBase: obsessionBaseModifier,
-      obsessionPressure
+      obsessionPressure,
+      traitFactor: psychologyFactor
     };
     return {
       modifier: Object.values(parts).reduce((sum, value) => sum + value, 0),
       parts
+    };
+  };
+
+  const missionTemperamentModifier = (manager, definition, baseScore, missionId) => {
+    const score = Math.max(0, Number(baseScore) || 0);
+    if (!score) return { modifier: 0, reason: null, alignment: "neutral" };
+    let modifier = 0;
+    let reason = null;
+    const current = String(manager?.primaryMissionId || "");
+    const narrativeAxis = String(definition?.narrativeAxis || "").trim();
+    const narrativeScore = narrativeAxis
+      ? Math.max(0, Number(BF.getNarrativeAxisScore?.(narrativeAxis)) || 0)
+      : 0;
+    const courage = traitBalance("courageux", "craintif");
+    const opportunity = traitBalance("opportuniste", "respectueux");
+
+    if (narrativeAxis && narrativeScore <= 0 && missionId !== current && courage > 0.15) {
+      modifier += score * TRAIT_TUNING.missionNoveltyMaxRatio * courage;
+      reason = "courageux:nouvel-axe";
+    } else if (missionId === current && courage < -0.15) {
+      modifier += score * TRAIT_TUNING.missionContinuityMaxRatio * Math.abs(courage);
+      reason = "craintif:continuite";
+    }
+
+    const lifecycle = manager?.ensureLifecycle?.(missionId) || null;
+    if (opportunityMission(missionId, definition, lifecycle) && opportunity > 0.15) {
+      modifier += score * TRAIT_TUNING.opportunityMaxRatio * opportunity;
+      reason ||= "opportuniste:opportunite";
+    }
+    return {
+      modifier,
+      reason,
+      alignment: modifier > 0 ? "aligned" : "neutral"
     };
   };
 
@@ -618,11 +744,31 @@
             `psychologie ${psychology.modifier >= 0 ? "+" : ""}${Math.round(psychology.modifier)}`
           );
         }
+        const temperament = missionTemperamentModifier(
+          this,
+          definition,
+          result.score,
+          missionId
+        );
+        if (
+          !temperament.reason &&
+          Math.abs(Number(psychology.parts?.traitFactor) - 1) >= 0.05 &&
+          Math.abs(Number(psychology.modifier) || 0) >= 0.5
+        ) {
+          temperament.reason = Number(psychology.parts.traitFactor) > 1
+            ? "empathique:souvenir"
+            : "indifferent:objectif";
+        }
+        result.score += temperament.modifier;
+        if (Math.abs(temperament.modifier) >= 0.5 && temperament.reason) {
+          result.reasons.push(`trait ${temperament.reason} +${Math.round(temperament.modifier)}`);
+        }
         result.bac = {
           axis,
           priority: influence.priority,
           modifier: influence.modifier,
-          psychology
+          psychology,
+          temperament
         };
         return result;
       };
@@ -759,6 +905,31 @@
     const recovery = weightedPick(options);
     if (recovery) return recovery;
 
+    const prudence = traitBalance("prudent", "curieux");
+    const energy = Number(survival.energy);
+    const prudentMicroRestThreshold = 62 + Math.max(0, prudence) * 6;
+    if (
+      prudence >= 0.2 &&
+      Number.isFinite(energy) &&
+      energy <= prudentMicroRestThreshold &&
+      !survival.needs?.rest &&
+      !survival.needs?.food &&
+      BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true
+    ) {
+      return {
+        id: "prudent-micro-rest",
+        axis: "survival",
+        routine: "micro-rest",
+        duration: 2200 + Math.random() * 1800,
+        detail: {
+          restGain: fatigue.level === "heavy" ? 10 : 8,
+          pressureReduction: 0.75,
+          personalityReason: "prudent:recuperation"
+        },
+        speech: "micro-rest"
+      };
+    }
+
     if (
       BF.isTutorialSurvivalCapabilityUnlocked?.("micro-rest") === true &&
       Number(autonomyActionStreak) >= Number(autonomyBreakTarget) &&
@@ -824,9 +995,22 @@
           normalizeAxis(definition.domain) ||
           actionAxis(this.trees?.get(missionId)?.availableLeaves?.()[0]?.type) ||
           "exploration";
+        const narrativeAxis = String(definition.narrativeAxis || "").trim();
         recordPlayerSuggestion(axis, {
           missionId,
-          source: "mission-priority"
+          source: "mission-priority",
+          continuity: missionId === this.primaryMissionId,
+          novelNarrative: Boolean(
+            narrativeAxis &&
+            missionId !== this.primaryMissionId &&
+            Math.max(0, Number(BF.getNarrativeAxisScore?.(narrativeAxis)) || 0) <= 0
+          ),
+          psychological: Boolean(definition.obsessionEligible || narrativeAxis),
+          opportunity: opportunityMission(
+            missionId,
+            definition,
+            this.ensureLifecycle?.(missionId) || null
+          )
         });
         return originalSuggestPrimaryMission.call(this, missionId);
       };
@@ -851,6 +1035,7 @@
     missionPsychologyTuning: clone(MISSION_PSYCHOLOGY_TUNING),
     psychology: BF.getMultiProgressionState?.().psychology || null,
     profile: readProfile(),
+    traits: readTraits(),
     relation: {
       awareness: relation.awareness,
       awarenessStage: awarenessStage(),
@@ -953,6 +1138,9 @@
     priorityBudget: PRIORITY_BUDGET,
     maxDecisionInfluence: MAX_DECISION_INFLUENCE,
     readProfile,
+    readTraits,
+    traitBalance,
+    temperamentAlignment,
     axisWeight,
     priorityModifier,
     suggestionMultiplier,
