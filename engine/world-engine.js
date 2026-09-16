@@ -2224,6 +2224,8 @@
       if (this.pendingInteraction || this.currentRoutine || this.missionManager?.currentAction) {
         return false;
       }
+      const survival = BF.getSurvivalState?.() || {};
+      if (survival.needs?.criticalRest) return false;
       const prescription = BF.resolveBibleNavigationSuggestion?.(this, intent);
       if (prescription?.action === "return-base") {
         this.clearPersistentNavigationIntent();
