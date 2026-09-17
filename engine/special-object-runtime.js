@@ -708,7 +708,10 @@
     const quantity = Math.max(1, Number(options.quantity) || 1);
     const respawnMs = Math.max(
       30000,
-      Number(definition?.interaction?.respawnSeconds || 300) * 1000
+      Number(
+        BF.resolveObjectRespawnSeconds?.(definition, definition?.interaction?.respawnSeconds || 300) ??
+        (definition?.interaction?.respawnSeconds || 300)
+      ) * 1000
     );
     state.resources[`remote:${drone.deployedMapId}:${record.instanceId}`] = {
       respawnAt: now + respawnMs
@@ -762,7 +765,10 @@
     const definition = target.root.userData.functional;
     const respawnMs = Math.max(
       30000,
-      Number(definition?.interaction?.respawnSeconds || 300) * 1000
+      Number(
+        BF.resolveObjectRespawnSeconds?.(definition, definition?.interaction?.respawnSeconds || 300) ??
+        (definition?.interaction?.respawnSeconds || 300)
+      ) * 1000
     );
     drone.lastActionAt = now;
     state.resources[instanceKey(target.root)] = { respawnAt: now + respawnMs };
@@ -908,7 +914,10 @@
     if (!drone || !record || elapsed < interval) return 0;
     const respawnMs = Math.max(
       30000,
-      Number(record.definition?.interaction?.respawnSeconds || 300) * 1000
+      Number(
+        BF.resolveObjectRespawnSeconds?.(record.definition, record.definition?.interaction?.respawnSeconds || 300) ??
+        (record.definition?.interaction?.respawnSeconds || 300)
+      ) * 1000
     );
     const resourceKey = `remote:${drone.deployedMapId}:${record.instanceId}`;
     const pendingRespawnAt = Number(state.resources[resourceKey]?.respawnAt || 0);
@@ -937,7 +946,10 @@
     const interval = HARVEST_INTERVAL_MS * OFFLINE_INTERVAL_MULTIPLIER;
     const respawnMs = Math.max(
       30000,
-      Number(record.definition?.interaction?.respawnSeconds || 300) * 1000
+      Number(
+        BF.resolveObjectRespawnSeconds?.(record.definition, record.definition?.interaction?.respawnSeconds || 300) ??
+        (record.definition?.interaction?.respawnSeconds || 300)
+      ) * 1000
     );
     const resourceKey = `remote:${drone.deployedMapId}:${record.instanceId}`;
     const pendingRespawnAt = Number(state.resources[resourceKey]?.respawnAt || 0);

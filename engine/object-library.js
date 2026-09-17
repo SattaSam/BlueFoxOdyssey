@@ -2480,6 +2480,32 @@
     return instance;
   };
 
+  const resolveObjectRespawnSeconds = (definition, fallbackSeconds = null) => {
+    const configured = Number(
+      fallbackSeconds ?? definition?.interaction?.respawnSeconds
+    );
+    if (!Number.isFinite(configured) || configured <= 0) return configured;
+
+    const t13Status =
+      BF.currentEngine?.missionManager?.memory?.state?.missionLifecycle?.T13?.status ||
+      null;
+    if (t13Status !== "completed") return configured;
+
+    const tags = Array.isArray(definition?.spawn?.tags)
+      ? definition.spawn.tags.map((tag) => String(tag || "").toLowerCase())
+      : [];
+    const rare =
+      String(definition?.rarity || "").toLowerCase() === "rare" ||
+      tags.includes("rare");
+    if (!rare) return configured * 2;
+
+    if (configured <= 120) return configured * 1.5;
+    if (configured < 300) return configured * 1.4;
+    return configured * 1.3;
+  };
+
+  BF.resolveObjectRespawnSeconds = resolveObjectRespawnSeconds;
+
   BF.ObjectLibrary = Object.freeze({
     schemaVersion: 4,
     functionalFields: FUNCTIONAL_FIELDS,

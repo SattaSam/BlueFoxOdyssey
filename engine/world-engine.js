@@ -2747,9 +2747,11 @@
         label,
         collectable,
         removeFromWorld,
-        respawnMs: Number.isFinite(Number(interaction.respawnSeconds))
-          ? Number(interaction.respawnSeconds) * 1000
-          : null,
+        respawnMs: (() => {
+          const seconds = BF.resolveObjectRespawnSeconds?.(functional, interaction.respawnSeconds) ??
+            Number(interaction.respawnSeconds);
+          return Number.isFinite(seconds) ? seconds * 1000 : null;
+        })(),
         animationHints: interaction.animation?.[action] || [],
         actionText,
         approachText,

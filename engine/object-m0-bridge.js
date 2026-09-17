@@ -1304,7 +1304,7 @@
     return true;
   };
 
-  const startStudyPose = (character, relicSequence = false) => {
+  const startStudyPose = (character, emphasizedStudy = false) => {
     // Idle_V2 est privilégiée : c'est la respiration la plus ample du modèle.
     const breathIdle = character.findAvailableClip?.(
       ["Idle_V2", "Idle_V3", "Idle", "Idle_V4"]
@@ -1349,22 +1349,31 @@
           z: character.visual.scale.z
         }
       : null;
-    // Renfort visuel contrôlé : l'amorce du clip était trop discrète selon les
-    // rigs. On marque donc réellement le penché de tête sans bouger l'oreille.
-    if (tiltNode?.rotation && tiltBase) {
-      tiltNode.rotation.x = tiltBase.x + 0.14;
-      tiltNode.rotation.z = tiltBase.z + (relicSequence ? -0.30 : (headNode ? 0.30 : 0.12));
-    }
+    // Environ 9 % des études ordinaires, 14 % des études remarquables : le
+    // clip d'oreille est laissé aller jusqu'au bout. Sinon il reste figé tôt,
+    // comme historiquement, afin que le geste complet reste exceptionnel.
+    const fullEarMotion = Math.random() < (emphasizedStudy ? 0.14 : 0.09);
+    const tiltZ = emphasizedStudy ? -0.19 : 0.19; // ~11°, soit ~6° de moins qu'avant.
+    const tiltX = 0.10; // ~5,7°, également légèrement adouci.
+    const tiltEaseInMs = 180;
+    const tiltEaseOutMs = 240;
 
     if (!ear || !character.actions?.has?.(ear)) {
       if (breathIdle) character.play(breathIdle, 0.14, true);
       const fallbackDuration = Math.max(2, idleDuration);
       character.actionLockUntil = now + fallbackDuration * 1000;
       character.__bluefoxStudyPose = {
+        startedAt: now,
         endsAt: character.actionLockUntil,
+        holdEndsAt: character.actionLockUntil,
         tiltNode,
         tiltBase,
-        visualScaleBase
+        tiltZ,
+        tiltX,
+        tiltEaseInMs,
+        tiltEaseOutMs,
+        visualScaleBase,
+        noEarFallback: true
       };
       return fallbackDuration;
     }
@@ -1374,23 +1383,26 @@
     character.play(ear, 0.12, true);
 
     const freezeAt = Math.max(0.18, Math.min(duration * 0.30, 0.48));
-    const firstIdleDuration = relicSequence ? 0.8 : idleDuration;
-    const blinkDuration = relicSequence && blink
+    const firstIdleDuration = emphasizedStudy ? 0.8 : idleDuration;
+    const blinkDuration = emphasizedStudy && blink
       ? Math.max(0.12, Math.min(0.3, (Number(character.actions.get(blink)?.getClip?.().duration) || 0.45) / 2.4))
       : 0;
-    const secondIdleDuration = relicSequence ? 0.55 : 0;
-    const holdEndsAt = now + holdMs + (relicSequence ? freezeAt * 1000 : 0);
+    const secondIdleDuration = emphasizedStudy ? 0.55 : 0;
+    const earHoldMs = fullEarMotion ? Math.max(holdMs, duration * 1000) : holdMs;
+    const holdEndsAt = now + earHoldMs + (emphasizedStudy && !fullEarMotion ? freezeAt * 1000 : 0);
     character.__bluefoxStudyPose = {
       action,
       startedAt: now,
       holdEndsAt,
       endsAt: holdEndsAt + (firstIdleDuration + blinkDuration + secondIdleDuration) * 1000,
-      breathIdle: relicSequence ? standardIdle : breathIdle,
+      breathIdle: emphasizedStudy ? standardIdle : breathIdle,
       idleDuration: firstIdleDuration,
       blink,
       blinkDuration,
       secondIdleDuration,
-      relicSequence,
+      relicSequence: emphasizedStudy,
+      emphasizedStudy,
+      fullEarMotion,
       phase: "hold",
       phaseEndsAt: holdEndsAt,
       idleStarted: false,
@@ -1399,6 +1411,11 @@
       frozen: false,
       tiltNode,
       tiltBase,
+      tiltZ,
+      tiltX,
+      tiltEaseInMs,
+      tiltEaseOutMs,
+      tiltReleaseStartedAt: 0,
       visualScaleBase
     };
     character.actionLockUntil = character.__bluefoxStudyPose.endsAt;
@@ -1408,19 +1425,26 @@
   const updateStudyPose = (character, now) => {
     const pose = character?.__bluefoxStudyPose;
     if (!pose) return;
-    // AnimationMixer réécrit les os à chaque frame. Le penché doit donc être
-    // réappliqué après mixer.update(), pendant les deux secondes de lecture.
-    if (
-      !pose.idleStarted &&
-      pose.tiltNode?.rotation &&
-      pose.tiltBase
-    ) {
-      pose.tiltNode.rotation.x = pose.tiltBase.x + 0.14;
+    const smoothstep = (value) => {
+      const t = Math.max(0, Math.min(1, value));
+      return t * t * (3 - 2 * t);
+    };
+    // AnimationMixer réécrit les os à chaque frame. La pose de tête est donc
+    // réappliquée après mixer.update(), avec entrée et sortie interpolées.
+    if (pose.tiltNode?.rotation && pose.tiltBase) {
+      let weight = 1;
+      if (!pose.idleStarted) {
+        weight = smoothstep((now - (pose.startedAt || now)) / Math.max(1, pose.tiltEaseInMs || 180));
+      } else if (pose.tiltReleaseStartedAt) {
+        weight = 1 - smoothstep((now - pose.tiltReleaseStartedAt) / Math.max(1, pose.tiltEaseOutMs || 240));
+      }
+      pose.tiltNode.rotation.x = pose.tiltBase.x + (pose.tiltX || 0) * weight;
       pose.tiltNode.rotation.y = pose.tiltBase.y;
-      pose.tiltNode.rotation.z = pose.tiltBase.z + (pose.relicSequence ? -0.30 : 0.30);
+      pose.tiltNode.rotation.z = pose.tiltBase.z + (pose.tiltZ || 0) * weight;
     }
     if (
       pose.action &&
+      !pose.fullEarMotion &&
       !pose.frozen &&
       now - pose.startedAt >= pose.freezeAt * 1000
     ) {
@@ -1429,17 +1453,11 @@
       pose.frozen = true;
     }
     if (!pose.idleStarted && pose.holdEndsAt && now >= pose.holdEndsAt) {
-      // L'action Ear reste arrêtée sur la pose penchée : la transition vers
-      // Idle la fond sans jamais atteindre les clés de mouvement d'oreille.
       pose.idleStarted = true;
       pose.breathStartedAt = now;
+      pose.tiltReleaseStartedAt = now;
       pose.phase = pose.relicSequence ? "idle-first" : "idle";
-      pose.phaseEndsAt = now + pose.idleDuration * 1000;
-      if (pose.tiltNode?.rotation && pose.tiltBase) {
-        pose.tiltNode.rotation.x = pose.tiltBase.x;
-        pose.tiltNode.rotation.y = pose.tiltBase.y;
-        pose.tiltNode.rotation.z = pose.tiltBase.z;
-      }
+      pose.phaseEndsAt = now + (pose.idleDuration || 0) * 1000;
       if (pose.breathIdle) character.play(pose.breathIdle, 0.16, true);
     }
     if (pose.relicSequence && pose.phase === "idle-first" && now >= pose.phaseEndsAt) {
@@ -1749,11 +1767,19 @@
               : ["Harvest_Light"]
           : definition.interaction?.animation?.[mode] || [];
         const studyInteraction = !acquisition;
+        const studyContext = `${definition.type || ""} ${definition.category || ""} ${definition.subtype || ""}`;
+        const microSceneContext = Boolean(
+          object.userData?.microSceneId ||
+          object.userData?.persistentMicroSceneId ||
+          resolved.anchor?.userData?.microSceneId ||
+          resolved.anchor?.userData?.persistentMicroSceneId
+        );
+        const missionMicroSceneStudy = missionRequested && microSceneContext;
+        const emphasizedStudy =
+          /relic|st[eè]le|stele|arch/i.test(studyContext) ||
+          missionMicroSceneStudy;
         const duration = studyInteraction
-          ? startStudyPose(
-              this.character,
-              !capabilities(definition).collectable
-            )
+          ? startStudyPose(this.character, emphasizedStudy)
           : this.character.playInteraction(mode, animationHints);
         this.interactionDuration = Math.max(
           studyInteraction ? 2000 : 2200,
@@ -1826,7 +1852,8 @@
         });
         clearAcquisitionTransaction(this, object);
         if (removeFromWorld) {
-          const respawnSeconds = Number(definition.interaction?.respawnSeconds);
+          const respawnSeconds = BF.resolveObjectRespawnSeconds?.(definition) ??
+            Number(definition.interaction?.respawnSeconds);
           if (!Number.isFinite(respawnSeconds) || respawnSeconds <= 0) {
             console.error(
               `[BlueFox3D] Métadonnée CUO interaction.respawnSeconds absente ou invalide pour ${definition.id || definition.type}.`

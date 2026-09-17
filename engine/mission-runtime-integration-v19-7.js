@@ -240,7 +240,8 @@
       if (removeFromWorld) {
         object.userData.active=false;
         anchor.visible=false;
-        const respawnSeconds=Number(definition.interaction?.respawnSeconds);
+        const respawnSeconds=BF.resolveObjectRespawnSeconds?.(definition) ??
+          Number(definition.interaction?.respawnSeconds);
         if (Number.isFinite(respawnSeconds) && respawnSeconds>0) {
           const cooldown=setTimeout(()=>{
             if (this.disposed) return;
