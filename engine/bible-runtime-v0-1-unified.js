@@ -897,6 +897,84 @@
       };
     }
 
+    obsoleteConstructionSite(mission) {
+      if (!mission?.constructionMission || !mission?.id) return null;
+      const kind = lower(mission.constructionKind);
+      const mapId = String(this.missionTargetMapId(mission) || "");
+      if (!mapId) return null;
+      const blockingKinds = {
+        camp: ["camp", "refuge", "base"],
+        refuge: ["refuge", "base"],
+        workbench: ["workbench"]
+      }[kind] || [];
+      if (!blockingKinds.length) return null;
+
+      const sites = this.siteBucket(mapId);
+      for (const blockingKind of blockingKinds) {
+        const site = sites?.[blockingKind] || null;
+        if (!site) continue;
+        const siteMissionId = String(site.missionId || "").trim();
+        // Une donnée legacy sans mission propriétaire ne suffit pas pour
+        // invalider destructivement une construction dynamique.
+        if (!siteMissionId || siteMissionId === String(mission.id)) continue;
+        return { mapId, kind, blockingKind, site, siteMissionId };
+      }
+      return null;
+    }
+
+    reconcileObsoleteConstructionMissions(options = {}) {
+      const manager = this.manager();
+      if (!manager?.memory || !manager?.trees) return 0;
+      const mapFilter = String(options.mapId || "");
+      let changed = 0;
+
+      for (const mission of this.dynamicMissions.values()) {
+        if (!mission?.constructionMission) continue;
+        const lifecycle = manager.memory.state?.missionLifecycle?.[mission.id];
+        if (lifecycle?.status !== "active") continue;
+        const targetMapId = String(this.missionTargetMapId(mission) || "");
+        if (mapFilter && targetMapId !== mapFilter) continue;
+        const obsolete = this.obsoleteConstructionSite(mission);
+        if (!obsolete || !manager.trees.get?.(mission.id)) continue;
+
+        const reason =
+          `Construction dynamique devenue redondante : ${obsolete.blockingKind} déjà établi sur ${obsolete.mapId}.`;
+        if (manager.failMission?.(mission.id, reason) !== true) continue;
+
+        // failMission possède le lifecycle ; BibleRuntime ne nettoie que ses
+        // caches de consommation/affichage et resynchronise la sélection
+        // persistée du manager. La définition dynamique est conservée.
+        this.pendingConstructionResourceMissions.delete(mission.id);
+        this.constructionResourceSignatures.delete(mission.id);
+        manager.syncMissionSelection?.();
+        manager.memory.save?.();
+        changed += 1;
+      }
+      return changed;
+    }
+
+    scheduleObsoleteConstructionReconciliation() {
+      const delays = [0, 80, 220, 500, 900, 1600, 2800];
+      let reconciled = false;
+      delays.forEach((delay) => {
+        global.setTimeout?.(() => {
+          if (reconciled) return;
+          const manager = this.manager();
+          if (!manager?.memory || !manager?.trees) return;
+          const activeConstructionIds = [...this.dynamicMissions.values()]
+            .filter((mission) =>
+              mission?.constructionMission &&
+              manager.memory.state?.missionLifecycle?.[mission.id]?.status === "active"
+            )
+            .map((mission) => mission.id);
+          if (activeConstructionIds.some((missionId) => !manager.trees.get?.(missionId))) return;
+          reconciled = true;
+          this.reconcileObsoleteConstructionMissions();
+        }, delay);
+      });
+      return true;
+    }
+
     canAccessWorkbench(mapId = BF.currentEngine?.currentMapId) {
       const targetMapId = String(mapId || "");
       if (!targetMapId || String(BF.currentEngine?.currentMapId || "") !== targetMapId) return false;
@@ -4378,9 +4456,11 @@
     }
 
     onSiteEstablished(detail = {}) {
-      if (String(detail.kind || "") !== "deployed_beacon") return false;
+      let changed = this.reconcileObsoleteConstructionMissions({
+        mapId: detail.mapId || BF.currentEngine?.currentMapId || ""
+      }) > 0;
+      if (String(detail.kind || "") !== "deployed_beacon") return changed;
       const manager = this.manager();
-      let changed = false;
 
       const mission = this.byId.get("BAL-03");
       if (mission && this.missionLifecycle(mission.id).active) {
@@ -6005,6 +6085,13 @@
       this.state.gatesSatisfied[mission.id] = Date.now();
       this.state.effectsApplied[mission.id] = Date.now();
       this.saveState();
+
+      // Le site vient d'être persisté. Une ancienne construction dynamique de
+      // cette même map peut désormais être obsolète (notamment CAMP@crystal
+      // après T03). On attend la fin de la transaction courante avant de faire
+      // arbitrer le lifecycle par MissionManager.
+      const schedule = global.queueMicrotask || ((callback) => Promise.resolve().then(callback));
+      schedule(() => this.reconcileObsoleteConstructionMissions({ mapId: targetMapId }));
       return true;
     }
 
@@ -7303,6 +7390,9 @@
       // BibleRuntime peut démarrer avant que WorldEngine ait installé
       // MissionManager. Réconciliation bornée : aucun polling permanent.
       this.scheduleCompletedResearchRewardReconciliation();
+      // Les anciennes constructions dynamiques sont restaurées avant
+      // MissionManager. Réconciliation bornée dès que son lifecycle est prêt.
+      this.scheduleObsoleteConstructionReconciliation();
       // Le chargement initial de Crystal ne garantit pas l'émission d'une
       // transition après que WorldEngine et ObjectSpawner soient prêts.
       // On arme donc une restauration bornée, sans boucle permanente.
