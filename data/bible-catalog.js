@@ -223,8 +223,9 @@
         when: "active",
         delayMs: 90000,
         message: "Double clic : désactiver le suivi caméra. Clic simple : revenir à BlueFox.",
-        duration: 14000,
+        duration: 0,
         highlight: "camera",
+        dismissOnTargetEvent: "dblclick",
         dismissOnProgress: false
       })
     ]),
@@ -3999,22 +4000,25 @@
         when: "active",
         delayMs: 4000,
         message: "Cette fois, choisis seulement une direction. Ouvre Planète pour indiquer Nord, Sud, Est ou Ouest.",
-        duration: 14000,
-        highlight: "planet"
+        duration: 0,
+        highlight: "planet",
+        dismissOnEvent: "bluefox:map-transition-completed"
       }),
       Object.freeze({
         id: "direction-cards-help",
         when: "target-available",
         message: "Choisis une direction : Nord, Sud, Est ou Ouest.",
-        duration: 14000,
-        highlight: "planet-directions"
+        duration: 0,
+        highlight: "planet-directions",
+        dismissOnEvent: "bluefox:map-transition-completed"
       }),
       Object.freeze({
         id: "unknown-send-help",
         when: "target-available",
         message: "Confirme ensuite avec « Envoyer BlueFox en terre inconnue ».",
-        duration: 14000,
-        highlight: "planet-send-unknown"
+        duration: 0,
+        highlight: "planet-send-unknown",
+        dismissOnEvent: "bluefox:map-transition-completed"
       })
     ]),
     narrative: Object.freeze({

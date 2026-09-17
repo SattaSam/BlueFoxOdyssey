@@ -6797,6 +6797,33 @@
       return changed;
     }
 
+    reconcileCompletedResearchRewards() {
+      const manager = this.manager();
+      const lifecycle = manager?.memory?.state?.missionLifecycle;
+      if (!lifecycle) return 0;
+
+      let changed = 0;
+      for (const mission of this.allMissions()) {
+        if (lifecycle?.[mission.id]?.status !== "completed") continue;
+        changed += this.unlockResearchRewards(mission);
+      }
+      return changed;
+    }
+
+    scheduleCompletedResearchRewardReconciliation() {
+      const delays = [0, 80, 220, 500, 900, 1600, 2800];
+      let reconciled = false;
+      delays.forEach((delay) => {
+        global.setTimeout?.(() => {
+          if (reconciled) return;
+          if (!this.manager()?.memory) return;
+          reconciled = true;
+          this.reconcileCompletedResearchRewards();
+        }, delay);
+      });
+      return true;
+    }
+
     migrateLegacyRationUnlock() {
       const reward = this.researchRewardById("ration-basic-v2");
       const memory = this.ensureResearchMemory();
@@ -7273,6 +7300,9 @@
       this.connect();
       this.reconcileHistoricalCollectionChains();
       this.migrateLegacyRationUnlock();
+      // BibleRuntime peut démarrer avant que WorldEngine ait installé
+      // MissionManager. Réconciliation bornée : aucun polling permanent.
+      this.scheduleCompletedResearchRewardReconciliation();
       // Le chargement initial de Crystal ne garantit pas l'émission d'une
       // transition après que WorldEngine et ObjectSpawner soient prêts.
       // On arme donc une restauration bornée, sans boucle permanente.

@@ -110,6 +110,7 @@
   });
 
   let tutorialMessageTimer = null;
+  let tutorialMessageOnDismiss = null;
   let tutorialHighlightedElement = null;
 
   function resolveTutorialTarget(target) {
@@ -123,7 +124,10 @@
       global.clearTimeout(tutorialMessageTimer);
       tutorialMessageTimer = null;
     }
+    const onDismiss = tutorialMessageOnDismiss;
+    tutorialMessageOnDismiss = null;
     document.querySelector(".bluefox-tutorial-message")?.remove();
+    if (typeof onDismiss === "function") onDismiss();
     return true;
   }
 
@@ -140,6 +144,9 @@
     panel.className = "bluefox-tutorial-message";
     panel.setAttribute("role", "status");
     panel.setAttribute("aria-live", "polite");
+
+    tutorialMessageOnDismiss =
+      typeof options.onDismiss === "function" ? options.onDismiss : null;
 
     const copy = createTextElement("p", "", message);
     const acknowledge = options.acknowledge;
@@ -266,9 +273,21 @@
 
     tutorialGuidanceShown.add(key);
     tutorialGuidanceTimers.delete(key);
+
+    let dismissCleanup = null;
+    const dismiss = () => {
+      BF.TutorialUI?.hideMessage?.();
+      BF.TutorialUI?.clearHighlight?.();
+    };
+    const cleanupDismiss = () => {
+      dismissCleanup?.();
+      dismissCleanup = null;
+    };
+
     BF.TutorialUI?.showMessage?.(guidance.message, {
       duration: guidance.duration,
       acknowledge: guidance.acknowledge,
+      onDismiss: cleanupDismiss,
       onAcknowledge: guidance.acknowledge
         ? () => {
             const mode = String(guidance.acknowledge.autonomyMode || "").toLowerCase();
@@ -289,6 +308,26 @@
           }
         : null
     });
+
+    const dismissCleanups = [];
+    const globalEvent = String(guidance.dismissOnEvent || "").trim();
+    if (globalEvent) {
+      const handler = () => dismiss();
+      global.addEventListener?.(globalEvent, handler, { once: true });
+      dismissCleanups.push(() => global.removeEventListener?.(globalEvent, handler));
+    }
+
+    const targetEvent = String(guidance.dismissOnTargetEvent || "").trim();
+    if (targetEvent) {
+      const target = resolveTutorialTarget(guidance.highlight);
+      if (target?.addEventListener) {
+        const handler = () => dismiss();
+        target.addEventListener(targetEvent, handler, { once: true });
+        dismissCleanups.push(() => target.removeEventListener?.(targetEvent, handler));
+      }
+    }
+    dismissCleanup = () => dismissCleanups.splice(0).forEach((cleanup) => cleanup());
+
     if (guidance.highlight) BF.TutorialUI?.highlight?.(guidance.highlight);
 
     const duration = Math.max(0, Number(guidance.duration ?? 14000) || 0);
