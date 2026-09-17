@@ -7,6 +7,7 @@
   const LAST_SESSION_END_KEY = "bluefox_last_session_end_v1";
   const FILE_BOOTSTRAP_KEY = "bluefox_file_save_bootstrap_v1";
   const FILE_DIAGNOSTICS_KEY = "bluefox_file_save_diagnostics_v1";
+  const MISSION_MEMORY_KEY = "bluefox_mission_memory_m0_v1";
   const AUTOSAVE_INTERVAL_MS = 90000;
   const INTRO_VIDEO_PATH = "assets/video/bluefox-intro.mp4";
 
@@ -122,6 +123,17 @@
 
   const stateSignature = (state) => JSON.stringify(state || {});
 
+  const validMissionMemoryState = (state) => {
+    try {
+      const raw = state?.[MISSION_MEMORY_KEY];
+      if (typeof raw !== "string" || !raw.trim()) return false;
+      const parsed = JSON.parse(raw);
+      return Boolean(parsed && parsed.version === 3);
+    } catch {
+      return false;
+    }
+  };
+
   const validSnapshot = (snapshot) =>
     Boolean(
       snapshot &&
@@ -132,6 +144,9 @@
       !Array.isArray(snapshot.state) &&
       Number.isFinite(Number(snapshot.savedAt))
     );
+
+  const restorableSnapshot = (snapshot) =>
+    validSnapshot(snapshot) && validMissionMemoryState(snapshot.state);
 
   const buildSnapshot = (slot) => {
     const runtimeErrors = persistRuntime();
@@ -222,8 +237,8 @@
   };
 
   const applySnapshot = (snapshot, slot) => {
-    if (!validSnapshot(snapshot)) {
-      throw new Error("Instantané de sauvegarde invalide.");
+    if (!restorableSnapshot(snapshot)) {
+      throw new Error("Instantané de sauvegarde incomplet : mémoire missionnelle absente ou invalide.");
     }
 
     clearActive();
@@ -253,6 +268,14 @@
       stateSignature: currentSignature,
       runtimeErrors
     } = buildSnapshot(slot);
+
+    if (!validMissionMemoryState(snapshot.state)) {
+      diagnostics.lastFailureAt = Date.now();
+      diagnostics.lastError =
+        "Mémoire missionnelle indisponible : sauvegarde refusée pour éviter un snapshot incomplet.";
+      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      return false;
+    }
 
     if (!force && lastAutoStateSignature === currentSignature) {
       diagnostics.lastSkippedAt = Date.now();
@@ -298,6 +321,7 @@
 
   const createRecoverySnapshot = async () => {
     const { snapshot } = buildSnapshot("recovery");
+    if (!validMissionMemoryState(snapshot.state)) return false;
     try {
       await fileRequest("/api/saves/recovery", {
         method: "POST",
@@ -310,11 +334,19 @@
   };
 
   const restoreSnapshot = async (slot = "auto") => {
-    const snapshot =
-      (await readFileSnapshot(slot)) ||
-      readLocalSnapshot(slot) ||
-      (slot === "auto" ? readLocalSnapshot("backup") : null);
-    if (!snapshot) return false;
+    const candidates = [
+      await readFileSnapshot(slot),
+      readLocalSnapshot(slot),
+      slot === "auto" ? readLocalSnapshot("backup") : null
+    ];
+    const snapshot = candidates.find((candidate) => restorableSnapshot(candidate)) || null;
+    if (!snapshot) {
+      diagnostics.lastFailureAt = Date.now();
+      diagnostics.lastError =
+        "Aucune sauvegarde restaurable avec mémoire missionnelle valide.";
+      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      return false;
+    }
 
     await createRecoverySnapshot();
     restoreInProgress = true;
@@ -342,7 +374,7 @@
       const restoredAt = Number(global.localStorage.getItem(RESTORED_AT_KEY)) || 0;
 
       if (
-        fileSnapshot &&
+        restorableSnapshot(fileSnapshot) &&
         fileSnapshot.savedAt >
           Math.max(restoredAt, Number(localSnapshot?.savedAt) || 0)
       ) {

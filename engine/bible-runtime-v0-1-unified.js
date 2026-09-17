@@ -33,6 +33,11 @@
       this.activePlacement = null;
       this.restoreConstructionInstances();
       this.restoreFaunaMissionInstances();
+      // Les missions scoped dérivées de templates (locales, exploration locale,
+      // ENV locale) ne disposent pas d'un registre d'instances autonome.
+      // On les reconstruit depuis MissionMemory avant registerDefinitions(),
+      // sans modifier le lifecycle possédé par MissionManager.
+      this.restoreLocalMissionDefinitions();
 
       // Migration de structure uniquement : l'ancien runtime utilisait une
       // seconde vérité "revealed/completed" qui pouvait empêcher une mission
@@ -264,8 +269,58 @@
       return true;
     }
 
+    persistedMissionMemoryState() {
+      const managerState = this.manager()?.memory?.state;
+      if (managerState && typeof managerState === "object") return managerState;
+      try {
+        const key = Missions.MISSION_STORAGE_KEY || "bluefox_mission_memory_m0_v1";
+        const saved = JSON.parse(global.localStorage?.getItem?.(key) || "null");
+        return saved && saved.version === 3 ? saved : null;
+      } catch {
+        return null;
+      }
+    }
+
+    persistedScopedMissionIds(memoryState = this.persistedMissionMemoryState()) {
+      if (!memoryState || typeof memoryState !== "object") return [];
+      const lifecycleIds = Object.keys(memoryState.missionLifecycle || {});
+      const treeIds = Object.keys(memoryState.missions || {});
+      const rememberedIds = Array.isArray(memoryState.activeMissionIds)
+        ? memoryState.activeMissionIds
+        : [];
+      return [...new Set([
+        memoryState.primaryMissionId,
+        memoryState.activeMissionId,
+        ...rememberedIds,
+        ...lifecycleIds,
+        ...treeIds,
+        ...Object.keys(this.state?.localMissionInstances || {})
+      ].filter((id) => String(id || "").includes("@")))];
+    }
+
     restoreLocalMissionDefinitions() {
-      return false;
+      const memoryState = this.persistedMissionMemoryState();
+      if (!memoryState) return 0;
+      let restored = 0;
+
+      for (const missionId of this.persistedScopedMissionIds(memoryState)) {
+        if (Missions.getDefinition?.(missionId)) continue;
+        const mission =
+          this.localExplorationMission(missionId) ||
+          this.localMissionInstance(missionId) ||
+          this.environmentLocalMission(missionId);
+        if (!mission) continue;
+
+        // Ces instances scoped restent dérivées de leur template : on ne crée
+        // ni registre parallèle ni nouvelle source de vérité runtime. On réutilise
+        // uniquement le compilateur et le registre de définitions canoniques.
+        const compiled = this.compileMission(mission);
+        if (!compiled || typeof BF.registerMissionDefinitions !== "function") continue;
+        BF.registerMissionDefinitions([compiled]);
+        if (!Missions.getDefinition?.(mission.id)) continue;
+        restored += 1;
+      }
+      return restored;
     }
 
 
