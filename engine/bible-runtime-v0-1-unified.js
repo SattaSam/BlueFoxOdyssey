@@ -455,12 +455,12 @@
         }
 
         if (!lifecycle || ["available", "hidden"].includes(lifecycle.status)) {
-          changed = manager.startMission(instanceId, {
+          changed = this.startMissionThroughBible(instanceId, {
             primary: false,
             autoPrimaryEligible: false,
             source: "local-exploration",
             reason: `Seuil local atteint sur ${targetMapId}.`
-          }) === true || changed;
+          }) || changed;
           lifecycle = manager.memory?.state?.missionLifecycle?.[instanceId];
         } else if (lifecycle.status === "paused" && targetMapId === currentMapId) {
           changed = manager.resumeMission(instanceId, {
@@ -755,18 +755,20 @@
     }
 
     startFaunaSpeciesMission(baseId, cuoType, options = {}) {
+      const candidateId = this.faunaSpeciesMissionId(baseId, cuoType);
+      if (!this.foundationTutorialAllows({ id: candidateId })) return false;
       const mission = this.ensureFaunaSpeciesMission(baseId, cuoType, options);
       const manager = this.manager();
       if (!mission || !manager) return false;
       const lifecycle = this.missionLifecycle(mission.id);
       if (lifecycle.active || lifecycle.completed) return false;
-      return manager.startMission(mission.id, {
+      return this.startMissionThroughBible(mission.id, {
         primary: false,
         autoPrimaryEligible: false,
         prerequisites: asArray(mission.prerequisites),
         source: "fauna-species",
         reason: options.reason || `Relation avec l'espèce ${mission.faunaSpeciesCuoType}.`
-      }) === true;
+      });
     }
 
     rearmFaunaSpeciesChain(cuoType) {
@@ -1876,6 +1878,32 @@
         })
       );
       return true;
+    }
+
+    foundationTutorialUnlocked() {
+      return this.missionLifecycle("T08").completed === true;
+    }
+
+    foundationTutorialAllows(mission) {
+      if (this.foundationTutorialUnlocked()) return true;
+      const id = String(mission?.id || "");
+      if (/^T(?:0[1-9]|1[0-3])$/.test(id)) return true;
+      // Le Refuge est volontairement introduit au milieu du tutoriel par T03
+      // afin d'enseigner la progression parallèle.
+      if (id === "GAME-shelter") return true;
+      return false;
+    }
+
+    startMissionThroughBible(missionId, options = {}) {
+      const manager = this.manager();
+      if (!manager || !missionId) return false;
+      const id = String(missionId);
+      const mission =
+        this.byId.get(id) ||
+        this.dynamicMissions.get(id) ||
+        { id };
+      if (!this.foundationTutorialAllows(mission)) return false;
+      return manager.startMission(id, options) === true;
     }
 
     missionLifecycle(missionId) {
@@ -3581,6 +3609,12 @@
         return false;
       }
 
+      if (!this.foundationTutorialAllows(mission)) {
+        diagnostic.error = "Mission différée pendant le tutoriel de fondation";
+        this.lastActivationAttempt = diagnostic;
+        return false;
+      }
+
       let lifecycleState = this.missionLifecycle(mission.id);
       diagnostic.lifecycleBefore = clone(lifecycleState.lifecycle);
 
@@ -3612,14 +3646,14 @@
 
       try {
         diagnostic.startResult =
-          manager.startMission(mission.id, {
+          this.startMissionThroughBible(mission.id, {
             primary: mission.primaryOnActivation === true,
             autoPrimaryEligible: mission.autoPrimaryEligible === true,
             prerequisites: asArray(mission.prerequisites),
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
             reason: `Déclencheur Bible V0.1 : ${event.type || "event"}`
-          }) === true;
+          });
 
         const after = this.missionLifecycle(mission.id);
         diagnostic.lifecycleAfter = clone(after.lifecycle);
@@ -4059,7 +4093,7 @@
         }) === true || changed;
       });
       if (changed) {
-        manager.startMission?.(contract.startMissionId, {
+        this.startMissionThroughBible(contract.startMissionId, {
           primary: false,
           autoPrimaryEligible: false,
           prerequisites: contract.prerequisites,
@@ -4135,13 +4169,13 @@
           if (!target?.needed) continue;
           const lifecycle = this.missionLifecycle(target.nextMissionId);
           if (["active", "completed"].includes(lifecycle.status)) continue;
-          changed = manager.startMission?.(target.nextMissionId, {
+          changed = this.startMissionThroughBible(target.nextMissionId, {
             primary: false,
             autoPrimaryEligible: false,
             prerequisites: [mission.id],
             source: "civilization-contact",
             reason: `La seconde civilisation (${target.civilizationId}) reste à approcher.`
-          }) === true || changed;
+          }) || changed;
         }
         return changed;
       } finally {
@@ -5830,8 +5864,10 @@
       const manager = this.manager();
       if (!manager?.memory) return false;
       let changed = false;
-      this.catalog.filter((mission) => mission?.repeatable === true).forEach((mission) => {
-        const rule = mission.repeatableCondition || {};
+      this.catalog.filter((mission) =>
+        mission?.repeatable === true && mission?.repeatableCondition
+      ).forEach((mission) => {
+        const rule = mission.repeatableCondition;
         if (!asArray(mission.prerequisites).every((id) => this.missionLifecycle(id).completed)) return;
         if (!this.nearShelterForRepeatable(rule)) return;
         const stock = this.repeatableStockSnapshot(rule);
@@ -7386,9 +7422,17 @@
 
     activateInitialMissions() {
       if (!this.manager()) return false;
-      const initialMissions = this.catalog.filter(
-        (mission) => mission?.initialState === "active"
-      );
+      const prerequisitesSatisfied = (mission) =>
+        asArray(mission?.prerequisites).every((id) =>
+          this.missionLifecycle(id).completed === true
+        ) &&
+        asArray(mission?.experimentalPrerequisites).every((id) =>
+          this.isResearchRewardUnlocked(id) === true
+        );
+      const initialMissions = this.catalog
+        .filter((mission) => mission?.initialState === "active")
+        .filter((mission) => this.foundationTutorialAllows(mission))
+        .filter((mission) => prerequisitesSatisfied(mission));
       if (!initialMissions.length) return true;
 
       let settled = true;

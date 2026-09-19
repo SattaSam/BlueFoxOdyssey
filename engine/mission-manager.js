@@ -1551,6 +1551,18 @@
       return scopedMapId === currentMapId;
     }
 
+    isMissionVisibleOnCurrentMap(missionId) {
+      const definition = this.definition(missionId) || {};
+      if (definition.localVisibility !== "current-map") return true;
+      const currentMapId = String(this.engine?.currentMapId || "");
+      if (!currentMapId) return false;
+      const separator = String(missionId || "").indexOf("@");
+      const scopedMapId = separator >= 0
+        ? String(missionId).slice(separator + 1)
+        : String(definition.scopeId || definition.targetMapId || "");
+      return Boolean(scopedMapId) && scopedMapId === currentMapId;
+    }
+
     shouldDeferMissionReturn(
       missionId,
       context = this.bridge.context()
@@ -1673,18 +1685,23 @@
       const tree = this.trees.get(missionId);
       const definition = this.definition(missionId);
       const lifecycle = this.ensureLifecycle(missionId, "active");
-      let action = tree?.root.isComplete
+      const visibleOnCurrentMap = this.isMissionVisibleOnCurrentMap(missionId);
+      let action = tree?.root.isComplete || !visibleOnCurrentMap
         ? null
         : this.missionRunnableAction(missionId, tree, context);
       if (action && missionId !== this.primaryMissionId && !this.travelAllowsSecondaryMission(missionId, context)) {
         action = null;
       }
-      const delegatedRuntimeAction = !action
+      const delegatedRuntimeAction = visibleOnCurrentMap && !action
         ? this.delegatedRuntimeAction(missionId)
         : null;
       const progress = tree ? this.treeProgress(tree) : 0;
       let score = Number(definition?.priority) || 0;
       const reasons = [];
+      if (!visibleOnCurrentMap) {
+        score -= 100000;
+        reasons.push("hors map cible");
+      }
       if (definition?.passivePriorityAxis) {
         const playerPriority = this.playerPriority(definition.passivePriorityAxis);
         const influence = Math.max(0, playerPriority - 50) * 1.6;
@@ -1775,6 +1792,7 @@
       }
       const context = this.bridge.context();
       const candidates = this.activeMissionIds
+        .filter((id) => this.isMissionVisibleOnCurrentMap(id))
         .filter((id) => {
           const lifecycle = this.ensureLifecycle(id);
           return lifecycle.status === "active" &&
@@ -1949,7 +1967,7 @@
       const ready = Object.values(this.memory.state.pendingActivations || {})
         .filter((request) =>
           (request.prerequisites || []).every((id) =>
-            this.ensureLifecycle(id).status === "completed"
+            this.memory.state.missionLifecycle?.[id]?.status === "completed"
           ) &&
           (request.experimentalPrerequisites || []).every((id) =>
             BF.bibleRuntime?.isResearchRewardUnlocked?.(id) === true
@@ -2053,6 +2071,7 @@
       }
 
       const activeMissionIds = this.activeMissionIds
+        .filter((id) => this.isMissionVisibleOnCurrentMap(id))
         .filter((id) =>
           this.ensureLifecycle(id).status === "active" &&
           this.trees.has(id)
@@ -2421,19 +2440,20 @@
 
     getState() {
       const missionIds = [...(this.activeMissionIds || [])]
-        .filter((id) => this.trees?.has(id));
+        .filter((id) => this.trees?.has(id))
+        .filter((id) => this.isMissionVisibleOnCurrentMap(id));
+      const publicPrimaryMissionId = this.isMissionVisibleOnCurrentMap(
+        this.primaryMissionId
+      )
+        ? this.primaryMissionId
+        : "";
       const missionStateIds = [...this.trees.keys()]
         .filter((id) => ["active", "completed"].includes(this.ensureLifecycle(id).status))
-        .filter((id) => {
-          const definition = this.definition(id);
-          if (definition?.localVisibility !== "current-map") return true;
-          return String(definition.scopeId || "") ===
-            String(this.engine?.currentMapId || "");
-        });
+        .filter((id) => this.isMissionVisibleOnCurrentMap(id));
       const missionStates = missionStateIds
         .sort((left, right) =>
-          Number(right === this.primaryMissionId) -
-          Number(left === this.primaryMissionId)
+          Number(right === publicPrimaryMissionId) -
+          Number(left === publicPrimaryMissionId)
         )
         .map((id) => {
           const tree = this.trees.get(id);
@@ -2448,10 +2468,55 @@
             journalIntro: this.definition(id)?.journalIntro ||
               `J’ai ouvert cette mission parce que ${this.ensureLifecycle(id).discoveryReason || "mes observations indiquent qu’elle est désormais réalisable"}.`,
             discoveryReason: this.ensureLifecycle(id).discoveryReason,
-            isPrimary: id === this.primaryMissionId,
+            isPrimary: id === publicPrimaryMissionId,
             tree: this.displayTreeSnapshot(tree)
           };
         });
+      const publicCatalog = Object.keys(Missions.definitions)
+        .filter((id) => id !== "foundation")
+        .filter((id) => Missions.definitions[id].instanceScope !== "map")
+        .filter((id) => Object.prototype.hasOwnProperty.call(
+          this.memory.state.missionLifecycle || {},
+          id
+        ))
+        .filter((id) => ["available", "active", "paused", "completed"].includes(
+          this.memory.state.missionLifecycle[id]?.status
+        ))
+        .filter((id) => {
+          const lifecycle = this.memory.state.missionLifecycle[id] || {};
+          if (lifecycle.status !== "available") return true;
+          // Une simple lecture historique de prérequis a pu matérialiser un
+          // lifecycle par défaut. Sans découverte réelle, cet état ne doit
+          // pas devenir public dans le journal des missions.
+          return Boolean(
+            Number(lifecycle.activatedAt) > 0 ||
+            String(lifecycle.discoveryReason || "") ||
+            String(lifecycle.source || "system") !== "system"
+          );
+        })
+        .map((id) => {
+          const lifecycle = this.memory.state.missionLifecycle[id] || {};
+          const visibleHere = this.isMissionVisibleOnCurrentMap(id);
+          return {
+            missionId: id,
+            title: Missions.definitions[id].title,
+            status: lifecycle.status,
+            lifecycleStatus: lifecycle.status,
+            contextVisible: visibleHere !== false,
+            scope: Missions.definitions[id].scope ||
+              Missions.definitions[id].instanceScope || "global",
+            progress: this.trees.has(id)
+              ? this.treeProgress(this.trees.get(id))
+              : lifecycle.status === "completed"
+                ? 1
+                : 0,
+            journalIntro: Missions.definitions[id].journalIntro ||
+              `Cette mission est apparue lorsque ma progression a atteint un nouveau seuil. Je veux maintenant vérifier méthodiquement ce que ces découvertes rendent possible.`,
+            discoveryReason: lifecycle.discoveryReason,
+            waitingFor: [...(lifecycle.waitingFor || [])]
+          };
+        })
+        .concat(this.pendingExperimentCatalogEntries());
 
       if (!this.tree && !missionStates.length) {
         return {
@@ -2469,21 +2534,28 @@
           available: [],
           tree: null,
           missions: [],
-          catalog: this.pendingExperimentCatalogEntries(),
+          catalog: publicCatalog,
           pendingExperimentationIntent: this.pendingExperimentationIntent(),
           inventory: { ...(BF.getProgressionState?.().inventory || {}) }
         };
       }
 
-      const displayTree = this.tree || this.trees.get(missionIds[0]) || null;
+      const displayTree = publicPrimaryMissionId
+        ? this.trees.get(publicPrimaryMissionId) || null
+        : this.trees.get(missionIds[0]) || null;
+      const publicPendingPrimaryMissionId = this.isMissionVisibleOnCurrentMap(
+        this.pendingPrimaryMissionId
+      )
+        ? this.pendingPrimaryMissionId
+        : null;
       return {
         version: "M2",
-        primaryMissionId: this.primaryMissionId,
-        activeMissionIds: [...this.activeMissionIds],
+        primaryMissionId: publicPrimaryMissionId,
+        activeMissionIds: [...missionIds],
         selectionReason: this.selectionReason,
-        pendingPrimaryMissionId: this.pendingPrimaryMissionId,
-        pendingPrimaryMissionTitle: this.pendingPrimaryMissionId
-          ? this.trees.get(this.pendingPrimaryMissionId)?.title || ""
+        pendingPrimaryMissionId: publicPendingPrimaryMissionId,
+        pendingPrimaryMissionTitle: publicPendingPrimaryMissionId
+          ? this.trees.get(publicPendingPrimaryMissionId)?.title || ""
           : "",
         missionId: displayTree?.id || "",
         title: displayTree?.title || "",
@@ -2503,32 +2575,7 @@
           : [],
         tree: this.displayTreeSnapshot(displayTree),
         missions: missionStates,
-        catalog: Object.keys(Missions.definitions)
-          .filter((id) => id !== "foundation")
-          .filter((id) => Missions.definitions[id].instanceScope !== "map")
-          .filter((id) => Object.prototype.hasOwnProperty.call(
-            this.memory.state.missionLifecycle || {},
-            id
-          ))
-          .filter((id) => ["available", "active", "paused", "completed"].includes(
-            this.memory.state.missionLifecycle[id]?.status
-          ))
-          .map((id) => ({
-            missionId: id,
-            title: Missions.definitions[id].title,
-            status: this.memory.state.missionLifecycle[id].status,
-            scope: Missions.definitions[id].scope ||
-              Missions.definitions[id].instanceScope || "global",
-            progress: this.trees.has(id)
-              ? this.treeProgress(this.trees.get(id))
-              : this.memory.state.missionLifecycle[id].status === "completed"
-                ? 1
-                : 0,
-            journalIntro: Missions.definitions[id].journalIntro ||
-              `Cette mission est apparue lorsque ma progression a atteint un nouveau seuil. Je veux maintenant vérifier méthodiquement ce que ces découvertes rendent possible.`,
-            discoveryReason: this.memory.state.missionLifecycle[id].discoveryReason,
-            waitingFor: [...(this.memory.state.missionLifecycle[id].waitingFor || [])]
-          })).concat(this.pendingExperimentCatalogEntries()),
+        catalog: publicCatalog,
         pendingExperimentationIntent: this.pendingExperimentationIntent(),
         inventory: {
           ...(BF.getProgressionState?.().inventory || {})

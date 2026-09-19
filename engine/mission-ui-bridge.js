@@ -147,7 +147,6 @@
 
     tutorialMessageOnDismiss =
       typeof options.onDismiss === "function" ? options.onDismiss : null;
-
     const copy = createTextElement("p", "", message);
     const acknowledge = options.acknowledge;
     const button = createTextElement(
@@ -216,9 +215,11 @@
     );
     (state?.missions || [])
       .filter((mission) => mission.lifecycleStatus === "active")
+      .filter((mission) => mission.contextVisible !== false)
       .forEach((mission) => ids.add(mission.missionId));
     (state?.catalog || [])
       .filter((mission) => mission.status === "active")
+      .filter((mission) => mission.contextVisible !== false)
       .forEach((mission) => ids.add(mission.missionId));
     return ids;
   }
@@ -877,16 +878,17 @@
         if (choiceControls) body.appendChild(choiceControls);
         const actions = document.createElement("div");
         actions.className = "mission-browser-actions";
-        if (mission.status === "active" && !mission.isPrimary) {
+        const contextVisible = mission.contextVisible !== false;
+        if (contextVisible && mission.status === "active" && !mission.isPrimary) {
           const suggest = createTextElement("button", "", "Définir comme priorité");
           suggest.addEventListener("click", () => BF.suggestMissionPriority?.(mission.missionId));
           actions.appendChild(suggest);
         }
-        if (mission.status === "active") {
+        if (contextVisible && mission.status === "active") {
           const pause = createTextElement("button", "", "Mettre en pause");
           pause.addEventListener("click", () => BF.pauseMission?.(mission.missionId));
           actions.appendChild(pause);
-        } else if (mission.status === "paused") {
+        } else if (contextVisible && mission.status === "paused") {
           const resume = createTextElement("button", "", "Reprendre");
           resume.addEventListener("click", () => BF.resumeMission?.(mission.missionId));
           actions.appendChild(resume);

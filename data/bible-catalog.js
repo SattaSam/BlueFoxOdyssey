@@ -169,6 +169,8 @@
     }),
     initialState: "active",
     prerequisites: Object.freeze(["T02"]),
+    targetMapId: "crystal",
+    localVisibility: "current-map",
     priority: 94,
     passivePriorityAxis: "collection",
     sequence: Object.freeze([

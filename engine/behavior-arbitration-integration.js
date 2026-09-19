@@ -1009,6 +1009,7 @@
         ].filter(Boolean))]
           .filter((id) => this.trees?.has(id))
           .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
+          .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
           .slice(0, 4);
         this.prioritizedMissionIds = valid;
         if (this.memory?.state) {
@@ -1079,6 +1080,7 @@
           ]
             .filter((id) => this.trees?.has(id))
             .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
+            .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
             .slice(0, 4);
           this.prioritizedMissionIds = queue;
           this.memory.state.prioritizedMissionIds = [...queue];
@@ -1171,6 +1173,7 @@
             const ranked = (this.activeMissionIds || [])
               .filter((id) => id !== primary)
               .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
+              .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
               .map((id) => this.assessMission?.(id, this.bridge?.context?.()))
               .filter(Boolean)
               .sort((a, b) => Number(b.score) - Number(a.score))
@@ -1184,6 +1187,7 @@
               ...ranked
             ]
               .filter(Boolean)
+              .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
               .filter((id, index, values) => values.indexOf(id) === index)
               .slice(0, 4);
             this.memory.state.prioritizedMissionIds = [
