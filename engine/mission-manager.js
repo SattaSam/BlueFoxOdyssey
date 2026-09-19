@@ -265,6 +265,16 @@
           false,
           options.reason || `Mission activée par ${lifecycle.source}.`
         );
+      } else if (
+        lifecycle.status === "active" &&
+        lifecycle.autoPrimaryEligible !== false &&
+        this.isMissionVisibleOnCurrentMap(missionId) &&
+        !this.hasActivePrimaryMission()
+      ) {
+        // A non-primary activation may be the first runnable mission after the
+        // previous Top1 completed. MissionManager owns primary arbitration, so
+        // re-evaluate here instead of forcing primary from BibleRuntime.
+        this.selectBestPrimary(performance.now(), true);
       }
       this.syncMissionSelection();
       if (makePrimary && this.primaryMissionId === missionId) {
