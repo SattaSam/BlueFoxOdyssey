@@ -208,41 +208,48 @@ test('T03 blueprint reward remains idempotent through completed-reward reconcili
 });
 
 
-test('Fresh game bootstrap activates only declaratively eligible initial tutorial missions', () => {
+test('Fresh game bootstrap registers future initial missions as canonical hidden pending without premature activation', () => {
   const { BF, Runtime } = bootBible();
   const r=Object.create(Runtime.prototype);
   r.catalog=BF.BibleCatalog;
   r.byId=new Map(r.catalog.map(m=>[m.id,m]));
   r.dynamicMissions=new Map();
   const lifecycle={};
-  r.manager=()=>({});
+  const pending={};
+  const manager={
+    startMission(id,options={}) {
+      const prerequisites=[...(options.prerequisites||[])];
+      const experimental=[...(options.experimentalPrerequisites||[])];
+      if (prerequisites.length || experimental.length) {
+        lifecycle[id]={status:'hidden'};
+        pending[id]={missionId:id,prerequisites,experimentalPrerequisites:experimental,options};
+      } else {
+        lifecycle[id]={status:'active'};
+      }
+      return true;
+    }
+  };
+  r.manager=()=>manager;
   r.missionLifecycle=id=>({
     status:lifecycle[id]?.status || null,
     active:lifecycle[id]?.status === 'active',
     completed:lifecycle[id]?.status === 'completed'
   });
-  r.isResearchRewardUnlocked=()=>false;
-  const activated=[];
-  r.activateMission=(mission)=>{
-    activated.push(mission.id);
-    lifecycle[mission.id]={status:'active'};
-    return true;
-  };
-  assert.equal(r.activateInitialMissions(), true);
-  assert.deepEqual(activated,['T01']);
 
-  // A reload/reconciliation after T03 is completed may recover the two
-  // declaratively eligible parallel missions, but still not later tutorial steps.
-  activated.length=0;
-  lifecycle.T01={status:'completed'};
-  lifecycle.T02={status:'completed'};
-  lifecycle.T03={status:'completed'};
-  delete lifecycle.T04;
-  delete lifecycle['GAME-shelter'];
-  assert.equal(r.activateInitialMissions(), true);
-  assert.deepEqual(new Set(activated),new Set(['T04','GAME-shelter']));
-  assert.equal(activated.includes('T05'),false);
-  assert.equal(activated.includes('T09'),false);
+  assert.equal(r.activateInitialMissions(), false, 'pending bootstrap is intentionally unsettled');
+  const initial=r.catalog.filter(m=>m.initialState==='active');
+  assert.equal(initial.length,20,'catalog baseline changed: review pending bootstrap contract');
+  assert.equal(lifecycle.T01?.status,'active');
+  assert.equal(Object.values(lifecycle).filter(x=>x.status==='active').length,1,'only T01 may be active on fresh game');
+  for (const mission of initial.filter(m=>m.id!=='T01')) {
+    assert.equal(lifecycle[mission.id]?.status,'hidden',`${mission.id} must stay hidden/pending`);
+    assert.ok(pending[mission.id],`${mission.id} canonical pending request missing`);
+  }
+  assert.equal(pending.T02.prerequisites.includes('T08'),false,'tutorial relay must keep its original prerequisite only');
+  assert.equal(pending['GAME-shelter'].prerequisites.includes('T08'),false,'shelter remains the deliberate pre-T08 exception');
+  for (const id of ['GAME-base','GAME-civilization_1','GAME-engineering_1','GAME-engineering_3','ENE-11','FLO-01']) {
+    assert.equal(pending[id].prerequisites.includes('T08'),true,`${id} must remain foundation-gated while pending`);
+  }
 });
 
 test('G09 published state fully hides an off-map local primary from active/top-level consumers while keeping journal history', () => {

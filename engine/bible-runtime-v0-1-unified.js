@@ -3648,7 +3648,7 @@
         diagnostic.startResult =
           this.startMissionThroughBible(mission.id, {
             primary: mission.primaryOnActivation === true,
-            autoPrimaryEligible: mission.autoPrimaryEligible,
+            autoPrimaryEligible: mission.autoPrimaryEligible === true,
             prerequisites: asArray(mission.prerequisites),
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
@@ -3831,7 +3831,7 @@
           this.rememberDeferredTriggerContext(mission, event);
           this.manager()?.startMission?.(mission.id, {
             primary: mission.primaryOnActivation === true,
-            autoPrimaryEligible: mission.autoPrimaryEligible,
+            autoPrimaryEligible: mission.autoPrimaryEligible === true,
             prerequisites: missionPrerequisites,
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
@@ -7421,18 +7421,11 @@
     }
 
     activateInitialMissions() {
-      if (!this.manager()) return false;
-      const prerequisitesSatisfied = (mission) =>
-        asArray(mission?.prerequisites).every((id) =>
-          this.missionLifecycle(id).completed === true
-        ) &&
-        asArray(mission?.experimentalPrerequisites).every((id) =>
-          this.isResearchRewardUnlocked(id) === true
-        );
-      const initialMissions = this.catalog
-        .filter((mission) => mission?.initialState === "active")
-        .filter((mission) => this.foundationTutorialAllows(mission))
-        .filter((mission) => prerequisitesSatisfied(mission));
+      const manager = this.manager();
+      if (!manager) return false;
+      const initialMissions = this.catalog.filter(
+        (mission) => mission?.initialState === "active"
+      );
       if (!initialMissions.length) return true;
 
       let settled = true;
@@ -7440,9 +7433,19 @@
         const state = this.missionLifecycle(mission.id);
         if (state.active || state.completed) return;
         settled = false;
-        this.activateMission(mission, {
-          type: "manual",
-          mapId: BF.currentEngine?.currentMapId || null
+
+        const prerequisites = asArray(mission.prerequisites);
+        const gatedPrerequisites = this.foundationTutorialAllows(mission)
+          ? prerequisites
+          : [...new Set([...prerequisites, "T08"])];
+
+        manager.startMission?.(mission.id, {
+          primary: mission.primaryOnActivation === true,
+          autoPrimaryEligible: mission.autoPrimaryEligible === true,
+          prerequisites: gatedPrerequisites,
+          experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
+          source: "bible-runtime-v0.1",
+          reason: "Déclencheur Bible V0.1 : manual"
         });
       });
 
