@@ -1074,13 +1074,25 @@
             if (publish) this.publish?.();
             return result;
           }
-          const queue = [
-            missionId,
-            ...before.filter((id) => id !== missionId)
-          ]
+          const previousRank = new Map(
+            before.map((id, index) => [id, index])
+          );
+          const ranked = (this.activeMissionIds || [])
+            .filter((id) => id !== missionId)
             .filter((id) => this.trees?.has(id))
             .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
             .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
+            .map((id) => this.assessMission?.(id, this.bridge?.context?.()))
+            .filter(Boolean)
+            .sort((a, b) =>
+              Number(b.score) - Number(a.score) ||
+              (previousRank.get(a.missionId) ?? Number.MAX_SAFE_INTEGER) -
+                (previousRank.get(b.missionId) ?? Number.MAX_SAFE_INTEGER)
+            )
+            .map((entry) => entry.missionId);
+          const queue = [missionId, ...ranked]
+            .filter(Boolean)
+            .filter((id, index, values) => values.indexOf(id) === index)
             .slice(0, 4);
           this.prioritizedMissionIds = queue;
           this.memory.state.prioritizedMissionIds = [...queue];
@@ -1170,20 +1182,24 @@
                 speakTraitThought(BF.currentEngine, traitReason);
               }
             }
+            const previous = ensurePriorityState.call(this);
+            const previousRank = new Map(
+              previous.map((id, index) => [id, index])
+            );
             const ranked = (this.activeMissionIds || [])
               .filter((id) => id !== primary)
               .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
               .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
               .map((id) => this.assessMission?.(id, this.bridge?.context?.()))
               .filter(Boolean)
-              .sort((a, b) => Number(b.score) - Number(a.score))
+              .sort((a, b) =>
+                Number(b.score) - Number(a.score) ||
+                (previousRank.get(a.missionId) ?? Number.MAX_SAFE_INTEGER) -
+                  (previousRank.get(b.missionId) ?? Number.MAX_SAFE_INTEGER)
+              )
               .map((entry) => entry.missionId);
-            const current = ensurePriorityState
-              .call(this)
-              .filter((id) => id !== primary && ranked.includes(id));
             this.prioritizedMissionIds = [
               primary,
-              ...current,
               ...ranked
             ]
               .filter(Boolean)
@@ -1314,7 +1330,7 @@
       };
     }
     const originalAutonomy = engine.updateAutonomy.bind(engine);
-    engine.updateAutonomy = function updateAutonomyWithBAC(now) {
+    engine.updateAutonomy = function updateAutonomyWithBAC(now, authorityContext = null) {
       const cautiousFauna = this.__bacFaunaApproach;
       if (cautiousFauna) {
         const { object, axis, source } = cautiousFauna;
@@ -1402,8 +1418,15 @@
         autonomyBreakTarget: this.autonomyBreakTarget
       }) || null;
 
-      const primaryMissionOwnsAction =
-        this.missionManager?.hasPrimaryMissionAuthority?.() === true;
+      const precheckedMissionExecutionAuthority =
+        typeof authorityContext?.missionExecutionAuthority === "boolean"
+          ? authorityContext.missionExecutionAuthority
+          : null;
+      const primaryMissionOwnsAction = precheckedMissionExecutionAuthority !== null
+        ? precheckedMissionExecutionAuthority
+        : typeof this.missionManager?.hasMissionExecutionAuthority === "function"
+          ? this.missionManager.hasMissionExecutionAuthority() === true
+          : this.missionManager?.hasPrimaryMissionAuthority?.() === true;
       const rationCandidate =
         BF.RationPolicy?.autonomyCandidate?.(this, now) || null;
       const constructionCandidate =
@@ -1789,9 +1812,22 @@
     const originalEnsureActivity = engine.ensureActivity?.bind(engine);
     if (originalEnsureActivity) {
       engine.ensureActivity = function ensureActivityAsWatchdog(now) {
-        if (this.missionManager?.hasPrimaryMissionAuthority?.()) return;
         const idle = now - Number(this.lastActivityAt || now);
         if (idle < 12000 || this.transitioning || this.pendingInteraction || this.currentRoutine) return;
+        // Un personnage encore en route n'est pas inactif : ne pas engager le
+        // watchdog ni rescanner l'autorité missionnelle pendant le déplacement.
+        if (this.character.root.position.distanceTo(this.character.target) > 0.2) return;
+        // Réutilise la cadence d'autonomie existante : le watchdog ne doit pas
+        // rescanner l'autorité missionnelle à chaque update monde pendant un idle prolongé.
+        if (now - Number(this.lastAutonomyAt || 0) < 5000) return;
+        const missionExecutionAuthority =
+          typeof this.missionManager?.hasMissionExecutionAuthority === "function"
+            ? this.missionManager.hasMissionExecutionAuthority() === true
+            : this.missionManager?.hasPrimaryMissionAuthority?.() === true;
+        if (missionExecutionAuthority) {
+          this.lastAutonomyAt = now;
+          return;
+        }
 
         if (this.pendingGate) {
           const survival = BF.getSurvivalState?.() || {};
@@ -1818,7 +1854,7 @@
         }
 
         this.lastAutonomyAt = 0;
-        this.updateAutonomy(now);
+        this.updateAutonomy(now, { missionExecutionAuthority: false });
       };
     }
     engine.__bacRoutingVersion = INTEGRATION_VERSION;

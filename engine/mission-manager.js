@@ -2183,6 +2183,44 @@
         : null;
     }
 
+    hasMissionExecutionAuthority() {
+      if (this.isMissionGuidanceEnabled?.() === false) return false;
+      if (this.hasPrimaryMissionAuthority()) return true;
+
+      const context = this.bridge.context();
+      const activeMissionIds = this.activeMissionIds
+        .filter((id) => this.isMissionVisibleOnCurrentMap(id))
+        .filter((id) =>
+          this.ensureLifecycle(id).status === "active" &&
+          this.trees.has(id)
+        );
+      const activeMissionSet = new Set(activeMissionIds);
+      const storedPriorityIds = typeof this.getPrioritizedMissionIds === "function"
+        ? this.getPrioritizedMissionIds()
+        : Array.isArray(this.prioritizedMissionIds)
+          ? this.prioritizedMissionIds
+          : [];
+      const prioritizedMissionIds = [...new Set([
+        this.primaryMissionId,
+        ...storedPriorityIds
+      ].filter(Boolean))]
+        .filter((id) => activeMissionSet.has(id))
+        .slice(0, 4);
+      const prioritizedMissionSet = new Set(prioritizedMissionIds);
+      const hasExecutableMissionWork = (missionId) =>
+        Boolean(
+          this.delegatedRuntimeAction(missionId) ||
+          this.assessMission(missionId, context)?.action
+        );
+
+      // Le Top4 est la shortlist d'autorité. Une mission hors shortlist n'est
+      // consultée qu'en fallback R-STAB si toute la shortlist est stérile.
+      if (prioritizedMissionIds.some(hasExecutableMissionWork)) return true;
+      return activeMissionIds
+        .filter((id) => !prioritizedMissionSet.has(id))
+        .some(hasExecutableMissionWork);
+    }
+
     update(now) {
       if (!this.enabled) return false;
       if (
