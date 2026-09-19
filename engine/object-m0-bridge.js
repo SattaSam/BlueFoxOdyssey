@@ -709,11 +709,42 @@
         : new Map();
     if (!trees.size) return 0;
     trees.forEach((tree, missionId) => {
+      if (!eventMatchesBoundTarget(manager, missionId, event)) return;
+
+      // L'acquittement de l'action physique est indépendant de la progression
+      // logique du nœud. Un fan-out ownerless peut avoir complété la feuille (et
+      // même son lifecycle) avant que l'événement réellement propriétaire arrive.
+      // On relit donc explicitement le nœud de currentAction, même s'il n'est plus
+      // dans availableLeaves(), sans jamais le recréditer.
+      if (current?.missionId === missionId && current?.nodeId) {
+        const currentNode = tree.find?.(current.nodeId) || null;
+        if (
+          currentNode &&
+          requiredMapMatches(manager, currentNode, event.mapId) &&
+          requiredSiteMatchesEvent(manager, currentNode, event) &&
+          eventMatchesNode(event, currentNode, missionId, tree)
+        ) {
+          const eventMissionId = String(event.detail?.missionId || "");
+          const eventNodeId = String(event.detail?.missionNodeId || "");
+          const eventInstanceId = String(
+            event.instanceId || event.detail?.instanceId || ""
+          );
+          const currentInstanceId = String(current.instanceId || "");
+          const ownerMatchesCurrent =
+            Boolean(eventMissionId && eventNodeId) &&
+            eventMissionId === String(current.missionId || "") &&
+            eventNodeId === String(current.nodeId || "") &&
+            (!currentInstanceId ||
+              (Boolean(eventInstanceId) && eventInstanceId === currentInstanceId));
+          if (ownerMatchesCurrent) currentMatched = true;
+        }
+      }
+
       if (
         manager.ensureLifecycle &&
         manager.ensureLifecycle(missionId).status !== "active"
       ) return;
-      if (!eventMatchesBoundTarget(manager, missionId, event)) return;
+
       let treeChanged = false;
       tree.availableLeaves().forEach((node) => {
         if (!requiredMapMatches(manager, node, event.mapId)) return;
@@ -724,9 +755,6 @@
           rememberCompletionSiteFact(manager, missionId, node, event);
           changed += 1;
           treeChanged = true;
-          if (current?.missionId === missionId && current?.nodeId === node.id) {
-            currentMatched = true;
-          }
         }
       });
       if (treeChanged) {
@@ -764,6 +792,12 @@
       manager.reevaluatePendingActivations?.();
       manager.catalogController?.schedule?.();
       manager.publish();
+    } else if (currentMatched) {
+      // Cas d'acquittement tardif : la feuille avait déjà été complétée par
+      // fan-out, donc aucun lifecycle ne change, mais currentAction vient d'être
+      // libérée et l'état public doit le refléter immédiatement.
+      manager.memory?.save?.();
+      manager.publish?.();
     } else {
       manager.memory?.save?.();
     }
@@ -1184,7 +1218,12 @@
       if (manager.ensureLifecycle?.(missionId)?.status !== "active") continue;
       const tree = manager.trees.get(missionId);
       for (const node of tree.availableLeaves()) {
-        if (!isStudyAction(node.type) || node.params?.siteProgressionKind) continue;
+        if (
+          !isStudyAction(node.type) ||
+          node.params?.siteProgressionKind ||
+          node.params?.eventDriven === true ||
+          node.params?.catalogManaged === true
+        ) continue;
         if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
         if (!requiredSiteMatchesResolved(manager, node, missionResolved, engine.currentMapId)) continue;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, missionResolved), node.params || {}, { skipSubject: true })) continue;
@@ -1734,8 +1773,8 @@
       const anchorPosition = this.interactionWorldPosition(object);
       const distance = this.character.root.position.distanceTo(anchorPosition);
       const interactionDistance = this.interactionValidationDistance(object);
-      if (distance > interactionDistance) {
-        if (!this.interactionStartedAt && now - this.interactionApproachStartedAt > 6500) {
+      if (!this.interactionStartedAt && distance > interactionDistance) {
+        if (now - this.interactionApproachStartedAt > 6500) {
           this.interactionApproachAttempts += 1;
           if (this.interactionApproachAttempts <= 3) this.targetInteraction(object, true);
           else {
@@ -1804,6 +1843,14 @@
         return;
       }
       if (now - this.interactionStartedAt < this.interactionDuration) return;
+      // CharacterController possède la séquence physique réelle. Pour une
+      // acquisition, ObjectM0 ne commit pas tant que cette séquence existe ;
+      // son timer reste seulement le garde-fou minimal lorsque le contrôleur
+      // ne fournit aucune séquence.
+      if (
+        ["collect", "extract"].includes(mode) &&
+        this.character.interactionSequence
+      ) return;
 
       const detail = {
         kind: definition.resource?.inventoryKey || definition.type || object.userData.kind,
