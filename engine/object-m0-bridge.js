@@ -1774,7 +1774,9 @@
           resolved.anchor?.userData?.microSceneId ||
           resolved.anchor?.userData?.persistentMicroSceneId
         );
-        const missionMicroSceneStudy = missionRequested && microSceneContext;
+        const missionMicroSceneStudy =
+          object.userData.requestedInteractionSource === "mission" &&
+          microSceneContext;
         const emphasizedStudy =
           /relic|st[eè]le|stele|arch/i.test(studyContext) ||
           missionMicroSceneStudy;

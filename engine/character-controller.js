@@ -28,7 +28,9 @@
       this.fatigueSpeedMultiplier = 1;
       this.playerSprintUntil = 0;
       this.movementMode = "auto";
-      this.autonomousRunThreshold = 13.5;
+      // Les patrouilles autonomes commencent à 6 m : au-delà, la marche
+      // n'est plus une approche locale et ne doit pas ralentir l'exploration.
+      this.autonomousRunThreshold = 6;
       this.acceleration = 5.2;
       this.deceleration = 7.5;
       this.turnSpeed = 9;

@@ -1765,6 +1765,14 @@
           "Intention de transition missionnelle persistante ; l’arbitrage local reste borné à la map courante.";
         return false;
       }
+      if (!force && replacingActivePrimary) {
+        // La runnabilité locale décide quelle mission peut agir maintenant,
+        // pas quelle intention globale occupe le Top 1. R-STAB autorise déjà
+        // une secondaire à relayer une primaire momentanément stérile sans la
+        // déclasser. Le Top 1 ne sort donc que par une transition de lifecycle
+        // forcée (completion, pause, échec) ou par un choix explicite.
+        return false;
+      }
       const context = this.bridge.context();
       const candidates = this.activeMissionIds
         .filter((id) => {
@@ -2032,16 +2040,52 @@
 
     chooseRunnableMissionAction(context) {
       if (
+        typeof this.isMissionGuidanceEnabled === "function" &&
+        !this.isMissionGuidanceEnabled()
+      ) {
+        return null;
+      }
+      if (
         this.hasActivePrimaryMission() &&
         this.delegatedRuntimeAction(this.primaryMissionId)
       ) {
         return null;
       }
 
-      const assessments = this.activeMissionIds
-        .filter((id) => this.ensureLifecycle(id).status === "active" && this.trees.has(id))
+      const activeMissionIds = this.activeMissionIds
+        .filter((id) =>
+          this.ensureLifecycle(id).status === "active" &&
+          this.trees.has(id)
+        );
+      const activeMissionSet = new Set(activeMissionIds);
+      const storedPriorityIds = typeof this.getPrioritizedMissionIds === "function"
+        ? this.getPrioritizedMissionIds()
+        : Array.isArray(this.prioritizedMissionIds)
+          ? this.prioritizedMissionIds
+          : [];
+      const prioritizedMissionIds = [...new Set([
+        this.primaryMissionId,
+        ...storedPriorityIds
+      ].filter(Boolean))]
+        .filter((id) => activeMissionSet.has(id))
+        .slice(0, 4);
+      const prioritizedMissionSet = new Set(prioritizedMissionIds);
+      const assessRunnable = (missionIds) => missionIds
         .map((id) => this.assessMission(id, context))
         .filter((candidate) => candidate?.action);
+
+      // La shortlist persistante décrit les missions qui ont actuellement le
+      // droit de produire une action physique. Une mission hors shortlist peut
+      // toujours progresser passivement par fan-out. Elle ne devient candidate
+      // d'exécution que si toute la shortlist est localement stérile (R-STAB).
+      let assessments = assessRunnable(prioritizedMissionIds);
+      let shortlistFallback = false;
+      if (!assessments.length) {
+        shortlistFallback = true;
+        assessments = assessRunnable(
+          activeMissionIds.filter((id) => !prioritizedMissionSet.has(id))
+        );
+      }
 
       const primary = assessments.find(
         (candidate) => candidate.missionId === this.primaryMissionId
@@ -2079,17 +2123,20 @@
       }
 
       const options = [];
-      if (primary) {
-        options.push({
-          id: `mission-primary:${primary.missionId}`,
-          axis: this.missionActionAxis(primary.missionId, primary.action),
-          baseWeight: 100,
-          candidate: primary
-        });
-      }
-
-      if (secondaries.length) {
-        const secondaryBudget = primary ? 20 : 100;
+      if (!shortlistFallback) {
+        const priorityWeights = [100, 45, 20, 10];
+        [primary, ...secondaries]
+          .filter(Boolean)
+          .forEach((candidate) => {
+            const rank = prioritizedMissionIds.indexOf(candidate.missionId);
+            options.push({
+              id: `mission-priority-${rank + 1}:${candidate.missionId}`,
+              axis: this.missionActionAxis(candidate.missionId, candidate.action),
+              baseWeight: priorityWeights[rank] || 10,
+              candidate
+            });
+          });
+      } else if (secondaries.length) {
         const totalScore = secondaries.reduce(
           (sum, candidate) => sum + Math.max(1, Number(candidate.score) || 1),
           0
@@ -2099,7 +2146,7 @@
             id: `mission-secondary:${candidate.missionId}`,
             axis: this.missionActionAxis(candidate.missionId, candidate.action),
             baseWeight:
-              secondaryBudget *
+              100 *
               (Math.max(1, Number(candidate.score) || 1) / totalScore),
             candidate
           });

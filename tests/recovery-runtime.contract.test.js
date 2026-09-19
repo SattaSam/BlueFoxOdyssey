@@ -168,13 +168,13 @@ test('late wrapper MissionManager ne remplace plus le proprietaire canonique', (
   assert.match(source, /__bibleCleanStateOwner = "mission-manager"/);
 });
 
-test('traveling et amplitude locomotion restent hors diff', () => {
+test('traveling reste hors diff et la course autonome commence hors proximité', () => {
   const world = read('world-engine.js');
   const character = read('character-controller.js');
   assert.match(world, /this\.shouldPlayStartupCinematic/);
   assert.match(world, /this\.startupQuietUntil = quietUntil/);
   assert.match(character, /this\.maxSpeed = 3\.55;/);
-  assert.match(character, /this\.autonomousRunThreshold = 13\.5;/);
+  assert.match(character, /this\.autonomousRunThreshold = 6;/);
   assert.match(character, /this\.acceleration = 5\.2;/);
   assert.match(character, /this\.deceleration = 7\.5;/);
 });
