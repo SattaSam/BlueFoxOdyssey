@@ -120,12 +120,37 @@ test('experimental pending remains blocked until both mission and research prere
   assert.equal(manager.memory.state.missionLifecycle[id].status,'active');
 });
 
-test('R1 compensating semantics are absent: catalog omission stays explicit false and activation itself does not force Top1',()=>{
+test('catalog omission preserves MissionManager default eligibility without restoring R1 forced auto-promotion',()=>{
   const {manager,runtime}=boot(); runtime.activateInitialMissions();
-  assert.equal(manager.memory.state.missionLifecycle.T01.autoPrimaryEligible,false,'historical Bible activation semantics must be restored');
-  manager.primaryMissionId='';manager.activeMissionId='';manager.tree=null;manager.memory.state.primaryMissionId='';manager.memory.state.activeMissionId='';
+  assert.equal(manager.memory.state.missionLifecycle.T01.autoPrimaryEligible,true,'catalog omission must preserve MissionManager default eligibility');
+  assert.equal(manager.memory.state.pendingActivations.T02.options.autoPrimaryEligible,undefined,'pending omission must remain tri-state, not false');
+  assert.equal(manager.memory.state.pendingActivations.T10.options.autoPrimaryEligible,true,'explicit true must remain true');
+  assert.equal(manager.primaryMissionId,'','activation itself must not restore R1 forced auto-promotion');
+  assert.equal(manager.selectBestPrimary(performance.now(),true),true,'canonical MissionManager arbitration must be able to promote T01');
+  assert.equal(manager.primaryMissionId,'T01');
   complete(manager,'T01');
   assert.equal(manager.memory.state.missionLifecycle.T02.status,'active');
-  assert.equal(manager.primaryMissionId,'','T02 activation must not use R1 forced auto-promotion');
-  assert.ok(manager.chooseRunnableMissionAction(manager.bridge.context())?.missionId,'active secondary remains executable through canonical/P2 routing');
+  assert.equal(manager.memory.state.missionLifecycle.T02.autoPrimaryEligible,true,'T02 omission must preserve default eligibility after pending relay');
+  assert.equal(manager.primaryMissionId,'','pending activation itself must stay secondary before canonical arbitration');
+  assert.equal(manager.selectBestPrimary(performance.now(),true),true,'canonical arbitration must be able to promote relayed T02');
+  assert.equal(manager.primaryMissionId,'T02');
+});
+
+test('Bible activation preserves explicit false while absent stays undefined on all activation paths',()=>{
+  const {BF,manager,runtime}=boot(); runtime.activateInitialMissions();
+
+  const falseMission=BF.BibleCatalog.find(m=>m.id==='GAME-fire');
+  assert.ok(falseMission);
+  manager.ensureLifecycle('T08').status='completed';
+  manager.ensureLifecycle('GAME-engineering_3').status='completed';
+  assert.equal(runtime.activateMission(falseMission,{type:'manual'}),true);
+  assert.equal(manager.memory.state.missionLifecycle['GAME-fire'].autoPrimaryEligible,false,'explicit false must remain false on direct Bible activation');
+
+  const deferred={id:'TRI-DEFER',title:'Tri defer',pattern:'OBSERVE_TARGET',trigger:{type:'progression.mission_completed',missionId:'TRI-PRE',count:1},prerequisites:['TRI-PRE'],priority:1};
+  runtime.catalog=[...runtime.catalog,deferred]; runtime.byId.set(deferred.id,deferred);
+  BF.Missions.definitions['TRI-PRE']={id:'TRI-PRE',title:'pre',priority:1,root:{}};
+  BF.Missions.definitions['TRI-DEFER']={id:'TRI-DEFER',title:'defer',priority:1,root:{}};
+  runtime.consumeTriggerEvent({type:'progression.mission_completed',missionId:'TRI-PRE'},{allowActivation:true});
+  assert.ok(manager.memory.state.pendingActivations['TRI-DEFER']);
+  assert.equal(manager.memory.state.pendingActivations['TRI-DEFER'].options.autoPrimaryEligible,undefined,'deferred trigger omission must stay undefined');
 });

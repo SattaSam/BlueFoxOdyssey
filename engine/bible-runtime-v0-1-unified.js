@@ -3648,7 +3648,7 @@
         diagnostic.startResult =
           this.startMissionThroughBible(mission.id, {
             primary: mission.primaryOnActivation === true,
-            autoPrimaryEligible: mission.autoPrimaryEligible === true,
+            autoPrimaryEligible: mission.autoPrimaryEligible,
             prerequisites: asArray(mission.prerequisites),
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
@@ -3831,7 +3831,7 @@
           this.rememberDeferredTriggerContext(mission, event);
           this.manager()?.startMission?.(mission.id, {
             primary: mission.primaryOnActivation === true,
-            autoPrimaryEligible: mission.autoPrimaryEligible === true,
+            autoPrimaryEligible: mission.autoPrimaryEligible,
             prerequisites: missionPrerequisites,
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
             source: "bible-runtime-v0.1",
@@ -7441,7 +7441,7 @@
 
         manager.startMission?.(mission.id, {
           primary: mission.primaryOnActivation === true,
-          autoPrimaryEligible: mission.autoPrimaryEligible === true,
+          autoPrimaryEligible: mission.autoPrimaryEligible,
           prerequisites: gatedPrerequisites,
           experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
           source: "bible-runtime-v0.1",
