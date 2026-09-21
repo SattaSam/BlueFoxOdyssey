@@ -1913,10 +1913,13 @@
       const lifecycle =
         manager?.memory?.state?.missionLifecycle?.[missionId] || null;
       const tree = manager?.trees?.get?.(missionId) || null;
-      const publicEntry =
-        (BF.getMissionState?.()?.missions || []).find((entry) =>
-          (entry.missionId || entry.id) === missionId
-        ) || null;
+      const publicEntry = lifecycle
+        ? null
+        : ((Array.isArray(BF.missionState?.missions)
+            ? BF.missionState.missions
+            : BF.getMissionState?.()?.missions) || []).find((entry) =>
+            (entry.missionId || entry.id) === missionId
+          ) || null;
 
       const status =
         lifecycle?.status ||
