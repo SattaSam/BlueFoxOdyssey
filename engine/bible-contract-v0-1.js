@@ -118,7 +118,8 @@
     "near-bluefox",
     "near-camp",
     "map-center",
-    "zone-random"
+    "zone-random",
+    "player"
   ]);
 
   const isObject = (value) =>
@@ -467,8 +468,8 @@
 
     if (mission.ponderation != null) {
       const value = Number(mission.ponderation);
-      if (!Number.isFinite(value) || value < -1 || value > 1) {
-        add(errors, missionId, "ponderation", "doit être comprise entre -1 et 1.");
+      if (!Number.isFinite(value) || value < -1 || value > 1.6) {
+        add(errors, missionId, "ponderation", "doit être comprise entre -1 et 1.6.");
       }
     }
 
@@ -485,13 +486,13 @@
     if (mission.souvenir != null && typeof mission.souvenir !== "boolean") {
       add(errors, missionId, "souvenir", "doit être booléen.");
     }
-    if (mission.memoryValence != null && !["positive", "negative"].includes(mission.memoryValence)) {
-      add(errors, missionId, "memoryValence", "doit valoir positive ou negative.");
+    if (mission.memoryValence != null && !["positive", "negative", "mixed"].includes(mission.memoryValence)) {
+      add(errors, missionId, "memoryValence", "doit valoir positive, negative ou mixed.");
     }
     if (mission.scoreTrauma != null) {
       const value = Number(mission.scoreTrauma);
-      if (!Number.isFinite(value) || value < 0 || value > 100) {
-        add(errors, missionId, "scoreTrauma", "doit être compris entre 0 et 100.");
+      if (!Number.isFinite(value) || value < 0 || value > 132) {
+        add(errors, missionId, "scoreTrauma", "doit être compris entre 0 et 132.");
       }
     }
     if (mission.souvenir === true && !mission.memoryValence) {
