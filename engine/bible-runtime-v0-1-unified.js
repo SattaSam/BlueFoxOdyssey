@@ -95,6 +95,8 @@
         this.onCivilizationTradeCompleted(event.detail || {});
       this.boundFinalDepartureCompleted = (event) =>
         this.onFinalDepartureCompleted(event.detail || {});
+      this.boundTeleportationHypothesis = () =>
+        this.reconcileDeferredCompletionTriggers();
     }
 
     defaultState() {
@@ -2158,26 +2160,7 @@
         return ranks.includes(rank);
       });
       if (!relationPrerequisites) return false;
-      const memory = this.manager()?.memory;
-      const requiredFactsReady = asArray(mission?.requiredFacts).every((factKey) =>
-        Boolean(memory?.getFact?.(factKey, false))
-      );
-      if (!requiredFactsReady) return false;
-      return asArray(mission?.requiredFactValues).every((requirement) => {
-        const factKey = String(requirement?.fact || "").trim();
-        if (!factKey) return true;
-        const stored = memory?.getFact?.(factKey, null);
-        const field = String(requirement?.field || "").trim();
-        const actual = field && stored && typeof stored === "object"
-          ? stored[field]
-          : stored;
-        if (Object.prototype.hasOwnProperty.call(requirement || {}, "equals")) {
-          return actual === requirement.equals;
-        }
-        const oneOf = asArray(requirement?.oneOf);
-        if (oneOf.length) return oneOf.includes(actual);
-        return Boolean(actual);
-      });
+      return this.missionFactRequirementsSatisfied(mission);
     }
 
     survivalCapabilityUnlocked(capability) {
@@ -3582,7 +3565,7 @@
       return true;
     }
 
-    activateMission(mission, event = {}) {
+    activateMission(mission, event = {}, options = {}) {
       const manager = this.manager();
       const diagnostic = {
         at: Date.now(),
@@ -3647,7 +3630,7 @@
       try {
         diagnostic.startResult =
           this.startMissionThroughBible(mission.id, {
-            primary: mission.primaryOnActivation === true,
+            primary: options.primary ?? (mission.primaryOnActivation === true),
             autoPrimaryEligible: mission.autoPrimaryEligible,
             prerequisites: asArray(mission.prerequisites),
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
@@ -3730,13 +3713,17 @@
       }
     }
 
-    rememberDeferredTriggerContext(mission, event = {}) {
+    rememberDeferredTriggerContext(mission, event = {}, options = {}) {
       const manager = this.manager();
       const memory = manager?.memory;
       if (!mission?.id || !memory) return false;
 
       memory.setFact?.(`bibleDeferredTrigger:${mission.id}`, {
         type: event.type || null,
+        missionId: event.missionId || null,
+        ...(options.factRequirementsDeferred === true
+          ? { factRequirementsDeferred: true }
+          : {}),
         mapId: event.mapId || null,
         fromMapId: event.fromMapId || null,
         toMapId: event.toMapId || event.mapId || null,
@@ -3767,6 +3754,89 @@
       }
       memory.save?.();
       return true;
+    }
+
+    missionFactRequirementsSatisfied(mission) {
+      const memory = this.manager()?.memory;
+      if (!memory) return false;
+      const requiredFactsReady = asArray(mission?.requiredFacts).every((factKey) =>
+        Boolean(memory.getFact?.(factKey, false))
+      );
+      if (!requiredFactsReady) return false;
+      return asArray(mission?.requiredFactValues).every((requirement) => {
+        const factKey = String(requirement?.fact || "").trim();
+        if (!factKey) return true;
+        const stored = memory.getFact?.(factKey, null);
+        const field = String(requirement?.field || "").trim();
+        const actual = field && stored && typeof stored === "object"
+          ? stored[field]
+          : stored;
+        if (Object.prototype.hasOwnProperty.call(requirement || {}, "equals")) {
+          return actual === requirement.equals;
+        }
+        const oneOf = asArray(requirement?.oneOf);
+        if (oneOf.length) return oneOf.includes(actual);
+        return Boolean(actual);
+      });
+    }
+
+    deferCompletionTrigger(mission, event = {}) {
+      if (
+        event.type !== "progression.mission_completed" ||
+        Math.max(1, Number(mission?.trigger?.count) || 1) !== 1
+      ) return false;
+      const memory = this.manager()?.memory;
+      if (!mission?.id || !memory) return false;
+      const key = `bibleDeferredTrigger:${mission.id}`;
+      const previous = memory.getFact?.(key, null);
+      const sameTrigger = Boolean(
+        previous?.type === event.type &&
+        String(previous?.missionId || "") === String(event.missionId || "")
+      );
+      if (!sameTrigger) this.incrementTrigger(mission, event);
+      this.rememberDeferredTriggerContext(mission, event, { factRequirementsDeferred: true });
+      return true;
+    }
+
+    reconcileDeferredCompletionTriggers() {
+      const manager = this.manager();
+      const memory = manager?.memory;
+      if (!memory) return false;
+      let changed = false;
+
+      for (const mission of this.catalog) {
+        const key = `bibleDeferredTrigger:${mission.id}`;
+        const event = memory.getFact?.(key, null);
+        if (
+          event?.type !== "progression.mission_completed" ||
+          event?.factRequirementsDeferred !== true
+        ) continue;
+
+        const lifecycle = this.missionLifecycle(mission.id);
+        if (lifecycle.active || lifecycle.completed) {
+          memory.setFact?.(key, null);
+          changed = true;
+          continue;
+        }
+        if (!this.eventMatchesTrigger(mission.trigger, event)) continue;
+        if (!this.prerequisitesSatisfied(mission)) continue;
+        if (!this.siteDistanceGateSatisfied(
+          mission,
+          event.mapId || event.toMapId || BF.currentEngine?.currentMapId
+        )) continue;
+
+        // Le reçu MissionMemory constitue la preuve persistante du déclencheur
+        // one-shot. Le compteur runtime reste diagnostique et ne doit pas rendre
+        // le replay dépendant d'un second stockage local.
+        // Le déclencheur causal a déjà été compté : on active directement sans
+        // le rejouer ni incrémenter une seconde fois. Ces followers différés
+        // restent secondaires ; MissionManager conserve l'arbitrage Top1.
+        if (!this.activateMission(mission, event, { primary: false })) continue;
+        memory.setFact?.(key, null);
+        changed = true;
+      }
+      if (changed) memory.save?.();
+      return changed;
     }
 
     consumeTriggerEvent(event, options = {}) {
@@ -3804,6 +3874,25 @@
 
           const missingExperimentalPrerequisites = asArray(mission.experimentalPrerequisites)
             .filter((knowledgeId) => !this.isResearchRewardUnlocked(knowledgeId));
+
+          const hasFactRequirements =
+            asArray(mission.requiredFacts).length > 0 ||
+            asArray(mission.requiredFactValues).length > 0;
+
+          // Une completion est un événement causal one-shot. Si ce follower est
+          // explicitement bloqué par un fait Bible, MissionManager ne doit pas le
+          // démarrer prématurément ni perdre l'événement : BibleRuntime conserve
+          // le reçu et attend que TOUS les prérequis redeviennent vrais.
+          if (
+            options.allowActivation !== false &&
+            event.type === "progression.mission_completed" &&
+            Math.max(1, Number(mission.trigger?.count) || 1) === 1 &&
+            hasFactRequirements &&
+            !this.missionFactRequirementsSatisfied(mission)
+          ) {
+            this.deferCompletionTrigger(mission, event);
+            continue;
+          }
 
           // Les pendingActivations de MissionManager portent les dépendances de
           // lifecycle et les connaissances expérimentales. Un requiredFact manquant,
@@ -3860,6 +3949,8 @@
       const concurrentGroup = String(
         selected.concurrentAvailabilityGroup || ""
       ).trim();
+      const completionFanout =
+        event.type === "progression.mission_completed";
       if (concurrentGroup) {
         const concurrentCandidates = candidates.filter((mission) =>
           String(mission.concurrentAvailabilityGroup || "").trim() === concurrentGroup
@@ -3871,20 +3962,34 @@
           }
         });
 
-        // Les missions concurrentes sont toutes confiées au lifecycle canonique
-        // comme secondaires actives. MissionManager reste seul propriétaire de
-        // la sélection de la mission principale et peut réarbitrer plus tard
-        // sans réémettre l'événement causal.
+        if (completionFanout) {
+          const alreadyHandled = new Set(
+            concurrentCandidates.map((mission) => mission.id)
+          );
+          candidates.forEach((mission) => {
+            if (alreadyHandled.has(mission.id)) return;
+            if (this.activateMission(mission, event, { primary: false })) {
+              activatedMissionIds.push(mission.id);
+            }
+          });
+        }
+
+        // Les missions concurrentes et les followers du même événement causal
+        // sont d'abord toutes confiées au lifecycle canonique. L'arbitrage
+        // historique n'intervient qu'une fois le fan-out complet, afin qu'il
+        // voie l'ensemble des missions réellement disponibles.
         const manager = this.manager();
         if (activatedMissionIds.length > 1) {
           manager?.selectBestPrimary?.(performance.now(), true);
           manager?.memory?.save?.();
           manager?.publish?.();
         }
+
+        const activatedMissionId =
+          manager?.primaryMissionId || activatedMissionIds[0] || null;
         return {
           matched: candidates.length,
-          activatedMissionId:
-            manager?.primaryMissionId || activatedMissionIds[0] || null,
+          activatedMissionId,
           activatedMissionIds
         };
       }
@@ -3892,11 +3997,24 @@
       const activatedMissionId = this.activateMission(selected, event)
         ? selected.id
         : null;
+      const activatedMissionIds = activatedMissionId
+        ? [activatedMissionId]
+        : [];
 
+      if (completionFanout) {
+        candidates.slice(1).forEach((mission) => {
+          if (this.activateMission(mission, event, { primary: false })) {
+            activatedMissionIds.push(mission.id);
+          }
+        });
+      }
+
+      const effectiveActivatedMissionId =
+        activatedMissionId || activatedMissionIds[0] || null;
       return {
         matched: candidates.length,
-        activatedMissionId,
-        activatedMissionIds: activatedMissionId ? [activatedMissionId] : []
+        activatedMissionId: effectiveActivatedMissionId,
+        activatedMissionIds
       };
     }
 
@@ -7228,6 +7346,7 @@
       this.reconcileSlotFactEffects();
       this.reconcileFinalDeparture();
       this.reconcileMissionCompletionTriggers();
+      this.reconcileDeferredCompletionTriggers();
       this.reconcileMissionProgressValidations();
       this.reconcileLongExpeditionValidations();
       this.reconcileWorldEventRequirements();
@@ -7393,6 +7512,14 @@
       global.addEventListener?.(
         "bluefox:final-departure-completed",
         this.boundFinalDepartureCompleted
+      );
+      global.removeEventListener?.(
+        "bluefox:teleportation-hypothesis",
+        this.boundTeleportationHypothesis
+      );
+      global.addEventListener?.(
+        "bluefox:teleportation-hypothesis",
+        this.boundTeleportationHypothesis
       );
       return Boolean(this.unsubscribeObjectEvents);
     }
