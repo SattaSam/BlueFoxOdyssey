@@ -329,97 +329,6 @@
     return BF.setAutonomyMode?.(normalized, { source: "tutorial" }) !== false;
   };
 
-  const applyTutorialSemiScope = (engine, mission) => {
-    const manager = engine?.missionManager;
-    if (!manager || !mission?.id) return false;
-
-    const key = `tutorialSemiScope:${mission.id}`;
-    const existing = manager.memory?.getFact?.(key, null);
-    const activeMissionIds = [...new Set(manager.activeMissionIds || [])];
-    if (
-      existing &&
-      activeMissionIds.length === 1 &&
-      activeMissionIds[0] === mission.id &&
-      manager.primaryMissionId === mission.id &&
-      manager.activeMissionId === mission.id
-    ) {
-      return false;
-    }
-    const snapshot = Array.isArray(existing?.activeMissionIds)
-      ? existing.activeMissionIds
-      : activeMissionIds;
-
-    if (!existing) {
-      manager.memory?.setFact?.(key, {
-        activeMissionIds: snapshot,
-        appliedAt: Date.now()
-      });
-    }
-
-    // SEMI tutoriel : une seule mission autonome candidate.
-    // Les lifecycles et arbres des missions parallèles restent actifs afin
-    // de conserver leur progression passive/fan-out.
-    manager.activeMissionIds = [mission.id];
-    manager.primaryMissionId = mission.id;
-    manager.activeMissionId = mission.id;
-    manager.tree = manager.trees?.get?.(mission.id) || manager.tree;
-
-    manager.memory?.save?.();
-    manager.publish?.();
-    return true;
-  };
-
-  const restoreTutorialSemiScope = (engine, mission) => {
-    const manager = engine?.missionManager;
-    if (!manager || !mission?.id) return false;
-
-    const key = `tutorialSemiScope:${mission.id}`;
-    const snapshot = manager.memory?.getFact?.(key, null);
-    if (!snapshot || snapshot.restored === true) return false;
-
-    const restoredIds = [...new Set(snapshot.activeMissionIds || [])]
-      .filter((id) => id !== mission.id)
-      .filter((id) => manager.definition?.(id))
-      .filter((id) =>
-        manager.memory?.state?.missionLifecycle?.[id]?.status === "active"
-      );
-
-    restoredIds.forEach((id) => {
-      if (!manager.trees?.has?.(id)) {
-        manager.trees?.set?.(id, manager.planner?.restoreOrCreate?.(id));
-      }
-    });
-
-    manager.memory?.setFact?.(key, {
-      ...snapshot,
-      restored: true,
-      restoredAt: Date.now()
-    });
-
-    manager.activeMissionIds = restoredIds;
-
-    if (
-      manager.primaryMissionId === mission.id ||
-      !restoredIds.includes(manager.primaryMissionId)
-    ) {
-      manager.primaryMissionId = "";
-      manager.activeMissionId = "";
-      manager.tree = null;
-      if (restoredIds.length) {
-        manager.setPrimaryMission?.(
-          restoredIds[0],
-          false,
-          "Reprise des missions actives après la fenêtre tutorielle SEMI."
-        );
-      }
-    }
-
-    manager.syncMissionSelection?.();
-    manager.memory?.save?.();
-    manager.publish?.();
-    return true;
-  };
-
   const unlockCompletedMissionAutonomy = (state) => {
     (state?.missions || []).forEach((entry) => {
       if (entry.lifecycleStatus !== "completed") return;
@@ -711,9 +620,6 @@
         );
         const arrivalMode = activeMission.navigation?.autonomyModeOnArrival;
         if (arrivalMode) applyTutorialAutonomy(arrivalMode);
-        if (arrivalMode === "semi") {
-          applyTutorialSemiScope(engine, activeMission);
-        }
         manager?.memory?.save?.();
         manager?.publish?.();
       }
@@ -771,19 +677,6 @@
       }
 
       (state?.missions || []).forEach((entry) => {
-        if (entry.lifecycleStatus !== "active") return;
-        const mission = missionById(entry.missionId);
-        if (mission?.navigation?.autonomyModeOnArrival !== "semi") return;
-        const excursion = manager?.memory?.getFact?.(
-          `tutorialExcursion:${mission.id}`,
-          null
-        );
-        if (excursion?.arrived !== true) return;
-        if (BF.getAutonomyMode?.() !== "semi") return;
-        applyTutorialSemiScope(engine, mission);
-      });
-
-      (state?.missions || []).forEach((entry) => {
         if (entry.lifecycleStatus !== "completed") return;
         const mission = missionById(entry.missionId);
         const mode = mission?.navigation?.autonomyModeOnComplete;
@@ -797,7 +690,6 @@
         if (memory?.getFact?.(appliedKey, false) === true) return;
 
         if (applyTutorialAutonomy(mode)) {
-          restoreTutorialSemiScope(engine, mission);
           memory?.setFact?.(appliedKey, true);
           memory?.save?.();
         }

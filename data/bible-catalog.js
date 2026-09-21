@@ -64,6 +64,7 @@
     initialState: "active",
     targetBinding: "definition",
     priority: 100,
+    primaryOnActivation: true,
     passivePriorityAxis: "survival",
     slots: Object.freeze({
       study: Object.freeze({
@@ -111,6 +112,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T01"]),
     priority: 96,
+    primaryOnActivation: true,
     passivePriorityAxis: "collection",
     slots: Object.freeze({
       collect: Object.freeze({
@@ -172,6 +174,7 @@
     targetMapId: "crystal",
     localVisibility: "current-map",
     priority: 94,
+    primaryOnActivation: true,
     passivePriorityAxis: "collection",
     sequence: Object.freeze([
       Object.freeze({
@@ -3785,6 +3788,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T03"]),
     priority: 92,
+    primaryOnActivation: true,
     passivePriorityAxis: "exploration",
     slots: Object.freeze({
       collect: Object.freeze({
@@ -3840,6 +3844,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T04"]),
     priority: 90,
+    primaryOnActivation: true,
     passivePriorityAxis: "exploration",
     slots: Object.freeze({
       explore: Object.freeze({
@@ -3893,6 +3898,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T05"]),
     priority: 88,
+    primaryOnActivation: true,
     passivePriorityAxis: "research",
     sequence: Object.freeze([
       Object.freeze({
@@ -3968,6 +3974,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T06"]),
     priority: 86,
+    autoPrimaryEligible: false,
     passivePriorityAxis: "exploration",
     slots: Object.freeze({
       study: Object.freeze({
@@ -4053,6 +4060,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T07"]),
     priority: 84,
+    primaryOnActivation: true,
     slots: Object.freeze({
       travel: Object.freeze({
         title: "Revenir au Site du crash",
@@ -4120,6 +4128,7 @@
     initialState: "active",
     prerequisites: Object.freeze(["T08"]),
     priority: 400,
+    primaryOnActivation: true,
     passivePriorityAxis: "exploration",
     tutorialAutonomy: Object.freeze({
       autonomousEligibleOnAcknowledge: true
