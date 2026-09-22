@@ -2,7 +2,7 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!cat){console.warn("[BlueFox Music] catalogue absent");return;}
-const VERSION="1.4.0",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const VERSION="1.4.1",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
 const introOwnsAudio=()=>{
  const root=global.document?.documentElement;
  return Boolean(root?.classList?.contains("bluefox-first-launch-open")||root?.classList?.contains("bluefox-intro-open"));
@@ -281,14 +281,18 @@ class AdaptiveMusicEngine{
   return sequence.reduce((total,ref)=>{const resolved=resolveAnyStep(ref);return total+(resolved?Math.max(0,resolved.segment.endSec-resolved.segment.startSec):0);},0);
  }
  sequenceFirstStep(id){const ref=sequenceById(id)?.[0];return ref?resolveAnyStep(ref):null;}
+ sequenceProfile(id){return cat.sequenceProfiles?.[id]||ACTIVE_PROFILES[id]||null;}
  themePool(theme){
   if(!theme)return[];
-  if(theme==="active")return Object.keys(ACTIVE_SEQUENCES);
-  return (cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme);
+  if(theme==="active"){
+   const recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3));
+   return this.activeCandidates(recent).map(item=>item.id);
+  }
+  return (cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme&&this.sequenceProfile(id)?.role!=="cue");
  }
  themeCycleCeilingSec(){return Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.maximumPendingSec)||0,150);}
  shouldContinueInstalledTheme(theme=this.currentTheme){
-  if(!theme)return false;
+  if(!theme||this.sequenceProfile(this.sequenceId)?.role==="cue")return false;
   const pool=this.themePool(theme);if(!pool.length)return false;
   const age=this.themeAgeSec(),preferred=Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.minimumListenSec)||0),ceiling=this.themeCycleCeilingSec();
   if(age<preferred)return true;
@@ -310,14 +314,15 @@ class AdaptiveMusicEngine{
   return score;
  }
  selectThemeContinuation(theme,previousStep=this.currentStep()){
-  const pool=this.themePool(theme),recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3));
-  if(!pool.length)return false;
+  const recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3)),activeScores=theme==="active"?new Map(this.activeCandidates(recent).map(item=>[item.id,item.score])):null;
+  const pool=this.themePool(theme);if(!pool.length)return false;
   const maxRepeats=Math.max(1,Number(cat.transitions.maxConsecutiveLoopRepeats)||3),previousKey=this.stepKey(previousStep);
   const ranked=pool.map(id=>{
    const firstStep=this.sequenceFirstStep(id),sameStep=Boolean(previousKey&&firstStep&&previousKey===this.stepKey(firstStep));
-   const recentCount=recent.filter(item=>item===id).length,profile=cat.sequenceProfiles?.[id]||ACTIVE_PROFILES[id]||{};
+   const recentCount=recent.filter(item=>item===id).length,profile=this.sequenceProfile(id)||{};
    const long=Boolean(profile.long||profile.role==="development"||firstStep?.segment?.protected||this.sequenceDurationSec(id)>=90);
-   let score=(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):100)+this.transitionScore(id,previousStep);
+   const contextualScore=theme==="active"?(activeScores.get(id)??-1000):(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):100);
+   let score=contextualScore+this.transitionScore(id,previousStep);
    if(long)score+=20;
    if(sameStep)score-=12*Math.max(1,this.perceptualRun.count||1);
    if(sameStep&&this.perceptualRun.count>=maxRepeats)score-=1000;
@@ -405,8 +410,10 @@ class AdaptiveMusicEngine{
  advance(){
   if(!this.started||this.disposed)return;const step=this.currentStep();if(!step)return;
   const pendingAge=this.pending?(Date.now()-Number(this.pending.requestedAt||Date.now()))/1000:0;
-  const sequenceEnding=this.index+1>=this.sequence.length,themeReady=this.themeAgeSec()>=this.requiredThemeHoldSec(step),maximumPendingReached=pendingAge>=cat.transitions.maximumPendingSec;
-  if(this.pending&&((sequenceEnding&&themeReady)||maximumPendingReached)){if(this.applyPending())return;}
+  const sequenceEnding=this.index+1>=this.sequence.length,themeAge=this.themeAgeSec(),themeReady=themeAge>=this.requiredThemeHoldSec(step),maximumPendingReached=pendingAge>=cat.transitions.maximumPendingSec;
+  const pendingTheme=this.pending?.sequenceId?sequenceTheme(this.pending.sequenceId):null,crossThemeAdvisory=Boolean(this.pending?.reason==="bac-advisory"&&pendingTheme&&pendingTheme!==this.currentTheme&&pendingTheme!=="active");
+  const advisoryHold=Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.minimumListenSec)||0),pendingReady=crossThemeAdvisory?themeAge>=advisoryHold:themeReady;
+  if(this.pending&&((sequenceEnding&&pendingReady)||maximumPendingReached)){if(this.applyPending())return;}
   if(this.pending&&!themeReady&&!maximumPendingReached)this.holdCurrentThemeUntilEligible(step);
   if(this.sequence.length===1&&step.segment.loopable&&this.repeats<cat.transitions.maxConsecutiveLoopRepeats-1)this.repeats++;
   else{
