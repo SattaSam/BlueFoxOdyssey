@@ -2,7 +2,7 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!cat){console.warn("[BlueFox Music] catalogue absent");return;}
-const VERSION="1.4.1",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const VERSION="1.4.2",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
 const introOwnsAudio=()=>{
  const root=global.document?.documentElement;
  return Boolean(root?.classList?.contains("bluefox-first-launch-open")||root?.classList?.contains("bluefox-intro-open"));
@@ -413,6 +413,7 @@ class AdaptiveMusicEngine{
   const sequenceEnding=this.index+1>=this.sequence.length,themeAge=this.themeAgeSec(),themeReady=themeAge>=this.requiredThemeHoldSec(step),maximumPendingReached=pendingAge>=cat.transitions.maximumPendingSec;
   const pendingTheme=this.pending?.sequenceId?sequenceTheme(this.pending.sequenceId):null,crossThemeAdvisory=Boolean(this.pending?.reason==="bac-advisory"&&pendingTheme&&pendingTheme!==this.currentTheme&&pendingTheme!=="active");
   const advisoryHold=Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.minimumListenSec)||0),pendingReady=crossThemeAdvisory?themeAge>=advisoryHold:themeReady;
+  const pendingWaiting=Boolean(this.pending&&!pendingReady&&!maximumPendingReached);
   if(this.pending&&((sequenceEnding&&pendingReady)||maximumPendingReached)){if(this.applyPending())return;}
   if(this.pending&&!themeReady&&!maximumPendingReached)this.holdCurrentThemeUntilEligible(step);
   if(this.sequence.length===1&&step.segment.loopable&&this.repeats<cat.transitions.maxConsecutiveLoopRepeats-1)this.repeats++;
@@ -421,7 +422,7 @@ class AdaptiveMusicEngine{
    if(this.index>=this.sequence.length){
     const holdTheme=this.themeHold.until>Date.now()?this.themeHold.theme:null;
     const installedTheme=holdTheme&&holdTheme===this.currentTheme?holdTheme:this.currentTheme;
-    const mustContinue=Boolean(installedTheme&&((!themeReady&&!maximumPendingReached)||(!this.pending&&this.shouldContinueInstalledTheme(installedTheme))));
+    const mustContinue=Boolean(installedTheme&&(pendingWaiting||(!themeReady&&!maximumPendingReached)||(!this.pending&&this.shouldContinueInstalledTheme(installedTheme))));
     if(mustContinue){
      if(!this.selectThemeContinuation(installedTheme,step))this.selectSequence(true);
     }else this.selectSequence(true);
