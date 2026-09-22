@@ -2,7 +2,7 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!cat){console.warn("[BlueFox Music] catalogue absent");return;}
-const VERSION="1.3.9",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const VERSION="1.4.0",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
 const introOwnsAudio=()=>{
  const root=global.document?.documentElement;
  return Boolean(root?.classList?.contains("bluefox-first-launch-open")||root?.classList?.contains("bluefox-intro-open"));
@@ -14,9 +14,53 @@ const THEME_SWITCH_STREAK=3;
 function sequenceTheme(id){
  const key=String(id||"").toLowerCase();
  if(key.startsWith("active-"))return "active";
+ if(key.includes("dynamics")||key.includes("dynamic")||key.includes("danger"))return "dynamics";
  if(key.includes("relic")||key.includes("archae")||key.includes("research"))return "relic";
- if(key.includes("main")||key.includes("drift")||key.includes("explor"))return "main";
+ if(key.includes("motif"))return "motif";
+ if(key.includes("main"))return "main";
+ const sequence=sequenceById(id),firstRef=sequence?.[0],first=firstRef?resolveAnyStep(firstRef):null;
+ const trackId=String(first?.track?.id||"").toLowerCase(),family=String(first?.track?.family||"").toLowerCase();
+ if(trackId.includes("exploration")||key.includes("explore"))return "explore";
+ if(["main","drift","relic","dynamics","motif"].includes(family))return family;
+ if(key.includes("drift"))return "drift";
  return "other";
+}
+function roleCompatibility(fromRole,toRole){
+ const from=String(fromRole||""),to=String(toRole||"");
+ const matrix={
+  intro:{development:18,loop:14,bridge:12,insert:5,outro:-20,intro:-8},
+  development:{development:15,loop:13,bridge:10,outro:9,insert:3,intro:-12},
+  loop:{loop:16,development:18,bridge:12,outro:6,insert:4,intro:-10},
+  bridge:{development:20,loop:17,bridge:6,outro:7,insert:3,intro:-12},
+  insert:{development:21,loop:16,bridge:13,outro:5,insert:-4,intro:-14},
+  outro:{intro:15,development:12,loop:7,bridge:8,insert:2,outro:-12}
+ };
+ return matrix[from]?.[to]??0;
+}
+function themeCompatibility(fromTheme,toTheme){
+ if(!fromTheme||!toTheme)return 0;
+ if(fromTheme===toTheme)return 32;
+ const pair=[fromTheme,toTheme].sort().join("|");
+ return ({
+  "drift|main":18,
+  "drift|explore":24,
+  "explore|main":18,
+  "explore|relic":6,
+  "active|explore":8,
+  "dynamics|explore":6,
+  "explore|motif":12,
+  "main|relic":10,
+  "drift|relic":5,
+  "dynamics|main":7,
+  "dynamics|relic":4,
+  "active|main":16,
+  "active|drift":8,
+  "active|relic":2,
+  "active|dynamics":6,
+  "main|motif":18,
+  "drift|motif":12,
+  "motif|relic":14
+ })[pair]??-12;
 }
 const activeTrack=(id,title,file,segments)=>Object.freeze({id,title,family:"main",file,contexts:Object.freeze([cat.contexts.EXPLORATION_SIGNIFICANT,cat.contexts.ACTION_DYNAMIC]),segments:Object.freeze(segments.map(Object.freeze))});
 const activeSegment=(id,role,startSec,endSec,fadeSec,extra={})=>({id,role,startSec,endSec,fadeSec,...extra});
@@ -80,7 +124,7 @@ class AdaptiveMusicEngine{
   this.decks=[this.deck("A"),this.deck("B")];this.active=-1;this.context=cat.contexts.EXPLORATION_CALM;this.priority=10;
   this.sequenceId=null;this.sequence=[];this.index=0;this.repeats=0;this.history=[];this.pending=null;this.started=false;this.unlocked=false;this.disposed=false;
   this.signal={axis:"exploration",activation:0,event:null,decisionAt:0};this.lastSignalChange=0;this.activityStreak={axis:"exploration",count:0,lastAt:0};this.themeHold={theme:null,axis:null,until:0,strength:0};
-  this.currentTheme=null;this.themeStartedAt=null;this.perceptualRun={key:null,count:0};
+  this.currentTheme=null;this.themeStartedAt=null;this.themeHistory=[];this.perceptualRun={key:null,count:0};
   this.timer=null;this.fadeTimer=null;this.pendingTimer=null;this.retryTimer=null;this.retryCount=0;this.transitioningAudio=false;this.playGeneration=0;this.segmentStartedAt=0;this.sequenceStartedAt=0;this.lastTransition=null;this.lastError=null;this.settings=this.loadSettings();
   this.cueAudio=this.audioFactory();this.cueAudio.preload="auto";this.cueAudio.loop=false;this.cueAudio.volume=0;this.cueBusyUntil=0;this.cueHistory=[];this.lastCueFile=new Map();this.lastCue=null;this.cueEnvelopeTimer=null;this.cueEnvelopeGeneration=0;
   this.cueAudio.addEventListener?.("ended",()=>this.clearCueEnvelope());
@@ -200,7 +244,7 @@ class AdaptiveMusicEngine{
   if(control.mode==="autonomous-mixed"){activePenalty=42;standardBonus=18;}
   else if(control.mode==="autonomous-focused-collection"){activePenalty=20;standardBonus=10;}
   else if(control.mode==="semi-pilot"){activePenalty=-8;standardBonus=0;}
-  const standard=c.map(id=>({id,score:(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):(recent.includes(id)?0:1))+standardBonus+Math.random()*6}));
+  const standard=c.map(id=>({id,score:(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):(recent.includes(id)?0:1))+standardBonus+this.transitionScore(id)+Math.random()*3}));
   const adjustedActive=active.map(item=>({...item,score:item.score-activePenalty}));
   const candidates=standard.concat(adjustedActive);
   const chosen=candidates.sort((a,b)=>b.score-a.score)[0]?.id||null;
@@ -236,21 +280,55 @@ class AdaptiveMusicEngine{
   const sequence=sequenceById(id)||[];
   return sequence.reduce((total,ref)=>{const resolved=resolveAnyStep(ref);return total+(resolved?Math.max(0,resolved.segment.endSec-resolved.segment.startSec):0);},0);
  }
+ sequenceFirstStep(id){const ref=sequenceById(id)?.[0];return ref?resolveAnyStep(ref):null;}
+ themePool(theme){
+  if(!theme)return[];
+  if(theme==="active")return Object.keys(ACTIVE_SEQUENCES);
+  return (cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme);
+ }
+ themeCycleCeilingSec(){return Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.maximumPendingSec)||0,150);}
+ shouldContinueInstalledTheme(theme=this.currentTheme){
+  if(!theme)return false;
+  const pool=this.themePool(theme);if(!pool.length)return false;
+  const age=this.themeAgeSec(),preferred=Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.minimumListenSec)||0),ceiling=this.themeCycleCeilingSec();
+  if(age<preferred)return true;
+  const seen=new Set(this.themeHistory.filter(id=>sequenceTheme(id)===theme));
+  const hasUnheard=pool.some(id=>!seen.has(id));
+  return age<ceiling&&(hasUnheard||pool.length<=1);
+ }
+ transitionScore(id,previousStep=this.currentStep()){
+  const first=this.sequenceFirstStep(id);if(!first)return 0;
+  const recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3));
+  const recentCount=recent.filter(item=>item===id).length;
+  const fromTheme=this.currentTheme||sequenceTheme(this.sequenceId),toTheme=sequenceTheme(id);
+  let score=themeCompatibility(fromTheme,toTheme)+roleCompatibility(previousStep?.segment?.role,first.segment?.role);
+  if(previousStep?.track?.file&&previousStep.track.file===first.track.file){
+   score+=8;const gap=Math.abs((Number(first.segment.startSec)||0)-(Number(previousStep.segment.endSec)||0));
+   if(gap<=4)score+=14;else if(gap<=12)score+=7;
+  }
+  score-=recentCount*12;
+  return score;
+ }
  selectThemeContinuation(theme,previousStep=this.currentStep()){
-  const recent=this.history.slice(-cat.transitions.recentTrackHistorySize),maxRepeats=Math.max(1,Number(cat.transitions.maxConsecutiveLoopRepeats)||3);
-  const previousKey=this.stepKey(previousStep),repeatLimitReached=Boolean(previousKey&&this.perceptualRun.key===previousKey&&this.perceptualRun.count>=maxRepeats);
-  const pool=theme==="active"?Object.keys(ACTIVE_SEQUENCES):(cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme);
+  const pool=this.themePool(theme),recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3));
   if(!pool.length)return false;
+  const maxRepeats=Math.max(1,Number(cat.transitions.maxConsecutiveLoopRepeats)||3),previousKey=this.stepKey(previousStep);
   const ranked=pool.map(id=>{
-   const firstRef=sequenceById(id)?.[0],firstStep=firstRef?resolveAnyStep(firstRef):null;
-   const sameStep=Boolean(previousKey&&firstStep&&previousKey===this.stepKey(firstStep));
-   return{id,sameStep,recent:recent.includes(id),long:Boolean(ACTIVE_PROFILES[id]?.long),duration:this.sequenceDurationSec(id)};
-  }).sort((a,b)=>Number(a.sameStep)-Number(b.sameStep)||Number(a.recent)-Number(b.recent)||Number(b.long)-Number(a.long)||b.duration-a.duration);
-  let chosen=ranked[0]?.id||pool[0];
-  if(ranked.every(item=>item.sameStep)&&!repeatLimitReached){const nonRecent=ranked.find(item=>!item.recent);if(nonRecent)chosen=nonRecent.id;}
-  const sequence=sequenceById(chosen);if(!chosen||!sequence)return false;
+   const firstStep=this.sequenceFirstStep(id),sameStep=Boolean(previousKey&&firstStep&&previousKey===this.stepKey(firstStep));
+   const recentCount=recent.filter(item=>item===id).length,profile=cat.sequenceProfiles?.[id]||ACTIVE_PROFILES[id]||{};
+   const long=Boolean(profile.long||profile.role==="development"||firstStep?.segment?.protected||this.sequenceDurationSec(id)>=90);
+   let score=(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):100)+this.transitionScore(id,previousStep);
+   if(long)score+=20;
+   if(sameStep)score-=12*Math.max(1,this.perceptualRun.count||1);
+   if(sameStep&&this.perceptualRun.count>=maxRepeats)score-=1000;
+   score-=recentCount*8;
+   return{id,score,sameStep,recentCount,long,duration:this.sequenceDurationSec(id)};
+  }).sort((a,b)=>b.score-a.score||b.duration-a.duration);
+  const eligible=ranked.find(item=>item.score>-500);
+  if(!eligible)return false;
+  const chosen=eligible.id,sequence=sequenceById(chosen);if(!sequence)return false;
   this.sequenceId=chosen;this.sequence=sequence.slice();this.index=0;this.repeats=0;this.history.push(chosen);if(this.history.length>12)this.history.shift();
-  this.lastSelection={mode:"theme-continuation",heldTheme:theme,chosen,repeatLimitReached,perceptualRun:{...this.perceptualRun},candidates:ranked.slice(0,4),at:Date.now()};
+  this.lastSelection={mode:"theme-continuation",heldTheme:theme,chosen,perceptualRun:{...this.perceptualRun},candidates:ranked.slice(0,4),at:Date.now()};
   return true;
  }
  setMusicalState(detail={}){
@@ -311,7 +389,10 @@ class AdaptiveMusicEngine{
   this.transitioningAudio=true;
   try{await Promise.resolve(next.audio.play());}catch(error){if(generation===this.playGeneration)this.transitioningAudio=false;if(token!==next.token||generation!==this.playGeneration)return false;this.lastError=String(error?.message||error);this.retryCount++;global.clearTimeout(this.retryTimer);this.retryTimer=global.setTimeout(()=>this.playCurrent(overrideFade),Math.min(1500,250*this.retryCount));return false;}
   if(generation===this.playGeneration)this.transitioningAudio=false;if(token!==next.token||generation!==this.playGeneration)return false;this.clearTimer();this.retryCount=0;this.lastError=null;this.active=nextIndex;this.segmentStartedAt=clock();if(this.index===0)this.sequenceStartedAt=this.segmentStartedAt;
-  const theme=sequenceTheme(this.sequenceId);if(theme!==this.currentTheme){this.currentTheme=theme;this.themeStartedAt=this.segmentStartedAt;}this.notePerceptualStep(step);
+  const theme=sequenceTheme(this.sequenceId);
+  if(theme!==this.currentTheme){this.currentTheme=theme;this.themeStartedAt=this.segmentStartedAt;this.themeHistory=[this.sequenceId];}
+  else if(this.index===0&&this.themeHistory[this.themeHistory.length-1]!==this.sequenceId){this.themeHistory.push(this.sequenceId);if(this.themeHistory.length>12)this.themeHistory.shift();}
+  this.notePerceptualStep(step);
   this.lastTransition={at:Date.now(),context:this.context,sequence:this.sequenceId,track:step.track.id,segment:seg.id,fadeSec:fade};
   this.crossfade(previous,next,fade);const duration=Math.max(.05,seg.endSec-seg.startSec);this.timer=global.setTimeout(()=>this.advance(),Math.max(20,(duration-fade)*1000));return true;
  }
@@ -332,8 +413,10 @@ class AdaptiveMusicEngine{
    this.repeats=0;this.index++;
    if(this.index>=this.sequence.length){
     const holdTheme=this.themeHold.until>Date.now()?this.themeHold.theme:null;
-    if(!themeReady&&!maximumPendingReached&&holdTheme&&holdTheme===this.currentTheme){
-     if(!this.selectThemeContinuation(holdTheme,step))this.index=0;
+    const installedTheme=holdTheme&&holdTheme===this.currentTheme?holdTheme:this.currentTheme;
+    const mustContinue=Boolean(installedTheme&&((!themeReady&&!maximumPendingReached)||(!this.pending&&this.shouldContinueInstalledTheme(installedTheme))));
+    if(mustContinue){
+     if(!this.selectThemeContinuation(installedTheme,step))this.selectSequence(true);
     }else this.selectSequence(true);
    }
   }
@@ -341,7 +424,7 @@ class AdaptiveMusicEngine{
  }
  clearTimer(){if(this.timer)global.clearTimeout(this.timer);this.timer=null;}
  stop(){this.started=false;this.playGeneration++;this.transitioningAudio=false;this.clearTimer();if(this.pendingTimer)global.clearTimeout(this.pendingTimer);this.pendingTimer=null;global.clearTimeout(this.retryTimer);this.retryTimer=null;if(this.fadeTimer)global.clearInterval(this.fadeTimer);this.fadeTimer=null;this.clearCueEnvelope();this.decks.forEach(d=>{d.token++;d.audio.pause();d.audio.volume=0;});this.cueAudio.pause?.();this.cueAudio.volume=0;this.cueBusyUntil=0;}
- diagnostics(){const d=this.active>=0?this.decks[this.active]:null;return{version:VERSION,enabled:this.settings.enabled,unlocked:this.unlocked,started:this.started,context:this.context,priority:this.priority,pending:this.pending,signal:this.signal,sequence:this.sequenceId,index:this.index,track:d?.step?.track?.id||null,segment:d?.step?.segment?.id||null,volume:d?.audio?.volume||0,cue:this.lastCue?{id:this.lastCue.id,file:this.lastCue.file,at:this.lastCue.at,reason:this.lastCue.reason}:null,bac:this.bacSnapshot(),controlMode:this.bacControlMode(),themePersistence:{activityStreak:this.activityStreak,hold:this.themeHold,currentTheme:this.currentTheme,themeAgeSec:this.themeAgeSec(),requiredHoldSec:this.requiredThemeHoldSec(),perceptualRun:this.perceptualRun,remainingMs:Math.max(0,this.themeHold.until-Date.now())},activeLibrary:{tracks:Object.keys(ACTIVE_TRACKS),sequences:Object.keys(ACTIVE_SEQUENCES)},selection:this.lastSelection||null,lastTransition:this.lastTransition,lastError:this.lastError};}
+ diagnostics(){const d=this.active>=0?this.decks[this.active]:null;return{version:VERSION,enabled:this.settings.enabled,unlocked:this.unlocked,started:this.started,context:this.context,priority:this.priority,pending:this.pending,signal:this.signal,sequence:this.sequenceId,index:this.index,track:d?.step?.track?.id||null,segment:d?.step?.segment?.id||null,volume:d?.audio?.volume||0,cue:this.lastCue?{id:this.lastCue.id,file:this.lastCue.file,at:this.lastCue.at,reason:this.lastCue.reason}:null,bac:this.bacSnapshot(),controlMode:this.bacControlMode(),themePersistence:{activityStreak:this.activityStreak,hold:this.themeHold,currentTheme:this.currentTheme,themeAgeSec:this.themeAgeSec(),requiredHoldSec:this.requiredThemeHoldSec(),cycleCeilingSec:this.themeCycleCeilingSec(),themeHistory:this.themeHistory.slice(),perceptualRun:this.perceptualRun,remainingMs:Math.max(0,this.themeHold.until-Date.now())},activeLibrary:{tracks:Object.keys(ACTIVE_TRACKS),sequences:Object.keys(ACTIVE_SEQUENCES)},selection:this.lastSelection||null,lastTransition:this.lastTransition,lastError:this.lastError};}
  dispose(){this.disposed=true;this.stop();global.removeEventListener?.("pointerdown",this.onUnlock);global.removeEventListener?.("keydown",this.onUnlock);global.removeEventListener?.("bluefox:music-context",this.onContext);global.removeEventListener?.("bluefox:sound-volume",this.onSoundVolume);}
 }
 const validation=cat.validateCatalog();if(!validation.valid){console.error("[BlueFox Music] catalogue invalide",validation.errors);return;}
