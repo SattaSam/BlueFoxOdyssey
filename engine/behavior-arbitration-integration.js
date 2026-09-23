@@ -831,7 +831,8 @@
     const valid = objects.filter((object) =>
       !object.userData?.bacAvoidUntil || object.userData.bacAvoidUntil <= now
     );
-    const available = valid.length ? valid : objects;
+    const available = valid;
+    if (!available.length) return null;
 
     const preferredAvailable = preferred
       ? available.filter((object) => objectKind(object) === preferred)
@@ -999,6 +1000,21 @@
     if (!BAC) return false;
     const Manager = Missions.MissionManager;
     if (Manager?.prototype && !Manager.prototype.__bacPriorityQueueInstalled) {
+      const priorityQueueEligible = function priorityQueueEligible(missionId) {
+        const context = this.bridge?.context?.();
+        if (typeof this.missionPriorityQueueEligible === "function") {
+          return this.missionPriorityQueueEligible(missionId, context) === true;
+        }
+        return this.isMissionVisibleOnCurrentMap?.(missionId) !== false;
+      };
+      const priorityAssessment = function priorityAssessment(missionId) {
+        const context = this.bridge?.context?.();
+        if (typeof this.assessMissionPriority === "function") {
+          return this.assessMissionPriority(missionId, context);
+        }
+        return this.assessMission?.(missionId, context);
+      };
+
       const ensurePriorityState = function ensurePriorityState() {
         const stored = Array.isArray(this.memory?.state?.prioritizedMissionIds)
           ? this.memory.state.prioritizedMissionIds
@@ -1009,7 +1025,7 @@
         ].filter(Boolean))]
           .filter((id) => this.trees?.has(id))
           .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
-          .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
+          .filter((id) => priorityQueueEligible.call(this, id))
           .slice(0, 4);
         this.prioritizedMissionIds = valid;
         if (this.memory?.state) {
@@ -1081,8 +1097,8 @@
             .filter((id) => id !== missionId)
             .filter((id) => this.trees?.has(id))
             .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
-            .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
-            .map((id) => this.assessMission?.(id, this.bridge?.context?.()))
+            .filter((id) => priorityQueueEligible.call(this, id))
+            .map((id) => priorityAssessment.call(this, id))
             .filter(Boolean)
             .sort((a, b) =>
               Number(b.score) - Number(a.score) ||
@@ -1189,8 +1205,8 @@
             const ranked = (this.activeMissionIds || [])
               .filter((id) => id !== primary)
               .filter((id) => this.ensureLifecycle?.(id)?.status === "active")
-              .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
-              .map((id) => this.assessMission?.(id, this.bridge?.context?.()))
+              .filter((id) => priorityQueueEligible.call(this, id))
+              .map((id) => priorityAssessment.call(this, id))
               .filter(Boolean)
               .sort((a, b) =>
                 Number(b.score) - Number(a.score) ||
@@ -1203,7 +1219,7 @@
               ...ranked
             ]
               .filter(Boolean)
-              .filter((id) => this.isMissionVisibleOnCurrentMap?.(id) !== false)
+              .filter((id) => priorityQueueEligible.call(this, id))
               .filter((id, index, values) => values.indexOf(id) === index)
               .slice(0, 4);
             this.memory.state.prioritizedMissionIds = [

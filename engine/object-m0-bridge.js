@@ -522,6 +522,7 @@
   };
 
   const eventMatchesNode = (event, node, missionId = null, tree = null) => {
+    if (node.params?.biblePattern === "CONTEXT_MSC") return false;
     if (node.params?.catalogManaged || node.params?.siteProgressionKind) return false;
     const type = Missions.normalizeActionType(node.type);
     const detail = event.detail || {};
@@ -1097,8 +1098,9 @@
     return 100;
   };
 
-  const passiveMissionSceneObjects = (engine, action) => {
+  const passiveMissionSceneObjects = (engine, action, options = {}) => {
     if (action?.params?.allowPassiveMSCObject !== true) return [];
+    const activate = options.activate !== false;
     const sceneIds = new Set([
       ...asArray(action?.params?.microSceneIds),
       action?.params?.microSceneId
@@ -1119,34 +1121,41 @@
           action.params || {},
           { skipSubject: true }
         )) return;
-        object.userData.active = true;
-        object.userData.missionPassiveStudy = true;
+        if (activate) {
+          object.userData.active = true;
+          object.userData.missionPassiveStudy = true;
+        }
         objects.push(object);
       });
     });
     return objects;
   };
 
-  const selectObservable = (engine, action) => {
+  const selectObservable = (engine, action, options = {}) => {
+    const passiveObjects = passiveMissionSceneObjects(engine, action, {
+      activate: options.activatePassive !== false
+    });
+    const passiveSet = new Set(passiveObjects);
     const sourceObjects = [
       ...(engine.currentMap?.interactables || []),
-      ...passiveMissionSceneObjects(engine, action)
+      ...passiveObjects
     ];
     const candidates = [...new Set(sourceObjects)]
       .map((object) => {
-        if (!object.userData.active) return null;
+        const passiveMissionStudy = passiveSet.has(object) &&
+          action?.params?.allowPassiveMSCObject === true;
+        if (!object.userData.active && !passiveMissionStudy) return null;
         const resolved = resolveMissionCandidate(object);
         const definition = resolved.definition;
         const tree = engine?.missionManager?.trees?.get?.(action.missionId);
         const node = tree?.find?.(action.nodeId);
+        if (!tree || !node) return null;
         if (node?.params?.siteProgressionKind) return null;
         if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return null;
         if (!requiredSiteMatchesResolved(engine?.missionManager, node, resolved, engine?.currentMapId)) return null;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return null;
-        const distinctValue = node ? distinctValueFromResolved(node, resolved, engine?.currentMapId) : null;
+        const distinctValue = distinctValueFromResolved(node, resolved, engine?.currentMapId);
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return null;
-        const passiveMissionStudy = object?.userData?.missionPassiveStudy === true &&
-          action?.params?.allowPassiveMSCObject === true;
         if (!(definition && (canStudy(definition) || passiveMissionStudy))) return null;
         if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, resolved), action.params || {}, { skipSubject: true })) return null;
         if (!matchesStudySubject(definition, action.params?.subject)) return null;
@@ -1178,9 +1187,12 @@
         const caps = capabilities(definition);
         const tree = engine?.missionManager?.trees?.get?.(action.missionId);
         const node = tree?.find?.(action.nodeId);
-        if (!definition || !caps.collectable) return false;
+        if (!tree || !node || !definition || !caps.collectable) return false;
+        if (!requiredMapMatches(engine?.missionManager, node, engine?.currentMapId)) return false;
         if (!requiredSiteMatchesResolved(engine?.missionManager, node, resolved, engine?.currentMapId)) return false;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(resolved, engine?.currentMapId))) return false;
+        const distinctValue = distinctValueFromResolved(node, resolved, engine?.currentMapId);
+        if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return false;
         if (
           action.type === Missions.ActionType.EXTRACT &&
           !caps.extractable
@@ -1200,6 +1212,22 @@
           );
         return distance(left) - distance(right);
       })[0] || null;
+
+  const probeMissionActionTarget = (engine, action) => {
+    if (!engine || !action?.missionId || !action?.nodeId) return null;
+    const type = Missions.normalizeActionType(action.type);
+    if ([Missions.ActionType.COLLECT, Missions.ActionType.EXTRACT].includes(type)) {
+      return selectAcquisitionTarget(engine, { ...action, type });
+    }
+    if ([
+      Missions.ActionType.OBSERVE,
+      Missions.ActionType.INSPECT,
+      Missions.ActionType.ANALYZE
+    ].includes(type)) {
+      return selectObservable(engine, { ...action, type }, { activatePassive: false });
+    }
+    return undefined;
+  };
 
   const activeStudyDirective = (engine, resolved) => {
     const manager = engine?.missionManager;
@@ -1734,11 +1762,15 @@
       updateStudyPose(this.character, now);
       if (!this.pendingInteraction) return;
       if (!this.pendingInteraction.userData.active) {
-        const source =
-          this.pendingInteraction.userData.requestedInteractionSource;
-        this.cancelMissionInteraction(null, "object-inactive");
-        if (source === "mission") {
-          this.missionManager?.cancelCurrentAction("object-inactive");
+        const failedTarget = this.pendingInteraction;
+        const source = failedTarget.userData.requestedInteractionSource;
+        if (source === "mission" && this.missionManager?.currentAction) {
+          this.missionManager.cancelCurrentAction(
+            "object-inactive",
+            { failedTarget }
+          );
+        } else {
+          this.cancelMissionInteraction(null, "object-inactive");
         }
         return;
       }
@@ -1748,9 +1780,13 @@
       if (!definition) {
         console.warn("[BlueFox O5.1] Définition CUO introuvable pendant l'interaction.", object);
         const source = object.userData.requestedInteractionSource;
-        this.cancelMissionInteraction(null, "object-definition-missing");
-        if (source === "mission") {
-          this.missionManager?.cancelCurrentAction("object-definition-missing");
+        if (source === "mission" && this.missionManager?.currentAction) {
+          this.missionManager.cancelCurrentAction(
+            "object-definition-missing",
+            { failedTarget: object }
+          );
+        } else {
+          this.cancelMissionInteraction(null, "object-definition-missing");
         }
         return;
       }
@@ -1780,9 +1816,13 @@
           else {
             this.callbacks.onStatus("BlueFox renonce temporairement à cet objet inaccessible.");
             const source = object.userData.requestedInteractionSource;
-            this.cancelMissionInteraction(null, "object-inaccessible");
-            if (source === "mission") {
-              this.missionManager?.cancelCurrentAction("object-inaccessible");
+            if (source === "mission" && this.missionManager?.currentAction) {
+              this.missionManager.cancelCurrentAction(
+                "interaction-inaccessible",
+                { failedTarget: object }
+              );
+            } else {
+              this.cancelMissionInteraction(null, "interaction-inaccessible");
             }
           }
         }
@@ -2091,6 +2131,7 @@
       state: resolved.definition ? { ...interactionState(resolved) } : null
     };
   };
+  BF.probeMissionActionTarget = probeMissionActionTarget;
   BF.installObjectM0Bridge = install;
   BF.getObjectM0BridgeState = () => ({ ...installed });
   install();

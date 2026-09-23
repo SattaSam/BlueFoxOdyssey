@@ -3,7 +3,7 @@
 
   const BF = global.BlueFox3D = global.BlueFox3D || {};
   const Missions = BF.Missions = BF.Missions || {};
-  const VERSION = "context-msc-v1";
+  const VERSION = "context-msc-v2";
 
   const normalize = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -90,6 +90,17 @@
         if (progressed) {
           changed += 1;
           treeChanged = true;
+          const current = manager.currentAction;
+          if (
+            current?.missionId === missionId &&
+            current?.nodeId === node.id
+          ) {
+            manager.memory?.remember?.("action-completed", current);
+            manager.clearExecutionRecovery?.(current);
+            manager.currentAction = null;
+            manager.retryAfter = (global.performance?.now?.() || 0) + 650;
+            manager.idleRetryUntil = 0;
+          }
         }
       });
 
@@ -143,8 +154,94 @@
     };
   };
 
+  const sceneEntryForEvent = (event) => {
+    const microSceneId = String(
+      event?.microSceneId || event?.detail?.microSceneId || ""
+    );
+    if (!microSceneId) return null;
+    const persistentId = String(
+      event?.persistentMicroSceneId ||
+      event?.detail?.persistentMicroSceneId ||
+      ""
+    );
+    const scenes = Array.isArray(
+      BF.currentEngine?.currentMap?.group?.userData?.microScenes
+    )
+      ? BF.currentEngine.currentMap.group.userData.microScenes
+      : [];
+    return scenes.find((scene) => {
+      if (normalize(scene?.id) !== normalize(microSceneId)) return false;
+      if (!persistentId) return true;
+      const scenePersistentId = String(
+        scene?.instanceRoot?.userData?.persistentMicroSceneId ||
+        scene?.persistentMicroSceneId ||
+        ""
+      );
+      return scenePersistentId === persistentId;
+    }) || null;
+  };
+
+  const describeMSCEvent = (event) => {
+    const microSceneId =
+      event?.microSceneId ||
+      event?.detail?.microSceneId ||
+      null;
+    if (!microSceneId) return null;
+    const template = templateOf(microSceneId);
+    const scene = sceneEntryForEvent(event);
+    const instanceRoot = scene?.instanceRoot || null;
+    return {
+      microSceneId: String(microSceneId),
+      microSceneInstanceId:
+        event?.microSceneInstanceId ||
+        event?.detail?.microSceneInstanceId ||
+        scene?.instanceId ||
+        null,
+      mapId:
+        event?.mapId ??
+        event?.detail?.mapId ??
+        BF.currentEngine?.currentMapId ??
+        null,
+      zoneId:
+        event?.zoneId ??
+        event?.detail?.zoneId ??
+        BF.currentEngine?.currentZoneIndex ??
+        null,
+      rarity:
+        event?.detail?.rarity ||
+        scene?.rarity ||
+        template?.rarity ||
+        null,
+      mscMissionId:
+        event?.detail?.mscMissionId ||
+        event?.detail?.missionSceneMissionId ||
+        event?.detail?.bibleMissionId ||
+        scene?.missionId ||
+        instanceRoot?.userData?.bibleMissionId ||
+        template?.missionId ||
+        null,
+      missionOnly:
+        event?.detail?.missionOnly === true ||
+        template?.missionOnly === true,
+      contextRole:
+        event?.detail?.contextRole ||
+        scene?.contextRole ||
+        instanceRoot?.userData?.contextRole ||
+        (template?.missionOnly === true
+          ? "objectiveSubject"
+          : "scenarioSupport")
+    };
+  };
+
   const onObjectEvent = (event) => {
     if (BF.bibleRuntime?.isActivationEvent?.(event?.id)) return;
+    const normalizedDetail = describeMSCEvent(event);
+    if (normalizedDetail) {
+      progressContextMissions(normalizedDetail);
+      return;
+    }
+
+    // Compatibilité avec les producteurs historiques non normalisés.
     const object =
       event?.object ||
       event?.detail?.object ||
@@ -155,6 +252,8 @@
     progressContextMissions(detail);
   };
 
+  // CONTEXT_MSC progresse uniquement sur une preuve d'événement canonique.
+  // La simple présence technique d'une MSC dans la map ne vaut pas découverte.
   const scanCurrentMap = () => 0;
 
 

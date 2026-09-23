@@ -24,6 +24,37 @@
     ) || null;
   };
 
+  const POST_TRAVEL_DISCOVERY_MISSIONS = new Set([
+    "EXP-LONG-02",
+    "EXP-LONG-04"
+  ]);
+
+  const pendingPostTravelDiscovery = (engine, mission) => {
+    if (!POST_TRAVEL_DISCOVERY_MISSIONS.has(String(mission?.id || ""))) {
+      return null;
+    }
+    const tree = engine?.missionManager?.trees?.get?.(mission.id);
+    if (!tree || tree.root?.isComplete) return null;
+
+    const waitingNode = tree.availableLeaves?.().find((node) =>
+      !node.isComplete &&
+      node.params?.eventDriven === true &&
+      node.params?.catalogManaged === true &&
+      BF.Missions?.normalizeActionType?.(node.type) !== BF.Missions?.ActionType?.TRAVEL
+    ) || null;
+    if (!waitingNode) return null;
+
+    let completedTravelNode = null;
+    tree.root?.walk?.((node) => {
+      if (completedTravelNode || !node?.isComplete) return;
+      if (node.params?.eventDriven !== true) return;
+      if (BF.Missions?.normalizeActionType?.(node.type) !== BF.Missions?.ActionType?.TRAVEL) return;
+      completedTravelNode = node;
+    });
+    if (!completedTravelNode) return null;
+    return { waitingNode, travelNode: completedTravelNode };
+  };
+
   const parsedMissionEvidence = (node) =>
     (node?.historyValues || []).map((value) => {
       try {
@@ -372,11 +403,20 @@
     const previous = memory?.getFact?.(key, {}) || {};
     const repeatUntilComplete =
       mission?.navigation?.repeatUnknownTravelUntilComplete === true;
-    const travelNode = activeEventDrivenTravelNode(engine, mission);
+    const activeTravelNode = activeEventDrivenTravelNode(engine, mission);
+    const postTravelDiscovery = pendingPostTravelDiscovery(engine, mission);
+    const travelNode = activeTravelNode || postTravelDiscovery?.travelNode || null;
 
     if (previous.requesting === true) return false;
-    if (!travelNode || travelNode.isComplete) return false;
-    if (repeatUntilComplete) {
+    if (!travelNode) return false;
+    if (travelNode.isComplete && !postTravelDiscovery) return false;
+    if (postTravelDiscovery) {
+      // Une seule génération supplémentaire par map tant que l'événement
+      // remarquable terminal n'a pas été réellement observé.
+      if (String(previous.postTravelRequestedFromMapId || "") === String(engine.currentMapId || "")) {
+        return false;
+      }
+    } else if (repeatUntilComplete) {
       const progress = Math.max(0, Number(travelNode.progress) || 0);
       const requestedProgress = Math.max(
         0,
@@ -410,9 +450,14 @@
       fromMapId: engine.currentMapId,
       travelNodeId: String(travelNode?.id || ""),
       requesting: true,
-      requestedProgress: repeatUntilComplete
-        ? (Math.max(0, Number(travelNode?.progress) || 0) + 1)
-        : previous.requestedProgress,
+      requestedProgress: postTravelDiscovery
+        ? previous.requestedProgress
+        : repeatUntilComplete
+          ? (Math.max(0, Number(travelNode?.progress) || 0) + 1)
+          : previous.requestedProgress,
+      postTravelRequestedFromMapId: postTravelDiscovery
+        ? engine.currentMapId
+        : previous.postTravelRequestedFromMapId,
       requestedAt: Date.now()
     });
     memory?.save?.();
@@ -424,14 +469,26 @@
       });
       if (result === false) {
         const current = memory?.getFact?.(key, {}) || {};
-        memory?.setFact?.(key, { ...current, requesting: false });
+        memory?.setFact?.(key, {
+          ...current,
+          requesting: false,
+          postTravelRequestedFromMapId: postTravelDiscovery
+            ? null
+            : current.postTravelRequestedFromMapId
+        });
         memory?.save?.();
         return false;
       }
       return true;
     } catch (error) {
       const current = memory?.getFact?.(key, {}) || {};
-      memory?.setFact?.(key, { ...current, requesting: false });
+      memory?.setFact?.(key, {
+        ...current,
+        requesting: false,
+        postTravelRequestedFromMapId: postTravelDiscovery
+          ? null
+          : current.postTravelRequestedFromMapId
+      });
       memory?.save?.();
       console.warn("[BlueFox] Voyage autonome Bible différé.", error);
       return false;
@@ -496,15 +553,19 @@
             }
           }
 
-          const prescription = resolveMissionMapGeneration(engine, mission);
-          const travelNode = activeEventDrivenTravelNode(engine, mission);
+          const postTravelDiscovery = pendingPostTravelDiscovery(engine, mission);
+          const prescription = postTravelDiscovery
+            ? null
+            : resolveMissionMapGeneration(engine, mission);
+          const travelNode = activeEventDrivenTravelNode(engine, mission) ||
+            postTravelDiscovery?.travelNode ||
+            null;
           const remainingTravel = travelNode
             ? Math.max(0, Number(travelNode.target) - Number(travelNode.progress || 0))
             : 0;
           const longMissionTransit = Boolean(
-            !prescription &&
-            travelNode &&
-            remainingTravel > 3
+            postTravelDiscovery ||
+            (!prescription && travelNode && remainingTravel > 3)
           );
           const generationContext = {
             intent: prescription

@@ -79,6 +79,7 @@
       // R-STAB recovery: runtime-only pressure for actions that repeatedly fail
       // to start or complete on the same mission node and map. Never persisted.
       this.executionRecovery = new Map();
+      this.targetProbeDiagnostics = new Map();
       this.enabled = true;
       if (!this.persistenceHydrationBlocked && !this.hasActivePrimaryMission()) {
         this.primaryMissionId = "";
@@ -417,6 +418,20 @@
       if (!this.activeMissionIds.includes(missionId)) {
         this.activeMissionIds.push(missionId);
       }
+
+      const playerDirective = reason === "Priorité suggérée par le joueur.";
+      const currentActionSuppressed = Boolean(
+        this.currentAction &&
+        this.isExecutionNodeSuppressed?.(
+          this.currentAction.missionId,
+          this.currentAction.nodeId,
+          this.bridge.context?.()
+        )
+      );
+      if (playerDirective && currentActionSuppressed) {
+        this.cancelCurrentAction?.("player-priority-recovery");
+      }
+
       const replacingActivePrimary = this.hasActivePrimaryMission();
       if (
         this.currentAction ||
@@ -597,15 +612,60 @@
       return Boolean(entry?.suppressedUntil && now < entry.suppressedUntil);
     }
 
-    missionRunnableAction(missionId, tree, context, now = performance.now()) {
+    rememberUnresolvedMissionTarget(missionId, action, context, now = performance.now()) {
+      const mapId = String(
+        context?.mapId || context?.currentMapId || this.engine?.currentMapId || ""
+      );
+      const key = `${missionId}|${action?.nodeId || ""}|${mapId}`;
+      const previous = this.targetProbeDiagnostics.get(key);
+      if (!previous || now - Number(previous.at || 0) >= 10000) {
+        const detail = {
+          missionId,
+          nodeId: action?.nodeId || null,
+          actionType: action?.type || null,
+          mapId: mapId || null,
+          reason: "mission-target-unresolved"
+        };
+        this.targetProbeDiagnostics.set(key, { ...detail, at: now });
+        this.memory?.remember?.("mission-target-unresolved", detail);
+      }
+    }
+
+    missionRunnableAction(missionId, tree, context, now = performance.now(), options = {}) {
       if (!tree || tree.root?.isComplete) return null;
       const availableLeaves = () => tree.availableLeaves().filter((node) =>
         !this.isExecutionNodeSuppressed(missionId, node.id, context, now)
       );
-      return this.planner.nextAction({ availableLeaves }, context);
+      const planned = this.planner.nextAction({ availableLeaves }, context);
+      if (!planned) return null;
+
+      const action = { ...planned, missionId };
+      const type = Missions.normalizeActionType(action.type);
+      const objectAction = [
+        Missions.ActionType.COLLECT,
+        Missions.ActionType.EXTRACT,
+        Missions.ActionType.OBSERVE,
+        Missions.ActionType.INSPECT,
+        Missions.ActionType.ANALYZE
+      ].includes(type);
+      if (objectAction && typeof BF.probeMissionActionTarget === "function") {
+        const target = BF.probeMissionActionTarget(this.engine, { ...action, type });
+        if (!target) {
+          if (options.reportUnresolved !== false) {
+            this.rememberUnresolvedMissionTarget(missionId, action, context, now);
+          }
+          return null;
+        }
+      }
+      return action;
     }
 
-    recordExecutionFailure(action, reason = "execution-failed", now = performance.now()) {
+    recordExecutionFailure(
+      action,
+      reason = "execution-failed",
+      now = performance.now(),
+      failedTarget = null
+    ) {
       const missionId = String(action?.missionId || "");
       const nodeId = String(action?.nodeId || "");
       if (!missionId || !nodeId) return null;
@@ -636,6 +696,15 @@
         this.memory?.remember?.("action-recovery-suppressed", {
           missionId, nodeId, mapId, reason, count, durationMs: 20000
         });
+        if (failedTarget?.userData) {
+          failedTarget.userData.bacAvoidUntil = Math.max(
+            Number(failedTarget.userData.bacAvoidUntil) || 0,
+            Date.now() + 20000
+          );
+          if (this.engine?.__bacTargetLock?.object === failedTarget) {
+            this.engine.__bacTargetLock = null;
+          }
+        }
       }
       return entry;
     }
@@ -663,10 +732,10 @@
       ]).has(String(reason || ""));
     }
 
-    primaryEventDrivenTravel() {
-      if (!this.primaryMissionId) return null;
-      const tree = this.trees.get(this.primaryMissionId);
-      const lifecycle = this.memory.state.missionLifecycle?.[this.primaryMissionId];
+    eventDrivenTravelForMission(missionId) {
+      if (!missionId) return null;
+      const tree = this.trees.get(missionId);
+      const lifecycle = this.memory.state.missionLifecycle?.[missionId];
       if (!tree || lifecycle?.status !== "active") return null;
       const node = tree.availableLeaves().find((candidate) =>
         !candidate.isComplete &&
@@ -674,15 +743,18 @@
         Missions.normalizeActionType(candidate.type) === Missions.ActionType.TRAVEL
       );
       if (!node) return null;
-      return { missionId: this.primaryMissionId, mission: this.definition(this.primaryMissionId), node };
+      return { missionId, mission: this.definition(missionId), node };
     }
 
-    primaryMissionTransition(context = this.bridge.context()) {
-      const explicitTravel = this.primaryEventDrivenTravel();
-      if (explicitTravel) return explicitTravel;
-      if (!this.primaryMissionId) return null;
+    primaryEventDrivenTravel() {
+      return this.eventDrivenTravelForMission(this.primaryMissionId);
+    }
 
-      const missionId = this.primaryMissionId;
+    missionTransitionFor(missionId, context = this.bridge.context()) {
+      const explicitTravel = this.eventDrivenTravelForMission(missionId);
+      if (explicitTravel) return explicitTravel;
+      if (!missionId) return null;
+
       const mission = this.definition(missionId) || {};
       const tree = this.trees.get(missionId);
       const lifecycle = this.memory.state.missionLifecycle?.[missionId];
@@ -691,7 +763,17 @@
 
       // Si une vraie action locale reste possible, la mission ne doit pas
       // provoquer un départ simplement parce qu'une autre feuille est distante.
-      if (!tree.root.isComplete && this.planner.nextAction(tree, context)) return null;
+      // Une simple intention du Planner ne suffit pas : ObjectM0 doit confirmer
+      // qu'une cible physique de cette mission existe réellement.
+      if (!tree.root.isComplete && this.missionRunnableAction(
+        missionId,
+        tree,
+        context,
+        performance.now(),
+        { reportUnresolved: false }
+      )) {
+        return null;
+      }
 
       if (tree.root.isComplete) {
         const gate = BF.bibleRuntime?.completionGateState?.(missionId) || null;
@@ -743,6 +825,38 @@
         };
       }
 
+      const legacyGeneratedTargetMissions = new Set([
+        "ARCH-01", "ARCH-02", "ARCH-03", "ARCH-04", "ARCH-05", "ARCH-06"
+      ]);
+      if (legacyGeneratedTargetMissions.has(missionId)) {
+        const excursion = this.memory.getFact?.(
+          `tutorialExcursion:${missionId}`,
+          null
+        );
+        const targetMapId = String(
+          excursion?.generatedTargetMapId ||
+          excursion?.toMapId ||
+          excursion?.mapId ||
+          ""
+        );
+        if (targetMapId && targetMapId !== currentMapId) {
+          return {
+            missionId,
+            mission,
+            source: "legacy-generated-target",
+            node: {
+              id: `${missionId}:generated-target`,
+              type: Missions.ActionType.TRAVEL,
+              params: {
+                eventDriven: true,
+                toMapId: targetMapId,
+                transitionSource: "legacy-generated-target"
+              }
+            }
+          };
+        }
+      }
+
       const factKey = String(mission.targetMapFact || "").trim();
       if (factKey) {
         const fact = this.memory.getFact?.(factKey, null);
@@ -762,6 +876,10 @@
         }
       }
       return null;
+    }
+
+    primaryMissionTransition(context = this.bridge.context()) {
+      return this.missionTransitionFor(this.primaryMissionId, context);
     }
 
     missionTransitionTargetMapId(travel) {
@@ -1150,9 +1268,9 @@
       return selected?.missionId || null;
     }
 
-    ensureMissionTransitionIntent(context = null) {
+    ensureMissionTransitionIntent(context = null, travelOverride = null) {
       const decisionContext = context || this.bridge.context();
-      const travel = this.primaryMissionTransition(decisionContext);
+      const travel = travelOverride || this.primaryMissionTransition(decisionContext);
       if (!travel) {
         const key = this.missionReturnIntentKey(this.primaryMissionId);
         const previous = this.memory.getFact?.(key, null);
@@ -1441,11 +1559,11 @@
       return true;
     }
 
-    resumeMissionTransitionIntent(context = this.bridge.context()) {
-      const travel = this.primaryMissionTransition(context);
+    resumeMissionTransitionIntent(context = this.bridge.context(), travelOverride = null) {
+      const travel = travelOverride || this.primaryMissionTransition(context);
       if (!travel) return false;
 
-      const intent = this.ensureMissionTransitionIntent(context);
+      const intent = this.ensureMissionTransitionIntent(context, travel);
       if (!intent?.active) return false;
       if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") {
         return false;
@@ -1644,6 +1762,92 @@
       return null;
     }
 
+    missionHasHistoricalCollectionObjective(missionId) {
+      const tree = this.trees.get(missionId);
+      if (!tree?.root) return false;
+      let historical = false;
+      tree.root.walk?.((node) => {
+        if (node?.params?.historicalCollection === true) historical = true;
+      });
+      return historical;
+    }
+
+    isHistoricalCollectionPriorityMission(missionId) {
+      return this.missionHasHistoricalCollectionObjective(missionId);
+    }
+
+    missionPriorityQueueEligible(missionId, context = this.bridge.context()) {
+      if (!missionId || !this.trees.has(missionId)) return false;
+      if (this.ensureLifecycle(missionId).status !== "active") return false;
+      if (missionId === this.primaryMissionId) return true;
+      if (this.missionHasHistoricalCollectionObjective(missionId)) return false;
+      if (this.isMissionVisibleOnCurrentMap(missionId)) return true;
+
+      const travel = this.missionTransitionFor(missionId, context);
+      return Boolean(
+        travel &&
+        !this.isAutonomousUnknownTravel(travel) &&
+        this.missionTransitionExecutable(travel)
+      );
+    }
+
+    assessMissionPriority(missionId, context = this.bridge.context()) {
+      const assessment = this.assessMission(missionId, context);
+      if (!assessment) return null;
+      if (assessment.action || assessment.delegatedRuntimeAction) return assessment;
+
+      const travel = this.missionTransitionFor(missionId, context);
+      if (
+        !travel ||
+        this.isAutonomousUnknownTravel(travel) ||
+        !this.missionTransitionExecutable(travel)
+      ) return assessment;
+
+      const reasons = Array.isArray(assessment.reasons)
+        ? assessment.reasons
+        : [];
+      let score = Number(assessment.score || 0);
+      if (reasons.includes("hors map cible")) score += 100000;
+      if (reasons.includes("aucune action réalisable")) score += 120;
+      return {
+        ...assessment,
+        score,
+        transition: travel,
+        reasons: [
+          ...reasons.filter((reason) =>
+            reason !== "hors map cible" && reason !== "aucune action réalisable"
+          ),
+          "transition distante atteignable"
+        ]
+      };
+    }
+
+    prioritizedMissionTransition(context = this.bridge.context()) {
+      const stored = typeof this.getPrioritizedMissionIds === "function"
+        ? this.getPrioritizedMissionIds()
+        : Array.isArray(this.prioritizedMissionIds)
+          ? this.prioritizedMissionIds
+          : [];
+      const candidates = [...new Set(stored)]
+        .filter(Boolean)
+        .filter((id) => id !== this.primaryMissionId)
+        .filter((id) => this.missionPriorityQueueEligible(id, context))
+        .map((id) => ({
+          missionId: id,
+          assessment: this.assessMissionPriority(id, context),
+          travel: this.missionTransitionFor(id, context)
+        }))
+        .filter(({ travel }) =>
+          travel &&
+          !this.isAutonomousUnknownTravel(travel) &&
+          this.missionTransitionExecutable(travel)
+        )
+        .sort((left, right) =>
+          Number(right.assessment?.score || 0) - Number(left.assessment?.score || 0)
+        );
+      return candidates[0]?.travel || null;
+    }
+
     historicalCollectionTransitionOpportunity(missionId, context) {
       const tree = this.trees.get(missionId);
       if (!tree || tree.root.isComplete) return false;
@@ -1792,13 +1996,14 @@
       }
       const context = this.bridge.context();
       const candidates = this.activeMissionIds
-        .filter((id) => this.isMissionVisibleOnCurrentMap(id))
         .filter((id) => {
           const lifecycle = this.ensureLifecycle(id);
           return lifecycle.status === "active" &&
             lifecycle.autoPrimaryEligible !== false;
         })
-        .map((id) => this.assessMission(id, context))
+        .filter((id) => this.missionPriorityQueueEligible(id, context))
+        .map((id) => this.assessMissionPriority(id, context))
+        .filter(Boolean)
         .sort((left, right) => right.score - left.score);
       const best = candidates[0];
       if (!best) return false;
@@ -2101,9 +2306,21 @@
       let shortlistFallback = false;
       if (!assessments.length) {
         shortlistFallback = true;
-        assessments = assessRunnable(
-          activeMissionIds.filter((id) => !prioritizedMissionSet.has(id))
+        const fallbackMissionIds = activeMissionIds.filter(
+          (id) => !prioritizedMissionSet.has(id)
         );
+        const structuredMissionIds = fallbackMissionIds.filter(
+          (id) => !this.missionHasHistoricalCollectionObjective(id)
+        );
+        assessments = assessRunnable(structuredMissionIds);
+        if (!assessments.length) {
+          assessments = assessRunnable(
+            fallbackMissionIds.filter((id) =>
+              this.missionHasHistoricalCollectionObjective(id) &&
+              this.historicalCollectionTransitionOpportunity(id, context)
+            )
+          );
+        }
       }
 
       const primary = assessments.find(
@@ -2116,6 +2333,17 @@
         .slice(0, 3);
 
       if (!primary && !secondaries.length) return null;
+
+      const tutorialPrimary = Boolean(
+        primary && /^T(?:0[1-9]|1[0-3])$/.test(String(primary.missionId || ""))
+      );
+      if (primary && (this.isPlayerSelectedPrimary() || tutorialPrimary)) {
+        return {
+          missionId: primary.missionId,
+          action: primary.action,
+          primary: true
+        };
+      }
 
       const primaryVital = primary && (
         (primary.action.type === Missions.ActionType.REST && context.needs?.rest) ||
@@ -2216,9 +2444,12 @@
       // Le Top4 est la shortlist d'autorité. Une mission hors shortlist n'est
       // consultée qu'en fallback R-STAB si toute la shortlist est stérile.
       if (prioritizedMissionIds.some(hasExecutableMissionWork)) return true;
-      return activeMissionIds
-        .filter((id) => !prioritizedMissionSet.has(id))
-        .some(hasExecutableMissionWork);
+      if (
+        activeMissionIds
+          .filter((id) => !prioritizedMissionSet.has(id))
+          .some(hasExecutableMissionWork)
+      ) return true;
+      return Boolean(this.prioritizedMissionTransition(context));
     }
 
     update(now) {
@@ -2291,8 +2522,18 @@
         return true;
       }
 
-      const selected = this.chooseRunnableMissionAction(this.bridge.context());
+      const decisionContext = this.bridge.context();
+      const selected = this.chooseRunnableMissionAction(decisionContext);
       if (!selected?.action) {
+        const relayTravel = this.prioritizedMissionTransition(decisionContext);
+        if (
+          relayTravel &&
+          this.resumeMissionTransitionIntent(decisionContext, relayTravel)
+        ) {
+          this.retryAfter = now + 1200;
+          this.idleRetryUntil = 0;
+          return true;
+        }
         this.retryAfter = now + 5000;
         this.idleRetryUntil = this.retryAfter;
         return false;
@@ -2437,9 +2678,13 @@
       return changed;
     }
 
-    cancelCurrentAction(reason = "cancelled") {
+    cancelCurrentAction(reason = "cancelled", options = {}) {
       if (!this.currentAction) return;
       const cancelledAction = this.currentAction;
+      const failedTarget =
+        options?.failedTarget ||
+        this.engine?.pendingInteraction ||
+        null;
       this.engine?.cancelMissionInteraction?.(
         cancelledAction,
         reason
@@ -2449,7 +2694,12 @@
         reason
       });
       if (this.executionCancellationIsFailure(reason)) {
-        this.recordExecutionFailure(cancelledAction, reason, performance.now());
+        this.recordExecutionFailure(
+          cancelledAction,
+          reason,
+          performance.now(),
+          failedTarget
+        );
       }
       this.currentAction = null;
       this.retryAfter = performance.now() + 1800;
