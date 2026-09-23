@@ -204,9 +204,11 @@
       crown.scale.y = 0.72;
       root.add(crown);
     }
+    const hitbox = makeHitbox(THREE, root, 0.52, height, "tree");
     return {
       root: setShadows(root),
-      colliders: [{ offset: new THREE.Vector3(), radius: 0.55 }],
+      hitbox,
+      colliders: [{ offset: new THREE.Vector3(), radius: 0.42 }],
       kind: "tree"
     };
   };
@@ -612,8 +614,8 @@
         chunk.rotation.set(index * 0.17, index * 0.63 + variant, index * 0.11);
         root.add(chunk);
       }
-      const radius = type === "large_rock" ? 2.35 : 1.25;
-      const hitboxRadius = type === "large_rock" ? 1.5 : radius;
+      const radius = type === "large_rock" ? 2.35 : 0.92;
+      const hitboxRadius = type === "large_rock" ? 1.5 : 0.82;
       const hitboxHeight = type === "large_rock" ? 2.6 : 2.1;
       hitbox = makeHitbox(THREE, root, hitboxRadius, hitboxHeight, type);
       colliders = [{ offset: new THREE.Vector3(), radius }];
@@ -830,8 +832,8 @@
           root.add(block);
         }
       }
-      hitbox = makeHitbox(THREE, root, 2.35, 1.9, type);
-      colliders = [{ offset: new THREE.Vector3(), radius: 2.15 }];
+      hitbox = makeHitbox(THREE, root, 1.85, 1.9, type);
+      colliders = [{ offset: new THREE.Vector3(), radius: 1.7 }];
     } else if (type === "base_fire") {
       const wood = material(THREE, { color: 0x65412c, roughness: 0.96 });
       const ember = material(THREE, { color: 0xffa340, emissive: 0xff4c16, emissiveIntensity: 1.8, roughness: 0.42 });
@@ -2363,6 +2365,13 @@
 
 
   const SIZE_RADIUS = Object.freeze({ XS: 0.25, S: 0.5, M: 0.9, L: 1.5, XL: 2.4 });
+  const MIN_INTERACTION_APPROACH_BY_SIZE = Object.freeze({
+    XS: 1.35,
+    S: 1.55,
+    M: 1.9,
+    L: 2.25,
+    XL: 2.75
+  });
   const RARITY_WEIGHT = Object.freeze({ common: 1, uncommon: 0.55, rare: 0.22, epic: 0.08, legendary: 0.02 });
 
   const SPAWN_OVERRIDES = Object.freeze({
@@ -2609,13 +2618,19 @@
       }
       if (instance.hitbox?.userData) {
         const interactionRadius = Number(definition.interaction?.interactionRadius);
-        const approachDistance = Number(definition.interaction?.approachDistance);
+        const configuredApproachDistance = Number(definition.interaction?.approachDistance);
+        const minimumApproachDistance =
+          MIN_INTERACTION_APPROACH_BY_SIZE[definition.size] ||
+          MIN_INTERACTION_APPROACH_BY_SIZE.M;
+        const approachDistance =
+          Number.isFinite(configuredApproachDistance) && configuredApproachDistance > 0
+            ? Math.max(configuredApproachDistance, minimumApproachDistance)
+            : minimumApproachDistance;
+
         if (Number.isFinite(interactionRadius) && interactionRadius > 0) {
           instance.hitbox.userData.interactionRadius = interactionRadius;
         }
-        if (Number.isFinite(approachDistance) && approachDistance > 0) {
-          instance.hitbox.userData.approachDistance = approachDistance;
-        }
+        instance.hitbox.userData.approachDistance = approachDistance;
       }
 
       instance.catalogId = definition.id;
