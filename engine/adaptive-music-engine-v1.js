@@ -2,7 +2,7 @@
 "use strict";
 const BF=global.BlueFox3D=global.BlueFox3D||{},cat=BF.MusicCatalogV1||global.BlueFoxMusicCatalogV1;
 if(!cat){console.warn("[BlueFox Music] catalogue absent");return;}
-const VERSION="1.4.2",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
+const VERSION="1.4.3",KEY="bluefox_music_settings_v1",clamp=v=>Math.max(0,Math.min(1,Number(v)||0)),clock=()=>global.performance?.now?.()||Date.now();
 const introOwnsAudio=()=>{
  const root=global.document?.documentElement;
  return Boolean(root?.classList?.contains("bluefox-first-launch-open")||root?.classList?.contains("bluefox-intro-open"));
@@ -184,9 +184,11 @@ class AdaptiveMusicEngine{
  }
  async unlock(){if(this.unlocked||this.disposed||introOwnsAudio())return false;this.unlocked=true;if(this.settings.enabled)await this.start();return true;}
  async start(){if(introOwnsAudio()||this.started||!this.unlocked||!this.settings.enabled||this.disposed)return false;this.started=true;this.selectSequence(true);return this.playCurrent(0);}
+ activeContextSupported(id=this.context){
+  return [cat.contexts.EXPLORATION_CALM,cat.contexts.EXPLORATION_SIGNIFICANT,cat.contexts.ACTION_DYNAMIC,cat.contexts.MAP_DISCOVERY].includes(id);
+ }
  activeCandidates(recent){
-  const supported=[cat.contexts.EXPLORATION_CALM,cat.contexts.EXPLORATION_SIGNIFICANT,cat.contexts.ACTION_DYNAMIC,cat.contexts.MAP_DISCOVERY];
-  if(!supported.includes(this.context))return[];
+  if(!this.activeContextSupported())return[];
   if(this.context===cat.contexts.ACTION_DYNAMIC&&this.priority>=cat.transitions.priorities.danger)return[];
   const axis=this.signal.axis||"exploration",activation=Math.max(0,Math.min(5,Number(this.signal.activation)||0));
   if(activation<1)return[];
@@ -210,6 +212,28 @@ class AdaptiveMusicEngine{
    return[{id,score:score+Math.random()*8}];
   });
  }
+ occasionalLongCandidates(recent){
+  const explorationContext=[cat.contexts.EXPLORATION_CALM,cat.contexts.EXPLORATION_SIGNIFICANT].includes(this.context);
+  const axis=this.signal.axis||"exploration",activation=Math.max(0,Math.min(5,Number(this.signal.activation)||0));
+  if(!explorationContext||!["exploration","collection"].includes(axis))return[];
+  const sourceIds=[
+   ...(cat.contextSequences[cat.contexts.RESEARCH]||[]),
+   ...(cat.contextSequences[cat.contexts.ARCHAEOLOGY]||[]),
+   ...(cat.contextSequences[cat.contexts.ACTION_DYNAMIC]||[])
+  ];
+  const unique=[...new Set(sourceIds)];
+  const gapFor=(theme)=>{let gap=0;for(const id of [...this.history].reverse()){if(sequenceTheme(id)===theme)break;gap++;}return gap;};
+  return unique.flatMap(id=>{
+   const theme=sequenceTheme(id),profile=this.sequenceProfile(id)||{};
+   if(!["relic","dynamics"].includes(theme)||profile.role!=="development")return[];
+   const gap=Math.min(5,gapFor(theme));
+   let score=(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):100)+this.transitionScore(id);
+   score-=theme==="relic"?42:52;
+   score+=gap*18;
+   if(recent.some(item=>sequenceTheme(item)===theme))score-=45;
+   return[{id,theme,gap,score,activation}];
+  }).sort((a,b)=>b.score-a.score);
+ }
  chooseSequence(){
   const c=cat.contextSequences[this.context]||[],recent=this.history.slice(-cat.transitions.recentTrackHistorySize);
   const now=Date.now(),heldTheme=this.themeHold.until>now?this.themeHold.theme:null;
@@ -217,11 +241,12 @@ class AdaptiveMusicEngine{
   const control=this.bacControlMode();
   const activePressure=activation>=1&&["collection","exploration","research"].includes(axis);
   const active=this.activeCandidates(recent).sort((a,b)=>b.score-a.score);
+  const occasional=this.occasionalLongCandidates(recent);
   const recentActive=this.history.slice(-4).filter(id=>id?.startsWith("active-")).length;
   const standardsSinceActive=(()=>{let n=0;for(const id of [...this.history].reverse()){if(id?.startsWith("active-"))break;n++;}return n;})();
   let forceActive=false;
   if(heldTheme){
-   const heldStandard=c.filter(id=>sequenceTheme(id)===heldTheme).map(id=>({id,score:(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):(recent.includes(id)?0:1))+36+Math.random()*5}));
+   const heldStandard=heldTheme==="active"?[]:this.themePool(heldTheme).map(id=>({id,score:(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):(recent.includes(id)?0:1))+36+Math.random()*5}));
    const heldActive=heldTheme==="active"?active.map(item=>({...item,score:item.score+34})):[];
    const heldCandidates=heldStandard.concat(heldActive).sort((a,b)=>b.score-a.score);
    if(heldCandidates.length){
@@ -246,9 +271,9 @@ class AdaptiveMusicEngine{
   else if(control.mode==="semi-pilot"){activePenalty=-8;standardBonus=0;}
   const standard=c.map(id=>({id,score:(cat.scoreSequence?cat.scoreSequence(id,this.signal,recent):(recent.includes(id)?0:1))+standardBonus+this.transitionScore(id)+Math.random()*3}));
   const adjustedActive=active.map(item=>({...item,score:item.score-activePenalty}));
-  const candidates=standard.concat(adjustedActive);
+  const candidates=standard.concat(adjustedActive,occasional);
   const chosen=candidates.sort((a,b)=>b.score-a.score)[0]?.id||null;
-  this.lastSelection={mode:"scored",control:control.mode,axis,activation,chosen,active:adjustedActive.slice(0,4),standard:standard.slice().sort((a,b)=>b.score-a.score).slice(0,4),standardsSinceActive,at:Date.now()};
+  this.lastSelection={mode:"scored",control:control.mode,axis,activation,chosen,active:adjustedActive.slice(0,4),occasional:occasional.slice(0,4),standard:standard.slice().sort((a,b)=>b.score-a.score).slice(0,4),standardsSinceActive,at:Date.now()};
   return chosen;
  }
  selectSequence(force=false){const id=this.chooseSequence(),sequence=sequenceById(id);if(!id||!sequence)return false;if(!force&&id===this.sequenceId)return true;this.sequenceId=id;this.sequence=sequence.slice();this.index=0;this.repeats=0;this.history.push(id);if(this.history.length>12)this.history.shift();
@@ -288,7 +313,13 @@ class AdaptiveMusicEngine{
    const recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3));
    return this.activeCandidates(recent).map(item=>item.id);
   }
-  return (cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme&&this.sequenceProfile(id)?.role!=="cue");
+  const contextual=(cat.contextSequences[this.context]||[]).filter(id=>sequenceTheme(id)===theme&&this.sequenceProfile(id)?.role!=="cue");
+  if(contextual.length)return contextual;
+  if(["relic","dynamics"].includes(theme)&&[cat.contexts.EXPLORATION_CALM,cat.contexts.EXPLORATION_SIGNIFICANT].includes(this.context)){
+   const recent=this.history.slice(-Math.max(1,Number(cat.transitions.recentTrackHistorySize)||3));
+   return this.occasionalLongCandidates(recent).filter(item=>item.theme===theme).map(item=>item.id);
+  }
+  return[];
  }
  themeCycleCeilingSec(){return Math.max(Number(cat.transitions.preferredDevelopmentSec)||0,Number(cat.transitions.maximumPendingSec)||0,150);}
  shouldContinueInstalledTheme(theme=this.currentTheme){
@@ -365,7 +396,7 @@ class AdaptiveMusicEngine{
   const changed=id!==this.context;
   if(!changed){this.priority=priority;this.schedulePendingTransition();return true;}
   if(this.started&&!urgent){
-   if(this.pending?.sequenceId?.startsWith("active-")){
+   if(this.pending?.sequenceId?.startsWith("active-")&&this.activeContextSupported(id)){
     this.pending={...this.pending,id,priority,reason:this.pending.reason||detail.reason||null};
     this.schedulePendingTransition();
    }else{
