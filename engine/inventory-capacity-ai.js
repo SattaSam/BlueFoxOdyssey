@@ -102,7 +102,7 @@
     );
     engine.pendingInteraction = null;
     engine.pendingGate = null;
-    engine.character.setTarget(destination, "walk");
+    engine.character.setTarget(destination, "auto");
     engine.showWorldMarker?.(destination);
     engine.callbacks?.onStatus?.(
       "Le sac approche de sa limite. BlueFox retourne au camp pour le vider."

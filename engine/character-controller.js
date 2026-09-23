@@ -24,14 +24,15 @@
       this.heading = 0;
       this.speed = 0;
       this.radius = 0.64;
-      this.maxSpeed = 3.55;
+      this.maxSpeed = 3.85;
       this.fatigueSpeedMultiplier = 1;
       this.playerSprintUntil = 0;
       this.movementMode = "auto";
-      // Les patrouilles autonomes commencent à 6 m : au-delà, la marche
-      // n'est plus une approche locale et ne doit pas ralentir l'exploration.
-      this.autonomousRunThreshold = 6;
-      this.acceleration = 5.2;
+      // Les déplacements autonomes non locaux privilégient la course normale ;
+      // l’approche finale repasse à la marche, sans utiliser le sprint joueur.
+      this.autonomousRunThreshold = 5.5;
+      this.autonomousWalkApproachDistance = 2.8;
+      this.acceleration = 5.8;
       this.deceleration = 7.5;
       this.turnSpeed = 9;
       this.arrivalRadius = 1.6;
@@ -297,7 +298,7 @@
       // Les répétitions sont intentionnelles (ex. heavy / medium / heavy).
       const sequenceNames = names.filter((name) => name && this.actions.has(name));
       if (!sequenceNames.length && idle) sequenceNames.push(idle);
-      const speed = acquisition ? 1.1 : 1;
+      const speed = acquisition ? 1.16 : 1.08;
       const steps = sequenceNames.map((name) => ({
         name,
         duration: Math.max(
@@ -331,20 +332,22 @@
         this.clips.find((clip) => /^ear/i.test(clip.name))?.name
       ]);
       if (!ear) return 0;
+      const speed = 1.08;
       const duration = Math.max(
         0.65,
-        this.actions.get(ear)?.getClip().duration || 1.2
+        (this.actions.get(ear)?.getClip().duration || 1.2) / speed
       );
       const now = performance.now();
       this.interactionSequence = {
         steps: [{ name: ear, duration }],
         index: 0,
-        speed: 1,
+        speed,
         stepEndsAt: now + duration * 1000,
         endsAt: now + duration * 1000
       };
       this.actionLockUntil = this.interactionSequence.endsAt;
       this.play(ear, 0.18, true);
+      this.currentAction?.setEffectiveTimeScale(speed);
       return duration;
     }
 
@@ -375,13 +378,13 @@
       this.play(clip, 0.24, false);
     }
 
-    updateLocomotionState() {
-      if (this.movementMode === "walk" && this.speed > 0.08) {
+    updateLocomotionState(movementMode = this.movementMode) {
+      if (movementMode === "walk" && this.speed > 0.08) {
         this.locomotionState = "walk";
         return this.locomotionState;
       }
       if (
-        (this.movementMode === "run" || this.movementMode === "run-fast") &&
+        (movementMode === "run" || movementMode === "run-fast") &&
         this.speed > 1.15
       ) {
         this.locomotionState = "run";
@@ -440,6 +443,12 @@
         distance = delta.length();
       }
       const moving = distance > this.stopRadius;
+      const finalDistance = this.root.position.distanceTo(this.finalTarget);
+      const resolvedMovementMode =
+        this.movementMode === "run" &&
+        finalDistance <= this.autonomousWalkApproachDistance
+          ? "walk"
+          : this.movementMode;
 
       if (
         !Number.isFinite(this.root.position.x) ||
@@ -486,8 +495,8 @@
           this.movementMode === "run-fast" ||
           performance.now() < this.playerSprintUntil;
         const fatigueMultiplier = Math.max(0.55, Math.min(1, Number(this.fatigueSpeedMultiplier) || 1));
-        const movementSpeed = (this.movementMode === "walk"
-          ? Math.min(this.maxSpeed, 2.05)
+        const movementSpeed = (resolvedMovementMode === "walk"
+          ? Math.min(this.maxSpeed, 2.2)
           : this.maxSpeed) * fatigueMultiplier;
         const desiredSpeed =
           movementSpeed * (playerSprint ? 1.3 : 1) * arrival;
@@ -558,7 +567,7 @@
         ? this.findClip(["Run_fast", "Run", "Walk", "Walk_V1"])
         : this.findClip(["Run", "Run_fast", "Walk", "Walk_V1"]);
       const idle = this.findClip(["Idle", "Idle_V2", "Idle_V1"]);
-      const locomotion = this.updateLocomotionState();
+      const locomotion = this.updateLocomotionState(resolvedMovementMode);
       if (!actionLocked) {
         this.play(
           locomotion === "run" ? run : locomotion === "walk" ? walk : idle,
