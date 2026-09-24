@@ -489,9 +489,27 @@
     return lastIndex < 0 ? ordered.length : ordered.length - lastIndex - 1;
   };
 
+  const opportunityMicroSceneIds = () => new Set(
+    (Array.isArray(BF.BibleCatalog)
+      ? BF.BibleCatalog
+      : Object.values(BF.BibleCatalog || {}))
+      .filter((mission) =>
+        /^OPP-/.test(String(mission?.id || "")) &&
+        mission?.trigger?.type === "exploration.map_discovered"
+      )
+      .flatMap((mission) =>
+        Array.isArray(mission?.trigger?.featuredMicroSceneIdsAny)
+          ? mission.trigger.featuredMicroSceneIdsAny
+          : []
+      )
+      .map(String)
+      .filter(Boolean)
+  );
+
   const chooseScene = (random, biomeId, kind, options = {}) => {
     const compatible = BF.MicroScenes?.list?.(biomeId)
       ?.filter((scene) => !scene.missionOnly) || [];
+    const opportunityKeys = opportunityMicroSceneIds();
     const missionKeys = new Set([
       "MSC-ABANDONED-DRONE-001", "MSC-TECH-RELAY-001",
       "MSC-ANCIENT-GATEWAY-001", "MSC-RUINED-SHRINE-001",
@@ -499,8 +517,13 @@
       "MSC-PREDATOR-FLORA-001", "MSC-LOCAL-STORM-001"
     ]);
     const candidates = compatible.filter((scene) => {
-      if (kind === "mission") return missionKeys.has(scene.id);
-      if (kind === "remarkable") return scene.custom === true || ["rare", "story"].includes(scene.rarity);
+      if (kind === "mission") {
+        return missionKeys.has(scene.id) || opportunityKeys.has(scene.id);
+      }
+      if (kind === "remarkable") {
+        return !opportunityKeys.has(scene.id) &&
+          (scene.custom === true || ["rare", "story"].includes(scene.rarity));
+      }
       return ["common", "uncommon"].includes(scene.rarity);
     });
     if (kind === "mission" && !candidates.length) return null;
@@ -601,15 +624,17 @@
         featuredScenes.push({ kind, scene });
       }
     };
-    if (forceDecorative) appendScene("decorative");
-    if (forceRemarkable) appendScene("remarkable");
-    if (["magnetic", "floating_islands"].includes(biomeDefinition.id)) {
-      const suspended = BF.MicroScenes?.get?.("MSC-SUSPENDED-ISLAND-001");
-      if (suspended && !featuredScenes.some((entry) => entry.scene.id === suspended.id)) {
-        featuredScenes.push({ kind: "biome-guaranteed", scene: suspended });
+    if (preferMissionOpportunity) appendScene("mission");
+    if (!featuredScenes.length) {
+      if (forceDecorative) appendScene("decorative");
+      if (forceRemarkable) appendScene("remarkable");
+      if (["magnetic", "floating_islands"].includes(biomeDefinition.id)) {
+        const suspended = BF.MicroScenes?.get?.("MSC-SUSPENDED-ISLAND-001");
+        if (suspended && !featuredScenes.some((entry) => entry.scene.id === suspended.id)) {
+          featuredScenes.push({ kind: "biome-guaranteed", scene: suspended });
+        }
       }
     }
-    if (!featuredScenes.length && preferMissionOpportunity) appendScene("mission");
 
     const template = pickTemplate(random, biomeDefinition.id, draft.profile);
     if (!template) throw new Error("Aucun décor local compatible avec le générateur.");

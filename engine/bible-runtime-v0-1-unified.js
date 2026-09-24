@@ -4959,10 +4959,20 @@
 
       const eventMapId = detail.toMapId || detail.mapId || null;
       const mapDefinition = BF.maps?.[eventMapId] || null;
-      const featuredMicroSceneIds = [...new Set([
+      const plannedFeaturedMicroSceneIds = new Set([
         ...asArray(mapDefinition?.generator?.featuredMicroSceneIds),
         mapDefinition?.generator?.featuredMicroSceneId
-      ].map(String).filter(Boolean))];
+      ].map(String).filter(Boolean));
+      const currentMap = String(BF.currentEngine?.currentMapId || "") === String(eventMapId || "")
+        ? BF.currentEngine?.currentMap
+        : null;
+      const materializedMicroSceneIds = new Set(
+        asArray(currentMap?.group?.userData?.microScenes)
+          .map((entry) => String(entry?.id || ""))
+          .filter(Boolean)
+      );
+      const featuredMicroSceneIds = [...plannedFeaturedMicroSceneIds]
+        .filter((id) => materializedMicroSceneIds.has(id));
       const event = {
         fromMapId: detail.fromMapId || null,
         toMapId: eventMapId,
