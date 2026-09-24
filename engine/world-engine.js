@@ -82,6 +82,7 @@
       this.persistentNavigationIntent = this.restorePersistentNavigationIntent();
       this.returningToBase = false;
       this.__cachedInteractionApproach = null;
+      this.cautiousInteraction = null;
 
       // WorldEngine reste le propriétaire unique de l'exécution du monde :
       // OFF, pause d'intro et fenêtres de grâce agissent ici, avant BAC/Missions.
@@ -1847,6 +1848,7 @@
         const wasGate = Boolean(this.pendingGate);
         const wasTeleport = Boolean(this.pendingTeleport);
         this.pendingInteraction = null;
+        this.cautiousInteraction = null;
         this.pendingGate = null;
         this.pendingTeleport = null;
         this.pendingZoneExploration = null;
@@ -2611,13 +2613,15 @@
       return baseDistance + Math.max(largeTargetBonus, radiusBonus);
     }
 
-    interactionApproachPoint(object, attempt = 0) {
+    interactionApproachPoint(object, attempt = 0, preferredDistance = null) {
       const anchor = object.userData.worldAnchor || object;
       const anchorPosition = this.interactionWorldPosition(object) || anchor.position;
       const colliderRadius = object.userData.interactionRadius || 0.5;
       const normalApproachDistance =
         colliderRadius + this.character.radius + 0.22;
-      let approachDistance = normalApproachDistance;
+      let approachDistance = Number.isFinite(Number(preferredDistance))
+        ? Math.max(0.5, Number(preferredDistance))
+        : normalApproachDistance;
       const fromResource = this.character.root.position.clone()
         .sub(anchorPosition);
       fromResource.y = 0;
@@ -2742,7 +2746,7 @@
         approachDistance,
         pathLength: candidates[0]?.pathLength
       };
-      if (attempt === 0 && fallbackPoint) {
+      if (attempt === 0 && preferredDistance == null && fallbackPoint) {
         this.__cachedInteractionApproach = {
           object,
           mapId: this.currentMapId,
@@ -2869,6 +2873,34 @@
       }[action];
     }
 
+    faunaInteractionState(object) {
+      const anchor = object?.userData?.worldAnchor || object;
+      return anchor ? BF.FaunaRuntime?.getState?.(anchor) || null : null;
+    }
+
+    faunaInteractionSceneId(object) {
+      const anchor = object?.userData?.worldAnchor || object;
+      return String(
+        object?.userData?.microSceneId ||
+        anchor?.userData?.microSceneId ||
+        object?.userData?.biblePersistentScene ||
+        anchor?.userData?.biblePersistentScene ||
+        object?.userData?.persistentMicroSceneId ||
+        anchor?.userData?.persistentMicroSceneId ||
+        ""
+      );
+    }
+
+    isFau01CautiousInteraction(object) {
+      const data = object?.userData || {};
+      return (
+        data.requestedInteractionSource === "mission" &&
+        String(data.missionId || "") === "FAU-01" &&
+        String(data.missionNodeId || "") === "FAU-01:cautiousApproach" &&
+        this.faunaInteractionSceneId(object) === "MSC-CUSTOM-NID-DE-FAUNE5"
+      );
+    }
+
     targetInteraction(object, retry = false) {
       if (!retry && object?.userData?.requestedInteractionSource !== "manual") {
         this.noteLocalAutonomousDecision();
@@ -2898,12 +2930,48 @@
       this.interactionStartedAt = 0;
       this.interactionApproachStartedAt = performance.now();
       if (!retry) this.interactionApproachAttempts = 0;
+
+      const faunaState = this.faunaInteractionState(object);
+      if (
+        this.isFau01CautiousInteraction(object) &&
+        faunaState &&
+        faunaState.cautiousQualified !== true
+      ) {
+        const cautiousApproach = this.interactionApproachPoint(
+          object,
+          retry ? this.interactionApproachAttempts : 0,
+          4.6
+        );
+        if (cautiousApproach?.point) {
+          this.cautiousInteraction = {
+            object,
+            phase: "approach",
+            waitStartedAt: 0,
+            finalApproachPoint: approach.point.clone()
+          };
+          const accepted = this.character.setTarget(cautiousApproach.point, "walk");
+          if (accepted !== false) {
+            this.showWorldMarker(cautiousApproach.point);
+            this.callbacks.onStatus("BlueFox ralentit et approche la créature avec précaution.");
+            return true;
+          }
+        }
+        this.pendingInteraction = null;
+        this.cautiousInteraction = null;
+        this.interactionApproachStartedAt = 0;
+        this.callbacks.onStatus("BlueFox ne trouve pas d’approche prudente sûre vers cette créature.");
+        this.missionManager?.cancelCurrentAction("cautious-approach-inaccessible");
+        return false;
+      }
+
+      this.cautiousInteraction = null;
       this.character.setTarget(
         approach.point,
         object.userData.requestedMovementMode || "auto"
       );
       this.showWorldMarker(approach.point);
       this.callbacks.onStatus(object.userData.interactionProfile.approachText);
+      return true;
     }
 
     async addCrashCapsule(map, definition) {
@@ -3672,6 +3740,63 @@
       const anchorPosition = this.interactionWorldPosition(object) || anchor.position;
       const distance = this.character.root.position.distanceTo(anchorPosition);
       const interactionDistance = this.interactionValidationDistance(object);
+
+      if (this.cautiousInteraction?.object === object) {
+        const faunaState = this.faunaInteractionState(object);
+        if (!faunaState) {
+          this.cautiousInteraction = null;
+        } else if (faunaState.cautiousQualified === true) {
+          const finalApproachPoint = this.cautiousInteraction.finalApproachPoint;
+          this.cautiousInteraction = null;
+          this.interactionApproachStartedAt = now;
+          this.character.setTarget(finalApproachPoint, "walk");
+          this.showWorldMarker(finalApproachPoint);
+          this.callbacks.onStatus(profile.approachText);
+          return;
+        } else {
+          if (this.cautiousInteraction.phase === "approach") {
+            if (distance >= 3.8 && distance <= 5.4) {
+              this.character.stop();
+              this.cautiousInteraction.phase = "wait";
+              this.cautiousInteraction.waitStartedAt = now;
+              return;
+            }
+            if (now - this.interactionApproachStartedAt > 6500) {
+              this.interactionApproachAttempts += 1;
+              if (this.interactionApproachAttempts <= 3) {
+                this.targetInteraction(object, true);
+              } else {
+                this.callbacks.onStatus(`BlueFox renonce temporairement : ${profile.label} est inaccessible.`);
+                this.pendingInteraction = null;
+                this.cautiousInteraction = null;
+                this.interactionApproachStartedAt = 0;
+                this.interactionApproachAttempts = 0;
+                this.character.stop();
+                this.missionManager?.cancelCurrentAction("interaction-inaccessible");
+              }
+            }
+            return;
+          }
+
+          this.character.stop();
+          if (now - Number(this.cautiousInteraction.waitStartedAt || now) > 6500) {
+            this.interactionApproachAttempts += 1;
+            if (this.interactionApproachAttempts <= 3) {
+              this.targetInteraction(object, true);
+            } else {
+              this.callbacks.onStatus(`BlueFox renonce temporairement : ${profile.label} est inaccessible.`);
+              this.pendingInteraction = null;
+              this.cautiousInteraction = null;
+              this.interactionApproachStartedAt = 0;
+              this.interactionApproachAttempts = 0;
+              this.character.stop();
+              this.missionManager?.cancelCurrentAction("interaction-inaccessible");
+            }
+          }
+          return;
+        }
+      }
+
       if (distance > interactionDistance) {
         if (!this.interactionStartedAt && now - this.interactionApproachStartedAt > 6500) {
           this.interactionApproachAttempts += 1;
@@ -3680,6 +3805,7 @@
           } else {
             this.callbacks.onStatus(`BlueFox renonce temporairement : ${profile.label} est inaccessible.`);
             this.pendingInteraction = null;
+            this.cautiousInteraction = null;
             this.interactionApproachStartedAt = 0;
             this.interactionApproachAttempts = 0;
             this.character.stop();
@@ -3692,6 +3818,7 @@
       if (profile.specialAction === "teleport-return") {
         this.callbacks.onAction(profile.actionText);
         this.pendingInteraction = null;
+        this.cautiousInteraction = null;
         this.interactionStartedAt = 0;
         this.interactionApproachStartedAt = 0;
         this.interactionApproachAttempts = 0;
@@ -3747,6 +3874,7 @@
           zoneIndex: this.currentZoneIndex
         }, { passive: false });
       }
+      this.cautiousInteraction = null;
       this.pendingInteraction = null;
       this.interactionStartedAt = 0;
       this.interactionApproachStartedAt = 0;

@@ -4959,9 +4959,18 @@
 
       const eventMapId = detail.toMapId || detail.mapId || null;
       const mapDefinition = BF.maps?.[eventMapId] || null;
+      const missionPrescribedMicroSceneIds = asArray(mapDefinition?.persistentMicroScenes)
+        .filter((entry) => {
+          const mission = this.byId?.get?.(String(entry?.missionId || ""));
+          const required = asArray(mission?.trigger?.featuredMicroSceneIdsAny)
+            .map(String);
+          return entry?.microSceneId && required.includes(String(entry.microSceneId));
+        })
+        .map((entry) => String(entry.microSceneId));
       const plannedFeaturedMicroSceneIds = new Set([
         ...asArray(mapDefinition?.generator?.featuredMicroSceneIds),
-        mapDefinition?.generator?.featuredMicroSceneId
+        mapDefinition?.generator?.featuredMicroSceneId,
+        ...missionPrescribedMicroSceneIds
       ].map(String).filter(Boolean));
       const currentMap = String(BF.currentEngine?.currentMapId || "") === String(eventMapId || "")
         ? BF.currentEngine?.currentMap

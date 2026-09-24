@@ -2835,7 +2835,8 @@
     trigger: Object.freeze({
       type: "exploration.map_discovered",
       count: 1,
-      uniqueOnly: true
+      uniqueOnly: true,
+      featuredMicroSceneIdsAny: Object.freeze(["MSC-CUSTOM-NID-DE-FAUNE5"])
     }),
     prerequisites: Object.freeze([]),
     priority: 323,
