@@ -251,14 +251,22 @@
 
     localMissionsUnlocked() {
       const manager = this.manager();
+      const lifecycle = manager?.memory?.state?.missionLifecycle || {};
       return Boolean(
         manager?.memory?.getFact?.("localExplorationUnlocked:v1", false) ||
-        manager?.memory?.state?.missionLifecycle?.T10?.status === "completed"
+        lifecycle?.T09?.status === "completed" ||
+        ["active", "completed"].includes(lifecycle?.T10?.status)
       );
     }
 
     localMissionEligibleOnMap(template, mapId) {
       if (!template?.localMission || !mapId || !this.localMissionsUnlocked()) return false;
+      const baseId = String(template.id || "").split("@")[0];
+      // Pendant T09→T13, seule la progression locale historique 15→60→100
+      // est autorisée. Les autres LOC restent verrouillées jusqu'à T13.
+      if (!this.foundationTutorialUnlocked() && !["LOC-05", "LOC-06"].includes(baseId)) {
+        return false;
+      }
       if (template.localMission.newMapOnly === true) {
         const definition = BF.maps?.[mapId] || {};
         const generated = definition.generated === true ||
@@ -499,18 +507,21 @@
       if (!manager) return false;
       const unlockFact = "localExplorationUnlocked:v1";
       const backfillFact = "localExplorationBackfillComplete:v1";
-      const t10Completed =
-        manager.memory?.state?.missionLifecycle?.T10?.status === "completed";
+      const tutorialLifecycle = manager.memory?.state?.missionLifecycle || {};
+      const localExplorationReady = Boolean(
+        tutorialLifecycle?.T09?.status === "completed" ||
+        ["active", "completed"].includes(tutorialLifecycle?.T10?.status)
+      );
       const unlocked = Boolean(manager.memory?.getFact?.(unlockFact, false));
       const backfilled = Boolean(manager.memory?.getFact?.(backfillFact, false));
-      if (!unlocked && !t10Completed) return false;
+      if (!unlocked && !localExplorationReady) return false;
       if (unlocked && backfilled) return false;
 
       this.localExplorationReconciling = true;
       try {
         if (!unlocked) {
           manager.memory?.setFact?.(unlockFact, {
-            missionId: "T10",
+            missionId: tutorialLifecycle?.T10?.status ? "T10" : "T09",
             unlockedAt: Date.now()
           });
         }
@@ -1883,16 +1894,23 @@
     }
 
     foundationTutorialUnlocked() {
-      return this.missionLifecycle("T08").completed === true;
+      return this.missionLifecycle("T13").completed === true;
     }
 
     foundationTutorialAllows(mission) {
       if (this.foundationTutorialUnlocked()) return true;
       const id = String(mission?.id || "");
-      if (/^T(?:0[1-9]|1[0-3])$/.test(id)) return true;
-      // Le Refuge est volontairement introduit au milieu du tutoriel par T03
-      // afin d'enseigner la progression parallèle.
-      if (id === "GAME-shelter") return true;
+      const baseId = id.split("@")[0];
+      if (/^T(?:0[1-9]|1[0-3])$/.test(baseId)) return true;
+      // Le Refuge est volontairement introduit au milieu du tutoriel par T03.
+      if (baseId === "GAME-shelter") return true;
+
+      const t09Started = ["active", "completed"].includes(this.missionLifecycle("T09").status);
+      const t10Started = ["active", "completed"].includes(this.missionLifecycle("T10").status);
+      // Exceptions historiques du tutoriel : exploration locale 15→60→100 et
+      // FAU-02/03. FAU-01 reste volontairement hors de cette exception.
+      if (["LOC-05", "LOC-06"].includes(baseId) && (t09Started || t10Started)) return true;
+      if (["FAU-02", "FAU-03"].includes(baseId) && t09Started) return true;
       return false;
     }
 
@@ -3186,7 +3204,12 @@
         if (!contexts.length) return;
         if (!this.missionLifecycle(mission.id).active) return;
         contexts.forEach((context) => {
-          if (!context?.microSceneId || !context?.fact) return;
+          if ((!context?.microSceneId && !context?.cuoType) || !context?.fact) return;
+          if (context.requiresSlotComplete) {
+            const tree = manager.trees?.get?.(mission.id);
+            const required = tree?.find?.(`${mission.id}:${context.requiresSlotComplete}`);
+            if (!required?.isComplete) return;
+          }
           if (context.selectionFact) {
             const selected = manager.memory.getFact?.(String(context.selectionFact), null);
             const field = String(context.selectionField || "value");
@@ -3210,6 +3233,53 @@
       const entry = entries.find((item) => String(item?.id || "") === normalized);
       if (!entry) return null;
       return entry.instanceRoot || entry.records?.[0]?.root || null;
+    }
+
+    objectProximityAnchor(cuoType) {
+      const engine = BF.currentEngine;
+      const player = engine?.character?.root?.position;
+      if (!engine?.currentMap || !player || !cuoType) return null;
+      const expected = String(cuoType);
+      const candidates = (engine.currentMap.interactables || []).filter((object) => {
+        if (!object?.userData?.active) return false;
+        const anchor = object.userData.worldAnchor || object;
+        const definition =
+          object.userData.functional ||
+          anchor?.userData?.functional ||
+          BF.ObjectLibrary?.getById?.(object.userData.catalogId || anchor?.userData?.catalogId) ||
+          BF.ObjectLibrary?.get?.(object.userData.libraryType || anchor?.userData?.libraryType);
+        return String(definition?.type || object.userData.libraryType || "") === expected;
+      });
+      return candidates.sort((left, right) => {
+        const a = this.observationPoint(left, engine);
+        const b = this.observationPoint(right, engine);
+        return Math.hypot(player.x - a.x, player.z - a.z) -
+          Math.hypot(player.x - b.x, player.z - b.z);
+      })[0] || null;
+    }
+
+
+    knownMapForCuoType(cuoType) {
+      const engine = BF.currentEngine;
+      if (!engine?.discoveredMaps || !cuoType) return "";
+      const expected = String(cuoType);
+      const current = String(engine.currentMapId || "");
+      const candidates = [...engine.discoveredMaps]
+        .map(String)
+        .filter((mapId) => mapId && mapId !== current)
+        .filter((mapId) => {
+          const definition = BF.maps?.[mapId];
+          return asArray(definition?.generator?.requiredObjects).some((entry) =>
+            String(entry?.type || entry?.cuoType || "") === expected
+          );
+        })
+        .map((mapId) => ({
+          mapId,
+          route: engine.findKnownRoute?.(current, mapId)
+        }))
+        .filter((entry) => Array.isArray(entry.route) && entry.route.length > 1)
+        .sort((left, right) => left.route.length - right.route.length);
+      return candidates[0]?.mapId || "";
     }
 
     npcEncounterEntries() {
@@ -3406,8 +3476,25 @@
       if (!engine || !manager?.memory || !player) return false;
       let changed = false;
       this.proximityContextEntries().forEach(({ mission, context }) => {
-        const anchor = this.microSceneProximityAnchor(context.microSceneId);
-        if (!anchor) return;
+        const anchor = context.microSceneId
+          ? this.microSceneProximityAnchor(context.microSceneId)
+          : this.objectProximityAnchor(context.cuoType);
+        if (!anchor) {
+          if (context.allowKnownMapTravel === true && context.cuoType && context.targetMapFact) {
+            const targetMapId = this.knownMapForCuoType(context.cuoType);
+            if (targetMapId) {
+              manager.memory.setFact?.(String(context.targetMapFact), {
+                mapId: targetMapId,
+                cuoType: String(context.cuoType),
+                source: "known-map-proximity-target",
+                updatedAt: Date.now()
+              });
+              manager.memory.save?.();
+              changed = true;
+            }
+          }
+          return;
+        }
         const point = this.observationPoint(anchor, engine);
         const radius = context.useSceneRadius === true
           ? Math.max(1, Number(BF.MicroScenes?.get?.(context.microSceneId)?.radius) || 8)
@@ -3417,6 +3504,14 @@
           Number(player.z) - Number(point.z)
         );
         if (distance > radius) return;
+        if (context.targetMapFact) {
+          manager.memory.setFact?.(String(context.targetMapFact), {
+            mapId: engine.currentMapId,
+            cuoType: context.cuoType || null,
+            source: "local-proximity-target",
+            updatedAt: Date.now()
+          });
+        }
         const requiredMapFact = String(context.requiredMapFact || "").trim();
         if (requiredMapFact) {
           const fact = manager.memory.getFact?.(requiredMapFact, null);
@@ -3443,7 +3538,38 @@
           }
         }
         if (context.slot) {
-          if (!this.progressRuntimeValidationSlot(mission.id, context.slot, 1)) {
+          if (!context.microSceneId && context.cuoType) {
+            // La proximité décide QUAND une étude passive est due ; l'ObjectEvent
+            // canonique est ensuite consommé par ObjectM0, qui reste propriétaire
+            // de la preuve d'objet, de l'instanceId et du fan-out missionnel.
+            const nodeId = `${mission.id}:${context.slot}`;
+            const tree = manager.trees?.get?.(mission.id);
+            const node = tree?.find?.(nodeId);
+            const before = Math.max(0, Number(node?.progress) || 0);
+            const emitted = BF.ObjectEvents?.emit?.(
+              BF.ObjectEvents?.types?.PHENOMENON_OBSERVED || "PHENOMENON_OBSERVED",
+              anchor,
+              {
+                missionId: mission.id,
+                missionNodeId: nodeId,
+                mapId: engine.currentMapId,
+                zoneId: engine.currentZoneIndex,
+                cuoType: context.cuoType,
+                subject: node?.params?.subject || context.cuoType,
+                missionNarrativeVerb: ["analyze", "inspect"].includes(String(node?.type || "").toLowerCase()) ? String(node.type).toLowerCase() : "observe",
+                interactionMode: "observe",
+                interactionSource: "proximity",
+                passiveProximity: true
+              }
+            );
+            const after = Math.max(0, Number(node?.progress) || 0);
+            if (!emitted) return;
+            if (node?.params?.catalogManaged === true) {
+              if (!this.progressRuntimeValidationSlot(mission.id, context.slot, 1)) return;
+            } else if (after <= before) {
+              return;
+            }
+          } else if (!this.progressRuntimeValidationSlot(mission.id, context.slot, 1)) {
             return;
           }
         }
@@ -3451,7 +3577,8 @@
           active: true,
           missionId: mission.id,
           slot: context.slot || null,
-          microSceneId: context.microSceneId,
+          microSceneId: context.microSceneId || null,
+          cuoType: context.cuoType || null,
           mapId: engine.currentMapId,
           reachedAt: Date.now()
         });
@@ -3464,7 +3591,8 @@
               fact: context.fact,
               missionId: mission.id,
               slot: context.slot || null,
-              microSceneId: context.microSceneId,
+              microSceneId: context.microSceneId || null,
+              cuoType: context.cuoType || null,
               mapId: engine.currentMapId,
               distance,
               radius
@@ -3860,6 +3988,9 @@
       for (const mission of this.catalog) {
         if (mission?.localMission) continue;
         if (!this.eventMatchesTrigger(mission.trigger, event)) continue;
+        // Le tutoriel filtre avant tout compteur/pending : les événements T01→T13
+        // ne doivent pas armer rétroactivement les missions non autorisées.
+        if (!this.foundationTutorialAllows(mission)) continue;
         if (!this.siteDistanceGateSatisfied(
           mission,
           event.mapId || event.toMapId || BF.currentEngine?.currentMapId
@@ -7567,7 +7698,7 @@
         const prerequisites = asArray(mission.prerequisites);
         const gatedPrerequisites = this.foundationTutorialAllows(mission)
           ? prerequisites
-          : [...new Set([...prerequisites, "T08"])];
+          : [...new Set([...prerequisites, "T13"])];
 
         manager.startMission?.(mission.id, {
           primary: mission.primaryOnActivation === true,

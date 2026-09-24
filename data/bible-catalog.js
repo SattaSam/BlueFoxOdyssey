@@ -9832,9 +9832,19 @@
     }),
     sequence: Object.freeze([
       Object.freeze({ slot: "storm", title: "S’approcher de la tempête et observer le phénomène", action: "observe", target: 1, params: Object.freeze({ cuoType: "electrostatic_storm", microSceneId: "MSC-LOCAL-STORM-001", requiredMapFact: "bibleActivation:ANN-04", requiredMapField: "mapId" }) }),
-      Object.freeze({ slot: "fog", title: "Observer une nappe de brume sur le même territoire", action: "observe", target: 1, requires: Object.freeze(["storm"]), params: Object.freeze({ cuoType: "fog_bank", requiredMapFact: "bibleActivation:ANN-04", requiredMapField: "mapId" }) }),
+      Object.freeze({ slot: "fog", title: "Traverser ou approcher une nappe de brume", action: "observe", target: 1, requires: Object.freeze(["storm"]), params: Object.freeze({ eventDriven: true, catalogManaged: true, cuoType: "fog_bank", requiredMapFact: "ann04:fogTarget", requiredMapField: "mapId" }) }),
       Object.freeze({ slot: "climateReading", title: "Mettre en relation pression, hygrométrie, froid nocturne et rythme jour/nuit", action: "research", target: 1, requires: Object.freeze(["fog"]), params: Object.freeze({ requiredMapFact: "bibleActivation:ANN-04", requiredMapField: "mapId" }) })
     ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "ann04-fog-proximity",
+      cuoType: "fog_bank",
+      fact: "ann04:fog-proximity",
+      slot: "fog",
+      radius: 4.8,
+      requiresSlotComplete: "storm",
+      allowKnownMapTravel: true,
+      targetMapFact: "ann04:fogTarget"
+    })]),
     narrative: Object.freeze({
       revealed: Object.freeze(["Cette pluie ne ressemble pas à celle de chez moi… et la pression bouge beaucoup trop vite. Je vais suivre ça de près."]),
       progress: Object.freeze([
@@ -10452,6 +10462,14 @@
         })
       })
     ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "phen01-fog-proximity",
+      cuoType: "fog_bank",
+      fact: "phen01:fog-proximity",
+      slot: "bluefoxReading",
+      radius: 4.8,
+      requiresSlotComplete: "reachPhenomenon"
+    })]),
     narrative: Object.freeze({
       revealed: Object.freeze(["Une impression n’est pas une mesure. Si le Scout retrouve la même chose sans moi, alors j’aurai quelque chose de reproductible."]),
       completed: Object.freeze(["Deux regards, le même phénomène. Je peux commencer à comparer le monde au lieu de seulement le décrire."])
@@ -11669,6 +11687,10 @@
       Object.freeze({slot:"maximum",title:"Attendre le maximum du voile",action:"research",target:1,requires:Object.freeze(["landmarks"]),params:Object.freeze({duration:4500,requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})}),
       Object.freeze({slot:"dissipation",title:"Observer le début de la dissipation",action:"observe",target:1,requires:Object.freeze(["maximum"]),params:Object.freeze({cuoType:"fog_bank",microSceneId:"MSC-CUSTOM-FOG-SEA-SUSPENDU",requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})})
     ]),
+    proximityContexts:Object.freeze([
+      Object.freeze({id:"opp-met03-edge-fog",slot:"edge",cuoType:"fog_bank",fact:"opp-met03:edge-fog-proximity",radius:4.8,requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"}),
+      Object.freeze({id:"opp-met03-dissipation-fog",slot:"dissipation",cuoType:"fog_bank",fact:"opp-met03:dissipation-fog-proximity",radius:4.8,requiresSlotComplete:"maximum",requiredMapFact:"bibleActivation:OPP-MET-03",requiredMapField:"mapId"})
+    ]),
     narrative:Object.freeze({revealed:Object.freeze(["La brume avance comme une mer basse entre les reliefs. Je veux voir jusqu’où elle efface le paysage." ]),completed:Object.freeze(["Le voile commence déjà à se retirer. Ce n’était pas un mur fixe, mais un phénomène qui traverse réellement le relief."])})
   });
 
@@ -12583,6 +12605,16 @@
       Object.freeze({ slot: "explore", title: "Explorer 45 % du territoire pour contourner la nappe", action: "explore-zone", target: 45, requires: Object.freeze(["scoutConfirm"]), params: Object.freeze({ scope: "map", metric: "surfacePercent", threshold: 45, requiredMapFact: "cart02:map", requiredMapField: "mapId" }) }),
       Object.freeze({ slot: "distribution", title: "Faire relever deux nappes distinctes sur le territoire", action: "observe", target: 2, requires: Object.freeze(["explore"]), params: Object.freeze({ cuoType: "fog_bank", actor: "scout", remote: false, distinctBy: "instanceId", requiredMapFact: "cart02:map", requiredMapField: "mapId" }) })
     ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "cart02-fog-proximity",
+      cuoType: "fog_bank",
+      fact: "cart02:fog-proximity",
+      slot: "bluefoxFog",
+      radius: 4.8,
+      requiresSlotComplete: "reach",
+      requiredMapFact: "cart02:map",
+      requiredMapField: "mapId"
+    })]),
     narrative: Object.freeze({
       revealed: Object.freeze(["Cette brume masque le terrain plus qu'elle ne le transforme. Si je veux la traverser sans tourner en rond, je dois d'abord comprendre où elle s'accumule." ]),
       completed: Object.freeze(["La nappe n'est pas uniforme. J'ai maintenant une première carte locale de ses zones denses et de ses passages praticables."])
@@ -12654,6 +12686,16 @@
       Object.freeze({ slot: "regionalSurvey", title: "Obtenir des relevés Scout sur trois territoires distincts", action: "observe", target: 3, requires: Object.freeze(["reference"]), params: Object.freeze({ cuoTypes: Object.freeze(["fog_bank", "electrostatic_storm"]), actor: "scout", distinctBy: "mapId" }) }),
       Object.freeze({ slot: "synthesis", title: "Synthétiser la cartographie atmosphérique régionale", action: "research", target: 1, requires: Object.freeze(["regionalSurvey"]), params: Object.freeze({}) })
     ]),
+    proximityContexts: Object.freeze([Object.freeze({
+      id: "cart03-fog-proximity",
+      cuoType: "fog_bank",
+      fact: "cart03:fog-proximity",
+      slot: "reference",
+      radius: 4.8,
+      requiresSlotComplete: "reachReference",
+      requiredMapFact: "cart03:referenceMap",
+      requiredMapField: "mapId"
+    })]),
     narrative: Object.freeze({
       revealed: Object.freeze(["Une carte locale m'aide à passer. Trois territoires comparés peuvent commencer à révéler une structure atmosphérique régionale." ]),
       completed: Object.freeze(["Les relevés ne décrivent plus seulement des phénomènes isolés. Leur distribution dessine désormais une organisation atmosphérique à l'échelle régionale."])

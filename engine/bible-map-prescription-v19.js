@@ -200,6 +200,19 @@
     );
   };
 
+  const foundationTutorialAllows = (mission) => {
+    const runtime = BF.bibleRuntime;
+    if (typeof runtime?.foundationTutorialAllows === "function") {
+      return runtime.foundationTutorialAllows(mission) === true;
+    }
+    return missionStatus(BF.currentEngine, "T13") === "completed" ||
+      /^T(?:0[1-9]|1[0-3])$/.test(String(mission?.id || ""));
+  };
+
+  const foundationTutorialUnlocked = () =>
+    BF.bibleRuntime?.foundationTutorialUnlocked?.() === true ||
+    missionStatus(BF.currentEngine, "T13") === "completed";
+
   const dormantMapDiscoveryPrescriptionMission = (engine, direction) => {
     // Une prescription dormante ne doit jamais contourner le verrou canonique
     // du voyage inconnu. Elle ne prépare une destination missionnelle qu'une
@@ -208,6 +221,7 @@
     return catalog()
       .filter((mission) => {
         if (!mission?.id || !mission?.mapGeneration) return false;
+        if (!foundationTutorialAllows(mission)) return false;
         if (missionStatus(engine, mission.id) != null) return false;
         if (mission?.trigger?.type !== "exploration.map_discovered") return false;
         if (
@@ -543,7 +557,7 @@
             BF.__pendingBibleMapGenerationContext = {
               intent: "free-exploration",
               missionId: null,
-              opportunisticEncounterEligible: true,
+              opportunisticEncounterEligible: foundationTutorialUnlocked(),
               longMissionTransit: false
             };
             try {
@@ -564,8 +578,21 @@
             ? Math.max(0, Number(travelNode.target) - Number(travelNode.progress || 0))
             : 0;
           const longMissionTransit = Boolean(
-            postTravelDiscovery ||
-            (!prescription && travelNode && remainingTravel > 3)
+            foundationTutorialUnlocked() && (
+              postTravelDiscovery ||
+              (!prescription && travelNode && remainingTravel > 3)
+            )
+          );
+          // Tolérance légère : une étape intermédiaire réellement libre d'un
+          // trajet plus court peut recevoir une opportunité au taux normal du
+          // générateur (0,25), sans être reclassée en "long transit" (0,65).
+          const shortTransitOpportunity = Boolean(
+            foundationTutorialUnlocked() &&
+            !postTravelDiscovery &&
+            !prescription &&
+            travelNode &&
+            remainingTravel > 1 &&
+            remainingTravel <= 3
           );
           const generationContext = {
             intent: prescription
@@ -574,7 +601,8 @@
                 ? "mission-transit"
                 : "mission-directed",
             missionId: mission.id,
-            opportunisticEncounterEligible: longMissionTransit,
+            opportunisticEncounterEligible:
+              longMissionTransit || shortTransitOpportunity,
             longMissionTransit,
             remainingTravel
           };

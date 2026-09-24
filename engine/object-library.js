@@ -757,6 +757,10 @@
         root.add(cloud);
       }
       hitbox = makeHitbox(THREE, root, 1.35, 1.6, type);
+      // La brume reste un objet monde pour la proximité missionnelle, mais sa
+      // volumétrie ne doit jamais absorber les clics destinés aux objets dessous.
+      hitbox.userData.pointerPassthrough = true;
+      hitbox.raycast = () => {};
     } else if (type === "submerged_ruins") {
       const floor = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.34, 5.2), stone);
       floor.position.y = 0.17;
