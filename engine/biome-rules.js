@@ -78,11 +78,16 @@
   const inferProfile = (definition, fallback) => {
     const name = normalize(`${definition?.name || ""} ${definition?.description || ""}`);
     const traits = new Set((definition?.traits || []).map((trait) => trait.id));
+    const generatedRockyDesert = Boolean(
+      definition?.generated === true &&
+      String(definition?.generator?.biomeId || "") === "rocky" &&
+      fallback === "desert"
+    );
     if (traits.has("magnetic") || /magnet|aimant|levitation/.test(name)) return "magnetic";
     if (/archipel|ilot/.test(name)) return "archipelago";
     if (traits.has("fungal") || /champignon|fong|mycel|spore/.test(name)) return "fungal";
     if (/marais|mangrove|tourbiere|marecage/.test(name)) return "swamp";
-    if (/plaine|prairie|steppe|savane|lande/.test(name)) return "plain";
+    if (!generatedRockyDesert && /plaine|prairie|steppe|savane|lande/.test(name)) return "plain";
     if (/cote|littoral|plage|falaise marine/.test(name)) return "coastal";
     if (/site archeologique|archeolog|fouilles|ancienne cite/.test(name)) return "archaeological";
     if (traits.has("mystery") || traits.has("floating") || /atypique|anomal|impossible|curiosity|mystere/.test(name)) return "atypical";

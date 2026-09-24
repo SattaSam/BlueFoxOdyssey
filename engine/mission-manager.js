@@ -914,13 +914,18 @@
 
     missionTransitionExecutable(travel) {
       if (!travel) return false;
+      const currentMapId = String(this.engine?.currentMapId || "");
+      if (!currentMapId) return false;
       if (this.isAutonomousUnknownTravel(travel)) {
+        const topology = this.engine?.worldTopology;
+        if (
+          typeof topology?.coordinateOf === "function" &&
+          !topology.coordinateOf(currentMapId)
+        ) return false;
         return Boolean(this.missionUnknownTravelPlan(travel));
       }
       const targetMapId = this.missionTransitionTargetMapId(travel);
       if (!targetMapId) return false;
-      const currentMapId = String(this.engine?.currentMapId || "");
-      if (!currentMapId) return false;
       if (currentMapId === targetMapId) {
         return Boolean(
           this.travelMissionDefinition(travel)?.navigation?.autonomousKnownReturn === true &&
@@ -1562,6 +1567,10 @@
     resumeMissionTransitionIntent(context = this.bridge.context(), travelOverride = null) {
       const travel = travelOverride || this.primaryMissionTransition(context);
       if (!travel) return false;
+      if (
+        this.isAutonomousUnknownTravel(travel) &&
+        !this.missionTransitionExecutable(travel)
+      ) return false;
 
       const intent = this.ensureMissionTransitionIntent(context, travel);
       if (!intent?.active) return false;
