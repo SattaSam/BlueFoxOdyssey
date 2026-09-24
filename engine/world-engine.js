@@ -2586,7 +2586,29 @@
 
     interactionValidationDistance(object) {
       const approachDistance = Number(object?.userData?.approachDistance);
-      return (Number.isFinite(approachDistance) ? approachDistance : 1.36) + 0.48;
+      const baseDistance =
+        (Number.isFinite(approachDistance) ? approachDistance : 1.36) + 0.48;
+      const profile =
+        object?.userData?.interactionProfile || this.interactionProfile?.(object) || {};
+      const action = String(profile.action || "").toLowerCase();
+      if (!["observe", "inspect", "analyze"].includes(action)) return baseDistance;
+
+      // Les grandes cibles irrégulières (monolithes, stèles, structures MSC)
+      // peuvent être physiquement approchées sans que leur ancre soit atteinte
+      // à la même distance lorsqu'elles sont inclinées. On élargit seulement
+      // la portée de validation d'observation : aucune hitbox ni collider n'est
+      // modifié et les petites ressources conservent leur portée historique.
+      const interactionRadius = Math.max(
+        0,
+        Number(object?.userData?.interactionRadius) || 0
+      );
+      const functional = object?.userData?.functional || {};
+      const largeTargetBonus = functional.volume === "large" ? 0.55 : 0;
+      const radiusBonus = Math.max(
+        0,
+        Math.min(0.9, (interactionRadius - 0.55) * 0.8)
+      );
+      return baseDistance + Math.max(largeTargetBonus, radiusBonus);
     }
 
     interactionApproachPoint(object, attempt = 0) {

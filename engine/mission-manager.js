@@ -1786,7 +1786,6 @@
       const travel = this.missionTransitionFor(missionId, context);
       return Boolean(
         travel &&
-        !this.isAutonomousUnknownTravel(travel) &&
         this.missionTransitionExecutable(travel)
       );
     }
@@ -1839,7 +1838,6 @@
         }))
         .filter(({ travel }) =>
           travel &&
-          !this.isAutonomousUnknownTravel(travel) &&
           this.missionTransitionExecutable(travel)
         )
         .sort((left, right) =>

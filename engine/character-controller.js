@@ -44,6 +44,8 @@
       this.stuckTime = 0;
       this.lastDistance = Infinity;
       this.failedReplans = 0;
+      this.navigationRecovery = null;
+      this.maxNavigationRecoveryEscapes = 3;
       this.maxFrameTravel = 0.22;
       this.actionLockUntil = 0;
       this.interactionSequence = null;
@@ -181,10 +183,107 @@
       this.finalTarget.copy(safeTarget);
       this.finalTarget.y = 0;
       this.failedReplans = 0;
+      this.navigationRecovery = null;
       return this.rebuildPath();
     }
 
-    rebuildPath(extraPadding = 0) {
+    navigationRecoveryDirection(originalTarget, escapeIndex) {
+      const away = this.root.position.clone().sub(originalTarget);
+      away.y = 0;
+      if (away.lengthSq() < 0.001) {
+        away.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
+      }
+      away.normalize();
+      if (escapeIndex <= 0) return away;
+
+      const lateral = new this.THREE.Vector3(-away.z, 0, away.x);
+      const side = escapeIndex % 2 ? 1 : -1;
+      const lateralStrength = 0.72 + Math.min(0.18, escapeIndex * 0.06);
+      return away
+        .multiplyScalar(1 - lateralStrength * 0.35)
+        .addScaledVector(lateral, side * lateralStrength)
+        .normalize();
+    }
+
+    beginNavigationRecovery() {
+      const previous = this.navigationRecovery;
+      const originalTarget = previous?.originalTarget?.clone?.() || this.finalTarget.clone();
+      const originalMovementMode = previous?.originalMovementMode || this.movementMode;
+      const escapeIndex = previous ? Number(previous.escapeIndex || 0) + 1 : 0;
+
+      if (escapeIndex >= this.maxNavigationRecoveryEscapes) {
+        const failedTarget = originalTarget.clone();
+        this.navigationRecovery = null;
+        this.stop();
+        global.dispatchEvent(new CustomEvent("bluefox:navigation-failed", {
+          detail: { target: failedTarget, reason: "recovery-exhausted" }
+        }));
+        return false;
+      }
+
+      const direction = this.navigationRecoveryDirection(originalTarget, escapeIndex);
+      const distance = 2.4 + escapeIndex * 0.55;
+      const recoveryTarget = this.root.position.clone().addScaledVector(direction, distance);
+      recoveryTarget.y = 0;
+      this.constrainToWalkable(recoveryTarget);
+
+      const clearTarget = this.pathPlanner.nearestClearGoal?.(
+        recoveryTarget,
+        this.colliders,
+        this.radius,
+        0.18
+      ) || recoveryTarget;
+
+      this.navigationRecovery = {
+        originalTarget,
+        originalMovementMode,
+        escapeIndex,
+        phase: "backoff"
+      };
+      this.finalTarget.copy(clearTarget);
+      this.target.copy(clearTarget);
+      this.waypoints.length = 0;
+      this.failedReplans = 0;
+      this.stuckTime = 0;
+      this.lastDistance = Infinity;
+      this.movementMode = "walk";
+
+      if (!this.rebuildPath(
+        0.18 + escapeIndex * 0.08,
+        { suppressFailure: true }
+      )) {
+        // rebuildPath() stoppe normalement le mouvement. On restaure l'état
+        // de récupération afin qu'un nouvel essai utilise une autre direction.
+        this.navigationRecovery = {
+          originalTarget,
+          originalMovementMode,
+          escapeIndex,
+          phase: "retry"
+        };
+        return this.beginNavigationRecovery();
+      }
+      return true;
+    }
+
+    resumeNavigationAfterRecovery() {
+      const recovery = this.navigationRecovery;
+      if (!recovery || recovery.phase !== "backoff") return false;
+      recovery.phase = "retry";
+      this.finalTarget.copy(recovery.originalTarget);
+      this.movementMode = recovery.originalMovementMode || "auto";
+      this.failedReplans = 0;
+      this.stuckTime = 0;
+      this.lastDistance = Infinity;
+      const resumed = this.rebuildPath(
+        0.2 + recovery.escapeIndex * 0.1,
+        { suppressFailure: true }
+      );
+      if (resumed) return true;
+      this.navigationRecovery = { ...recovery, phase: "retry" };
+      return this.beginNavigationRecovery();
+    }
+
+    rebuildPath(extraPadding = 0, options = {}) {
       const plannedPath = this.pathPlanner.plan(
         this.root.position,
         this.finalTarget,
@@ -195,9 +294,11 @@
       if (!Array.isArray(plannedPath) || !plannedPath.length) {
         const failedTarget = this.finalTarget.clone();
         this.stop();
-        global.dispatchEvent(new CustomEvent("bluefox:navigation-failed", {
-          detail: { target: failedTarget, reason: "no-path" }
-        }));
+        if (options.suppressFailure !== true) {
+          global.dispatchEvent(new CustomEvent("bluefox:navigation-failed", {
+            detail: { target: failedTarget, reason: "no-path" }
+          }));
+        }
         return false;
       }
       this.waypoints = plannedPath;
@@ -227,6 +328,7 @@
       this.velocity.set(0, 0, 0);
       this.stuckTime = 0;
       this.failedReplans = 0;
+      this.navigationRecovery = null;
       this.playerSprintUntil = 0;
       this.movementMode = "auto";
     }
@@ -432,6 +534,20 @@
       }
       this.updateInteractionSequence(performance.now());
 
+      if (
+        this.navigationRecovery?.phase === "backoff" &&
+        this.root.position.distanceTo(this.finalTarget) <= 0.48 &&
+        !this.waypoints.length
+      ) {
+        this.resumeNavigationAfterRecovery();
+      } else if (
+        this.navigationRecovery?.phase === "retry" &&
+        this.root.position.distanceTo(this.finalTarget) <= 0.48 &&
+        !this.waypoints.length
+      ) {
+        this.navigationRecovery = null;
+      }
+
       const delta = this.target.clone().sub(this.root.position);
       delta.y = 0;
       let distance = delta.length();
@@ -537,11 +653,8 @@
             this.failedReplans += 1;
             this.stuckTime = 0;
             if (this.failedReplans >= 3) {
-              const failedTarget = this.finalTarget.clone();
-              this.stop();
-              global.dispatchEvent(new CustomEvent("bluefox:navigation-failed", {
-                detail: { target: failedTarget }
-              }));
+              this.beginNavigationRecovery();
+              replanned = true;
             } else {
               this.rebuildPath(0.24 + this.failedReplans * 0.14);
               replanned = true;
