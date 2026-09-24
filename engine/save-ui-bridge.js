@@ -79,6 +79,33 @@
       global.localStorage.key(index)
     ).filter(Boolean);
 
+  const safeSetItem = (key, value) => {
+    try {
+      global.localStorage.setItem(key, String(value));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const persistDiagnostics = () =>
+    safeSetItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+
+  // Les fichiers sont la source de vérité. Ces clés ne contiennent que des
+  // copies complètes de snapshots et sont explicitement exclues du snapshot
+  // gameplay. Les retirer rend immédiatement de la place aux propriétaires
+  // runtime sans toucher à progression, missions, BAC ou exploration.
+  const relieveSnapshotQuota = (slot = null) => {
+    const removable = new Set([SLOT_KEYS.auto, SLOT_KEYS.backup]);
+    const normalizedSlot = String(slot ?? "");
+    if (normalizedSlot === "1" || normalizedSlot === "2") {
+      removable.add(SLOT_KEYS[normalizedSlot]);
+    }
+    removable.forEach((key) => {
+      try { global.localStorage.removeItem(key); } catch {}
+    });
+  };
+
   const clearActive = () => {
     keys().forEach((key) => {
       if (key.startsWith("bluefox_") && !RESERVED_KEYS.has(key)) {
@@ -97,6 +124,7 @@
         if (typeof memory?.flush === "function") return memory.flush(true);
         return memory?.save?.();
       },
+      () => BF.progression?.save?.(),
       () => BF.multiProgression?.save?.(),
       () => {
         if (typeof BF.mapExploration?.flush === "function") {
@@ -192,19 +220,23 @@
   const writeLocalCache = (slot, snapshot) => {
     const cacheKey = SLOT_KEYS[slot];
     if (!cacheKey) return false;
-    const serialized = JSON.stringify(snapshot);
-    if (slot === "auto") {
-      const previous = global.localStorage.getItem(SLOT_KEYS.auto);
-      if (previous) global.localStorage.setItem(SLOT_KEYS.backup, previous);
+    try {
+      const serialized = JSON.stringify(snapshot);
+      if (slot === "auto") {
+        const previous = global.localStorage.getItem(SLOT_KEYS.auto);
+        if (previous) global.localStorage.setItem(SLOT_KEYS.backup, previous);
+      }
+      global.localStorage.setItem(cacheKey, serialized);
+      safeSetItem(LAST_SESSION_END_KEY, String(snapshot.savedAt));
+      return true;
+    } catch {
+      return false;
     }
-    global.localStorage.setItem(cacheKey, serialized);
-    global.localStorage.setItem(LAST_SESSION_END_KEY, String(snapshot.savedAt));
-    return true;
   };
 
   const markActiveSnapshot = (slot, snapshot) => {
-    global.localStorage.setItem(ACTIVE_SLOT_KEY, String(slot));
-    global.localStorage.setItem(RESTORED_AT_KEY, String(snapshot.savedAt));
+    safeSetItem(ACTIVE_SLOT_KEY, String(slot));
+    safeSetItem(RESTORED_AT_KEY, String(snapshot.savedAt));
   };
 
   const fileRequest = async (path, options = {}) => {
@@ -263,6 +295,12 @@
     diagnostics.verified = false;
 
     const force = options.force === true || String(slot) !== "auto";
+
+    // Libérer les snapshots redondants AVANT persistRuntime() : les owners qui
+    // viennent d'échouer sur QuotaExceeded peuvent alors écrire leur état
+    // courant avant capture.
+    relieveSnapshotQuota(slot);
+
     const {
       snapshot,
       stateSignature: currentSignature,
@@ -273,7 +311,7 @@
       diagnostics.lastFailureAt = Date.now();
       diagnostics.lastError =
         "Mémoire missionnelle indisponible : sauvegarde refusée pour éviter un snapshot incomplet.";
-      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      persistDiagnostics();
       return false;
     }
 
@@ -284,7 +322,7 @@
         diagnostics.lastError =
           `${runtimeErrors.length} sous-système(s) n’ont pas pu être forcés.`;
       }
-      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      persistDiagnostics();
       return snapshot;
     }
 
@@ -292,7 +330,6 @@
     diagnostics.lastBytes = serialized.length * 2;
 
     try {
-      writeLocalCache(slot, snapshot);
       const stored = await fileRequest(`/api/saves/${encodeURIComponent(String(slot))}`, {
         method: "POST",
         body: serialized
@@ -300,6 +337,11 @@
       if (!validSnapshot(stored) || stored.savedAt !== snapshot.savedAt) {
         throw new Error("Le fichier relu ne correspond pas à l’écriture.");
       }
+
+      // Le fichier vérifié est la source de vérité. Ne pas recréer une copie
+      // complète locale qui ferait de nouveau pression sur le quota.
+      relieveSnapshotQuota(slot);
+      safeSetItem(LAST_SESSION_END_KEY, String(snapshot.savedAt));
       diagnostics.lastSuccessAt = snapshot.savedAt;
       diagnostics.verified = true;
       if (String(slot) === "auto") {
@@ -309,12 +351,15 @@
         diagnostics.lastError =
           `${runtimeErrors.length} sous-système(s) n’ont pas pu être forcés.`;
       }
-      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      persistDiagnostics();
       return snapshot;
     } catch (error) {
+      // Le cache local reste un secours uniquement si l'écriture fichier échoue.
+      // Un QuotaExceeded de ce fallback ne doit jamais s'échapper.
+      writeLocalCache(slot, snapshot);
       diagnostics.lastFailureAt = Date.now();
       diagnostics.lastError = error?.message || String(error);
-      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      persistDiagnostics();
       return false;
     }
   };
@@ -344,7 +389,7 @@
       diagnostics.lastFailureAt = Date.now();
       diagnostics.lastError =
         "Aucune sauvegarde restaurable avec mémoire missionnelle valide.";
-      global.localStorage.setItem(FILE_DIAGNOSTICS_KEY, JSON.stringify(diagnostics));
+      persistDiagnostics();
       return false;
     }
 
@@ -373,15 +418,18 @@
         (slot === "auto" ? readLocalSnapshot("backup") : null);
       const restoredAt = Number(global.localStorage.getItem(RESTORED_AT_KEY)) || 0;
 
+      // Une source fichier valide permet de supprimer sans ambiguïté les
+      // duplications de snapshots locales avant le démarrage du runtime.
+      if (restorableSnapshot(fileSnapshot)) relieveSnapshotQuota(slot);
+
       if (
         restorableSnapshot(fileSnapshot) &&
         fileSnapshot.savedAt >
           Math.max(restoredAt, Number(localSnapshot?.savedAt) || 0)
       ) {
         applySnapshot(fileSnapshot, slot);
-        writeLocalCache(slot, fileSnapshot);
         diagnostics.restoredFromFile = true;
-        global.localStorage.setItem(FILE_BOOTSTRAP_KEY, String(fileSnapshot.savedAt));
+        safeSetItem(FILE_BOOTSTRAP_KEY, String(fileSnapshot.savedAt));
         global.location.reload();
         return false;
       }
@@ -406,7 +454,7 @@
     const now = Date.now();
     if (now - lastFlushAt < 3000) return false;
     lastFlushAt = now;
-    global.localStorage.setItem(LAST_SESSION_END_KEY, String(now));
+    safeSetItem(LAST_SESSION_END_KEY, String(now));
     return Boolean(await writeSnapshot("auto"));
   };
 
@@ -560,8 +608,8 @@
     global.localStorage.removeItem(FILE_BOOTSTRAP_KEY);
 
     const startedAt = Date.now();
-    global.localStorage.setItem("bluefox_new_game_start_v1", String(startedAt));
-    global.localStorage.setItem("bluefox_last_start_map_v1", "crystal");
+    safeSetItem("bluefox_new_game_start_v1", String(startedAt));
+    safeSetItem("bluefox_last_start_map_v1", "crystal");
     global.location.reload();
   };
 

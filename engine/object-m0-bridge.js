@@ -1650,6 +1650,23 @@
       const incomingRequested = String(
         object.userData.requestedInteraction || ""
       ).toLowerCase();
+
+      // Une même action déjà engagée est atomique : mission/BAC peuvent
+      // republier leur demande, mais ils ne doivent pas redémarrer l'approche
+      // ni remettre l'animation et ses timers à zéro. Les retries physiques
+      // internes et la continuation SAME-INSTANCE passent explicitement avec
+      // retry=true et restent donc autorisés.
+      if (
+        !retry &&
+        this.pendingInteraction === object &&
+        (
+          Number(this.interactionApproachStartedAt) > 0 ||
+          Number(this.interactionStartedAt) > 0
+        )
+      ) {
+        return true;
+      }
+
       const acquisitionPhase = object.userData.acquisitionPhase || null;
       const missionStudyFromAcquisition =
         source === "mission" && acquisitionPhase === "study";
@@ -1721,6 +1738,27 @@
           ["collect", "extract"].includes(mode) ? "acquire" : "study";
         if (!directive) bindAcquisitionMission(object);
       }
+
+      // Si le commit précédent appartient encore exactement au même objet
+      // currentAction, au même nœud et au même geste physique, sa republication
+      // n'est pas une nouvelle action gameplay. Attendre que MissionManager
+      // consomme l'événement ou remplace currentAction évite une boucle de
+      // commits/énergie sans introduire de cooldown arbitraire.
+      const currentMissionAction = this.missionManager?.currentAction || null;
+      const previousMissionCommit = this.__objectM0LastMissionCommit || null;
+      if (
+        !retry &&
+        missionRequested &&
+        currentMissionAction &&
+        previousMissionCommit?.action === currentMissionAction &&
+        previousMissionCommit.object === object &&
+        previousMissionCommit.missionId === String(object.userData.missionId || "") &&
+        previousMissionCommit.nodeId === String(object.userData.missionNodeId || "") &&
+        previousMissionCommit.mode === mode
+      ) {
+        return true;
+      }
+
       if (!resolved.definition || !mode) {
         console.warn("[BlueFox O5.1] Interaction refusée : objet absent ou incomplet dans le CUO.", object);
         this.callbacks.onStatus("BlueFox ne sait pas encore comment interagir avec cet objet.");
@@ -1914,6 +1952,20 @@
         interactionState: { ...state }
       };
       const autonomousInteraction = detail.interactionSource === "autonomy";
+      const missionActionAtCommit =
+        detail.interactionSource === "mission"
+          ? this.missionManager?.currentAction || null
+          : null;
+      const rememberMissionCommit = () => {
+        if (!missionActionAtCommit) return;
+        this.__objectM0LastMissionCommit = {
+          action: missionActionAtCommit,
+          object,
+          missionId: String(detail.missionId || ""),
+          nodeId: String(detail.missionNodeId || ""),
+          mode
+        };
+      };
 
       const acquisition = mode === "collect" || mode === "extract";
       let continueAcquisition = false;
@@ -1939,6 +1991,7 @@
           label: definition.resource?.inventoryLabel || definition.label,
           inventoryKey
         });
+        rememberMissionCommit();
         clearAcquisitionTransaction(this, object);
         if (removeFromWorld) {
           const respawnSeconds = BF.resolveObjectRespawnSeconds?.(definition) ??
@@ -1993,6 +2046,7 @@
           label: definition.label,
           interactionState: { ...state }
         });
+        rememberMissionCommit();
         // Une étude missionnelle peut en débloquer une autre sur la même
         // instance. OBSERVE reste l'unique geste physique ; le verbe narratif
         // (observe/inspect/analyze) distingue l'objectif missionnel.
