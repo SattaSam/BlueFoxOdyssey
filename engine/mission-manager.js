@@ -793,17 +793,17 @@
         return null;
       }
 
-      const remote = tree.availableLeaves()
+      const availableMapStates = tree.availableLeaves()
         .filter((node) => !node.isComplete)
         .map((node) => ({
           node,
           state: this.planner.requiredMapState?.(node, context) || null
-        }))
-        .filter(({ state }) =>
-          state?.constrained === true &&
-          state.targetMapId &&
-          state.targetMapId !== currentMapId
-        );
+        }));
+      const remote = availableMapStates.filter(({ state }) =>
+        state?.constrained === true &&
+        state.targetMapId &&
+        state.targetMapId !== currentMapId
+      );
       const targetMapIds = [...new Set(remote.map(({ state }) => String(state.targetMapId)))];
       if (targetMapIds.length === 1) {
         const targetMapId = targetMapIds[0];
@@ -874,6 +874,65 @@
             }
           };
         }
+      }
+
+      // Une mission déjà active peut dépendre d'un contenu que sa prescription
+      // mapGeneration devait placer sur la map de découverte. Si ce contenu
+      // n'est pas runnable localement et qu'aucune destination connue n'a été
+      // résolue ci-dessus, réutiliser le voyage inconnu canonique au lieu de
+      // rendre la main à l'autonomie globale. Les opportunités restent exclues :
+      // elles ne doivent jamais générer leur propre map.
+      const locallyBoundMissionWork = availableMapStates.some(({ state }) =>
+        state?.constrained === true &&
+        String(state.targetMapId || "") === currentMapId
+      );
+      const requiredMicroSceneIds = [...new Set(
+        (Array.isArray(mission?.mapGeneration?.requiredMicroScenes)
+          ? mission.mapGeneration.requiredMicroScenes
+          : [])
+          .map((entry) => String(entry?.id || ""))
+          .filter(Boolean)
+      )];
+      const materializedMicroSceneIds = new Set(
+        (Array.isArray(this.engine?.currentMap?.group?.userData?.microScenes)
+          ? this.engine.currentMap.group.userData.microScenes
+          : [])
+          .map((entry) => String(entry?.id || ""))
+          .filter(Boolean)
+      );
+      const prescribedMicroScenesPresent = Boolean(
+        requiredMicroSceneIds.length &&
+        requiredMicroSceneIds.every((id) => materializedMicroSceneIds.has(id))
+      );
+      const opportunisticMission = /^(?:OPP|ANN|PROS)-/.test(String(missionId));
+      const mapDiscoveryPrescription = Boolean(
+        mission?.mapGeneration &&
+        mission?.trigger?.type === "exploration.map_discovered" &&
+        !locallyBoundMissionWork &&
+        !prescribedMicroScenesPresent &&
+        !opportunisticMission
+      );
+      if (mapDiscoveryPrescription) {
+        const preferredDirection = String(mission.trigger?.direction || "")
+          .trim()
+          .toLowerCase();
+        return {
+          missionId,
+          mission,
+          source: "mission-map-generation",
+          node: {
+            id: `${missionId}:map-generation`,
+            type: Missions.ActionType.TRAVEL,
+            params: {
+              eventDriven: true,
+              missionDirectedUnknownTravel: true,
+              transitionSource: "mission-map-generation",
+              ...(["north", "south", "east", "west"].includes(preferredDirection)
+                ? { direction: preferredDirection }
+                : {})
+            }
+          }
+        };
       }
       return null;
     }
@@ -1158,7 +1217,10 @@
       const knownTargetDeclared = Boolean(this.knownDestinationCriteria(travel));
       return Boolean(
         travel &&
-        mission?.navigation?.autonomousUnknownTravel === true &&
+        (
+          mission?.navigation?.autonomousUnknownTravel === true ||
+          travel.node?.params?.missionDirectedUnknownTravel === true
+        ) &&
         !travel.node?.params?.toMapId &&
         !factTargetDeclared &&
         !knownTargetDeclared
@@ -1172,6 +1234,32 @@
         .toLowerCase();
       const currentMapId = String(this.engine?.currentMapId || "");
       if (!currentMapId) return null;
+
+      // Les transitions synthétiques issues d'une prescription directionnelle
+      // conservent cet axe à travers les maps déjà connues jusqu'au premier
+      // vrai front inconnu. Elles ne dérivent pas vers une autre sortie libre.
+      if (
+        travel?.node?.params?.missionDirectedUnknownTravel === true &&
+        directions.includes(preferred)
+      ) {
+        const discovered = this.engine?.discoveredMaps instanceof Set
+          ? this.engine.discoveredMaps
+          : new Set([currentMapId]);
+        const route = [currentMapId];
+        const visited = new Set(route);
+        let mapId = currentMapId;
+        while (true) {
+          const exit = BF.maps?.[mapId]?.exits?.[preferred] || null;
+          const nextMapId = String(exit?.targetMap || "");
+          if (!nextMapId) {
+            return { frontierMapId: mapId, direction: preferred, route };
+          }
+          if (!discovered.has(nextMapId) || visited.has(nextMapId)) return null;
+          visited.add(nextMapId);
+          route.push(nextMapId);
+          mapId = nextMapId;
+        }
+      }
 
       const freeDirection = (mapId) => {
         const exits = BF.maps?.[mapId]?.exits || {};
@@ -1283,7 +1371,8 @@
           "required-map",
           "mission-target-map",
           "completion-gate",
-          "known-destination"
+          "known-destination",
+          "mission-map-generation"
         ]);
         if (previous?.active === true && genericSources.has(String(previous.transitionSource || ""))) {
           const currentMapId = String(this.engine?.currentMapId || decisionContext?.mapId || "");
@@ -1581,6 +1670,7 @@
         this.engine?.transitioning ||
         this.engine?.pendingGate ||
         this.engine?.pendingInteraction ||
+        this.engine?.persistentNavigationIntent ||
         this.engine?.currentRoutine ||
         this.currentAction ||
         this.bridge.isEngineBusy()

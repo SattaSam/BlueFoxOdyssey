@@ -531,7 +531,10 @@
         }
         object.root.userData.libraryType = type;
         occupied.push({ x, z, radius: placement(type).radius });
-        animatedObjects.push({ root: object.root, type, phase: next() * Math.PI * 2 });
+        const animationPhase = next() * Math.PI * 2;
+        if (type !== "debris") {
+          animatedObjects.push({ root: object.root, type, phase: animationPhase });
+        }
         if (object.hitbox) interactables.push(object.hitbox);
         if (object.hitbox && object.colliders.length) {
           object.hitbox.userData.interactionRadius = Math.max(
