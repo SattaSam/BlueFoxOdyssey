@@ -29,6 +29,20 @@
     "EXP-LONG-04"
   ]);
 
+  // Relais directionnels structurants : ils restent dormants jusqu'au vrai
+  // exploration.map_discovered. Cette whitelist ne concerne ni les OPP ni
+  // les missions opportunistes ; elle ne change jamais leur lifecycle.
+  const DORMANT_STRUCTURAL_TRAVEL_MISSIONS = new Set([
+    "GEO-01",
+    "GEO-02",
+    "GEO-03",
+    "GEO-05",
+    "GAME-research_initial",
+    "GAME-research_hypothesis",
+    "GAME-special_investigator"
+  ]);
+  const DORMANT_TRAVEL_HANDOFF_FACT = "bibleDormantTravelHandoff:v1";
+
   const pendingPostTravelDiscovery = (engine, mission) => {
     if (!POST_TRAVEL_DISCOVERY_MISSIONS.has(String(mission?.id || ""))) {
       return null;
@@ -242,6 +256,129 @@
     return controlled.some((mission) =>
       ["active", "completed"].includes(missionStatus(engine, mission.id))
     );
+  };
+
+  const dormantStructuralTravelMission = (engine) => {
+    if (!unknownTravelUnlocked(engine)) return null;
+    return catalog()
+      .filter((mission) => {
+        if (!DORMANT_STRUCTURAL_TRAVEL_MISSIONS.has(String(mission?.id || ""))) return false;
+        if (!foundationTutorialAllows(mission)) return false;
+        if (missionStatus(engine, mission.id) != null) return false;
+        if (mission?.trigger?.type !== "exploration.map_discovered") return false;
+        const direction = String(mission.trigger.direction || "").toLowerCase();
+        if (!["north", "south", "east", "west"].includes(direction)) return false;
+        return prerequisitesSatisfied(engine, mission);
+      })
+      .sort((left, right) =>
+        (Number(right.priority) || 0) - (Number(left.priority) || 0) ||
+        catalog().indexOf(left) - catalog().indexOf(right)
+      )[0] || null;
+  };
+
+  const dormantTravelHandoff = (engine) =>
+    engine?.missionManager?.memory?.getFact?.(DORMANT_TRAVEL_HANDOFF_FACT, null) || null;
+
+  const saveDormantTravelHandoff = (engine, value) => {
+    const memory = engine?.missionManager?.memory;
+    if (!memory?.setFact) return false;
+    memory.setFact(DORMANT_TRAVEL_HANDOFF_FACT, value || null);
+    memory.save?.();
+    return true;
+  };
+
+  const issueDormantNavigation = (engine, detail) => {
+    if (!detail || typeof engine?.handleNavigationSuggestion !== "function") return false;
+    engine.handleNavigationSuggestion(detail);
+    return true;
+  };
+
+  const dormantTravelCanRun = (engine) => {
+    if (String(BF.getAutonomyMode?.() || "").toLowerCase() !== "full") return false;
+    if (!unknownTravelUnlocked(engine)) return false;
+    if (engine?.persistentNavigationIntent) return false;
+    if (engine?.missionManager?.hasMissionExecutionAuthority?.() === true) return false;
+    return true;
+  };
+
+  const continueDormantStructuralTravel = (engine, handoff) => {
+    if (!handoff?.missionId || !dormantTravelCanRun(engine)) return false;
+    const mission = missionById(handoff.missionId);
+    const status = missionStatus(engine, handoff.missionId);
+    if (!mission || status != null || !prerequisitesSatisfied(engine, mission)) {
+      saveDormantTravelHandoff(engine, null);
+      return false;
+    }
+
+    const direction = String(handoff.direction || mission.trigger?.direction || "").toLowerCase();
+    const currentMapId = String(engine.currentMapId || "");
+    const exit = BF.maps?.[currentMapId]?.exits?.[direction] || null;
+    const targetMapId = String(exit?.targetMap || "");
+    const discovered = engine.discoveredMaps instanceof Set
+      ? engine.discoveredMaps
+      : new Set([currentMapId]);
+    const visited = new Set(Array.isArray(handoff.visitedMapIds) ? handoff.visitedMapIds : []);
+    visited.add(currentMapId);
+
+    if (targetMapId) {
+      // Ne jamais consommer une destination pré-générée mais encore inconnue :
+      // son contenu n'a pas forcément reçu la prescription de cette mission.
+      if (!discovered.has(targetMapId) || visited.has(targetMapId)) return false;
+      saveDormantTravelHandoff(engine, {
+        ...handoff,
+        phase: "route",
+        nextMapId: targetMapId,
+        visitedMapIds: [...visited],
+        updatedAt: Date.now()
+      });
+      return issueDormantNavigation(engine, {
+        mapId: targetMapId,
+        direction,
+        discoverUnknown: false,
+        source: "bible-dormant",
+        missionId: mission.id,
+        allowTeleportOptimization: false
+      });
+    }
+
+    saveDormantTravelHandoff(engine, {
+      ...handoff,
+      phase: "generate",
+      generationFromMapId: currentMapId,
+      visitedMapIds: [...visited],
+      updatedAt: Date.now()
+    });
+    return issueDormantNavigation(engine, {
+      mapId: null,
+      direction,
+      discoverUnknown: true,
+      source: "bible-dormant",
+      missionId: mission.id,
+      allowTeleportOptimization: false
+    });
+  };
+
+  const requestDormantStructuralTravel = (engine) => {
+    if (!dormantTravelCanRun(engine)) return false;
+    if (dormantTravelHandoff(engine)?.missionId) return false;
+    const mission = dormantStructuralTravelMission(engine);
+    if (!mission) return false;
+    const handoff = {
+      missionId: mission.id,
+      phase: "seek-frontier",
+      direction: String(mission.trigger.direction || "").toLowerCase(),
+      startedFromMapId: engine.currentMapId,
+      visitedMapIds: [],
+      requestedAt: Date.now()
+    };
+    saveDormantTravelHandoff(engine, handoff);
+    return continueDormantStructuralTravel(engine, handoff);
+  };
+
+  const resumeDormantStructuralTravel = (engine) => {
+    const handoff = dormantTravelHandoff(engine);
+    if (!handoff?.missionId || handoff.phase === "await-activation") return false;
+    return continueDormantStructuralTravel(engine, handoff);
   };
 
   const resolveNavigationSuggestionPrescription = (engine, detail = {}) => {
@@ -669,6 +806,36 @@
 
     const onMapTransition = (event) => {
       const detail = event?.detail || {};
+      const handoff = dormantTravelHandoff(engine);
+      if (handoff?.missionId) {
+        const toMapId = String(detail.toMapId || detail.mapId || engine.currentMapId || "");
+        const fromMapId = String(detail.fromMapId || "");
+        if (handoff.phase === "generate") {
+          if (
+            detail.isNew === true &&
+            String(detail.direction || "") === String(handoff.direction || "") &&
+            (!handoff.generationFromMapId || fromMapId === String(handoff.generationFromMapId))
+          ) {
+            saveDormantTravelHandoff(engine, {
+              ...handoff,
+              phase: "await-activation",
+              arrivedMapId: toMapId,
+              updatedAt: Date.now()
+            });
+          } else {
+            saveDormantTravelHandoff(engine, null);
+          }
+        } else if (handoff.phase === "route") {
+          if (toMapId === String(handoff.nextMapId || "")) {
+            resumeDormantStructuralTravel(engine);
+          } else {
+            // Une navigation différente a pris la main (joueur ou autre owner).
+            // Abandonner ce handoff évite de reprendre l'initiative derrière lui.
+            saveDormantTravelHandoff(engine, null);
+          }
+        }
+      }
+
       const activeMission = activeControlledNavigationMission(engine);
       if (!activeMission) return;
 
@@ -783,6 +950,18 @@
           memory?.save?.();
         }
       });
+
+      const handoff = dormantTravelHandoff(engine);
+      if (handoff?.missionId) {
+        const status = missionStatus(engine, handoff.missionId);
+        if (status === "active" || status === "completed") {
+          saveDormantTravelHandoff(engine, null);
+        } else {
+          resumeDormantStructuralTravel(engine);
+        }
+      } else {
+        requestDormantStructuralTravel(engine);
+      }
     };
 
     const onTutorialGuidanceAcknowledged = (event) =>
