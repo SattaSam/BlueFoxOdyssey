@@ -2588,29 +2588,7 @@
 
     interactionValidationDistance(object) {
       const approachDistance = Number(object?.userData?.approachDistance);
-      const baseDistance =
-        (Number.isFinite(approachDistance) ? approachDistance : 1.36) + 0.48;
-      const profile =
-        object?.userData?.interactionProfile || this.interactionProfile?.(object) || {};
-      const action = String(profile.action || "").toLowerCase();
-      if (!["observe", "inspect", "analyze"].includes(action)) return baseDistance;
-
-      // Les grandes cibles irrégulières (monolithes, stèles, structures MSC)
-      // peuvent être physiquement approchées sans que leur ancre soit atteinte
-      // à la même distance lorsqu'elles sont inclinées. On élargit seulement
-      // la portée de validation d'observation : aucune hitbox ni collider n'est
-      // modifié et les petites ressources conservent leur portée historique.
-      const interactionRadius = Math.max(
-        0,
-        Number(object?.userData?.interactionRadius) || 0
-      );
-      const functional = object?.userData?.functional || {};
-      const largeTargetBonus = functional.volume === "large" ? 0.55 : 0;
-      const radiusBonus = Math.max(
-        0,
-        Math.min(0.9, (interactionRadius - 0.55) * 0.8)
-      );
-      return baseDistance + Math.max(largeTargetBonus, radiusBonus);
+      return (Number.isFinite(approachDistance) ? approachDistance : 1.36) + 0.48;
     }
 
     interactionApproachPoint(object, attempt = 0, preferredDistance = null) {
@@ -2619,7 +2597,7 @@
       const colliderRadius = object.userData.interactionRadius || 0.5;
       const normalApproachDistance =
         colliderRadius + this.character.radius + 0.22;
-      let approachDistance = Number.isFinite(Number(preferredDistance))
+      let approachDistance = preferredDistance != null && Number.isFinite(Number(preferredDistance))
         ? Math.max(0.5, Number(preferredDistance))
         : normalApproachDistance;
       const fromResource = this.character.root.position.clone()
@@ -2627,77 +2605,68 @@
       fromResource.y = 0;
       if (fromResource.lengthSq() < 0.001) fromResource.set(0, 0, 1);
       const baseAngle = Math.atan2(fromResource.z, fromResource.x);
-      const retryFallback = attempt > 0;
-      let colliders;
-      if (!retryFallback) {
-        // Chemin historique inchangé : aucune analyse physique supplémentaire
-        // tant que l'approche normale n'a pas réellement échoué.
-        colliders = this.currentMap.colliders.filter(
-          (collider) => collider.owner !== anchor
-        );
-      } else {
-        const allColliders = this.currentMap?.colliders || [];
-        const targetInstanceId = String(
-          object?.userData?.instanceId || anchor?.userData?.instanceId || ""
-        );
-        const targetMicroScenePivot =
-          object?.userData?.microScenePivot || anchor?.userData?.microScenePivot || null;
-        const sameLogicalTarget = (owner) => {
-          if (owner === anchor || owner === object) return true;
-          if (!owner) return false;
-          const ownerInstanceId = String(owner.userData?.instanceId || "");
-          if (targetInstanceId && ownerInstanceId === targetInstanceId) return true;
-          const ownerMicroScenePivot = owner.userData?.microScenePivot || null;
-          if (targetMicroScenePivot && ownerMicroScenePivot === targetMicroScenePivot) {
-            return true;
-          }
-          let cursor = owner.parent || null;
-          for (let depth = 0; cursor && depth < 4; depth += 1, cursor = cursor.parent) {
-            if (cursor === anchor || cursor === object) return true;
-          }
-          cursor = anchor?.parent || null;
-          for (let depth = 0; cursor && depth < 4; depth += 1, cursor = cursor.parent) {
-            if (cursor === owner) return true;
-          }
-          return false;
-        };
-        const targetRadius = Math.max(0.35, Number(colliderRadius) || 0.5);
-        const clearance = this.character.radius + 0.22;
-        const approachDirection = fromResource.clone().normalize();
-        colliders = [];
-        allColliders.forEach((collider) => {
-          const ownerIsTarget = sameLogicalTarget(collider.owner);
-          const offsetX = Number(collider.position?.x || 0) - Number(anchorPosition.x || 0);
-          const offsetZ = Number(collider.position?.z || 0) - Number(anchorPosition.z || 0);
-          const centerDistance = Math.hypot(offsetX, offsetZ);
-          if (ownerIsTarget) {
-            // Mesurer uniquement la surface qui bloque la direction d'approche
-            // courante : un mur long reste interagissable à ses extrémités sans
-            // transformer son extension maximale en portée dans toutes les directions.
-            const expandedRadius = Math.max(0, Number(collider.radius) || 0) + clearance;
-            const projection = offsetX * approachDirection.x + offsetZ * approachDirection.z;
-            const perpendicularSq = Math.max(
-              0,
-              centerDistance * centerDistance - projection * projection
+      // L'analyse physique est faite une seule fois dès le ciblage. Elle remplace
+      // le simple filtre historique : aucun second parcours des colliders n'est ajouté.
+      const allColliders = this.currentMap?.colliders || [];
+      const targetInstanceId = String(
+        object?.userData?.instanceId || anchor?.userData?.instanceId || ""
+      );
+      const targetMicroScenePivot =
+        object?.userData?.microScenePivot || anchor?.userData?.microScenePivot || null;
+      const sameLogicalTarget = (owner) => {
+        if (owner === anchor || owner === object) return true;
+        if (!owner) return false;
+        const ownerInstanceId = String(owner.userData?.instanceId || "");
+        if (targetInstanceId && ownerInstanceId === targetInstanceId) return true;
+        const ownerMicroScenePivot = owner.userData?.microScenePivot || null;
+        if (targetMicroScenePivot && ownerMicroScenePivot === targetMicroScenePivot) {
+          return true;
+        }
+        let cursor = owner.parent || null;
+        for (let depth = 0; cursor && depth < 4; depth += 1, cursor = cursor.parent) {
+          if (cursor === anchor || cursor === object) return true;
+        }
+        cursor = anchor?.parent || null;
+        for (let depth = 0; cursor && depth < 4; depth += 1, cursor = cursor.parent) {
+          if (cursor === owner) return true;
+        }
+        return false;
+      };
+      const targetRadius = Math.max(0.35, Number(colliderRadius) || 0.5);
+      const clearance = this.character.radius + 0.22;
+      const approachDirection = fromResource.clone().normalize();
+      const colliders = [];
+      allColliders.forEach((collider) => {
+        const ownerIsTarget = sameLogicalTarget(collider.owner);
+        const offsetX = Number(collider.position?.x || 0) - Number(anchorPosition.x || 0);
+        const offsetZ = Number(collider.position?.z || 0) - Number(anchorPosition.z || 0);
+        const centerDistance = Math.hypot(offsetX, offsetZ);
+        if (ownerIsTarget) {
+          // La portée sûre tient compte dès le premier essai de la surface réelle
+          // de la cible dans la direction d'approche.
+          const expandedRadius = Math.max(0, Number(collider.radius) || 0) + clearance;
+          const projection = offsetX * approachDirection.x + offsetZ * approachDirection.z;
+          const perpendicularSq = Math.max(
+            0,
+            centerDistance * centerDistance - projection * projection
+          );
+          if (perpendicularSq <= expandedRadius * expandedRadius) {
+            const exitDistance = projection + Math.sqrt(
+              Math.max(0, expandedRadius * expandedRadius - perpendicularSq)
             );
-            if (perpendicularSq <= expandedRadius * expandedRadius) {
-              const exitDistance = projection + Math.sqrt(
-                Math.max(0, expandedRadius * expandedRadius - perpendicularSq)
-              );
-              if (exitDistance > approachDistance) approachDistance = exitDistance;
-            }
-            return;
+            if (exitDistance > approachDistance) approachDistance = exitDistance;
           }
-          colliders.push(collider);
-          const obstacleRadius = Math.max(0, Number(collider.radius) || 0);
-          if (centerDistance > obstacleRadius + targetRadius) return;
-          // Petite cible imbriquée dans un gros objet : élargir seulement
-          // jusqu'à la première distance physiquement atteignable, sans valider
-          // un obstacle simplement interposé entre BlueFox et une cible distante.
-          const blockedReach = obstacleRadius + clearance - centerDistance;
-          if (blockedReach > approachDistance) approachDistance = blockedReach;
-        });
-      }
+          return;
+        }
+        colliders.push(collider);
+        const obstacleRadius = Math.max(0, Number(collider.radius) || 0);
+        if (centerDistance > obstacleRadius + targetRadius) return;
+        // Une petite cible imbriquée bénéficie immédiatement de la première
+        // distance physiquement atteignable ; un obstacle seulement interposé
+        // ne transforme pas la portée en interaction à distance.
+        const blockedReach = obstacleRadius + clearance - centerDistance;
+        if (blockedReach > approachDistance) approachDistance = blockedReach;
+      });
       const candidates = [];
       for (let index = 0; index < 12; index += 1) {
         const alternatingStep = index === 0
@@ -2741,9 +2710,12 @@
         this.character.radius,
         0.2
       );
+      const resolvedApproachDistance = fallbackPoint
+        ? Math.max(approachDistance, fallbackPoint.distanceTo(anchorPosition))
+        : approachDistance;
       const result = {
         point: fallbackPoint,
-        approachDistance,
+        approachDistance: resolvedApproachDistance,
         pathLength: candidates[0]?.pathLength
       };
       if (attempt === 0 && preferredDistance == null && fallbackPoint) {
