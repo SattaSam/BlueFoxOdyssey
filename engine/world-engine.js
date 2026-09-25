@@ -2593,138 +2593,313 @@
     }
 
     interactionValidationDistance(object) {
-      const approachDistance = Number(object?.userData?.approachDistance);
-      return (Number.isFinite(approachDistance) ? approachDistance : 1.36) + 0.48;
+      const interactionRadius = Number(object?.userData?.interactionRadius);
+      const targetRadius = Number.isFinite(interactionRadius)
+        ? Math.max(0, interactionRadius)
+        : 0.5;
+      const characterRadius = Math.max(
+        0.1,
+        Number(this.character?.radius) || 0.64
+      );
+      // Portée fonctionnelle fixe : elle ne dépend jamais d'un fallback
+      // physique ou d'un collider rencontré pendant l'approche.
+      return targetRadius + characterRadius + 0.7;
     }
 
     interactionApproachPoint(object, attempt = 0, preferredDistance = null) {
       const anchor = object.userData.worldAnchor || object;
       const anchorPosition = this.interactionWorldPosition(object) || anchor.position;
-      const colliderRadius = object.userData.interactionRadius || 0.5;
+      const colliderRadius = Number(object.userData.interactionRadius);
+      const targetRadius = Number.isFinite(colliderRadius)
+        ? Math.max(0, colliderRadius)
+        : 0.5;
       const normalApproachDistance =
-        colliderRadius + this.character.radius + 0.22;
-      let approachDistance = preferredDistance != null && Number.isFinite(Number(preferredDistance))
-        ? Math.max(0.5, Number(preferredDistance))
-        : normalApproachDistance;
+        targetRadius + this.character.radius + 0.22;
+      const preferred =
+        preferredDistance != null && Number.isFinite(Number(preferredDistance))
+          ? Math.max(0.5, Number(preferredDistance))
+          : null;
+      const interactionDistance = normalApproachDistance + 0.48;
       const fromResource = this.character.root.position.clone()
         .sub(anchorPosition);
       fromResource.y = 0;
       if (fromResource.lengthSq() < 0.001) fromResource.set(0, 0, 1);
       const baseAngle = Math.atan2(fromResource.z, fromResource.x);
-      // L'analyse physique est faite une seule fois dès le ciblage. Elle remplace
-      // le simple filtre historique : aucun second parcours des colliders n'est ajouté.
-      const allColliders = this.currentMap?.colliders || [];
-      const targetInstanceId = String(
-        object?.userData?.instanceId || anchor?.userData?.instanceId || ""
+      const colliders = this.currentMap?.colliders || [];
+      const mapBounds = (this.currentMap?.bounds || 27) - 0.4;
+      const searchLimit = preferred != null
+        ? preferred + 0.8
+        : interactionDistance;
+      const blockerPadding = 0.16;
+      const maxPathPlans = 12;
+      let pathPlans = 0;
+
+      const horizontalDistanceToAnchor = (point) => Math.hypot(
+        Number(point?.x || 0) - Number(anchorPosition.x || 0),
+        Number(point?.z || 0) - Number(anchorPosition.z || 0)
       );
-      const targetMicroScenePivot =
-        object?.userData?.microScenePivot || anchor?.userData?.microScenePivot || null;
-      const sameLogicalTarget = (owner) => {
-        if (owner === anchor || owner === object) return true;
-        if (!owner) return false;
-        const ownerInstanceId = String(owner.userData?.instanceId || "");
-        if (targetInstanceId && ownerInstanceId === targetInstanceId) return true;
-        const ownerMicroScenePivot = owner.userData?.microScenePivot || null;
-        if (targetMicroScenePivot && ownerMicroScenePivot === targetMicroScenePivot) {
-          return true;
-        }
-        let cursor = owner.parent || null;
-        for (let depth = 0; cursor && depth < 4; depth += 1, cursor = cursor.parent) {
-          if (cursor === anchor || cursor === object) return true;
-        }
-        cursor = anchor?.parent || null;
-        for (let depth = 0; cursor && depth < 4; depth += 1, cursor = cursor.parent) {
-          if (cursor === owner) return true;
-        }
-        return false;
-      };
-      const targetRadius = Math.max(0.35, Number(colliderRadius) || 0.5);
-      const clearance = this.character.radius + 0.22;
-      const approachDirection = fromResource.clone().normalize();
-      const colliders = [];
-      allColliders.forEach((collider) => {
-        const ownerIsTarget = sameLogicalTarget(collider.owner);
-        const offsetX = Number(collider.position?.x || 0) - Number(anchorPosition.x || 0);
-        const offsetZ = Number(collider.position?.z || 0) - Number(anchorPosition.z || 0);
-        const centerDistance = Math.hypot(offsetX, offsetZ);
-        if (ownerIsTarget) {
-          // La portée sûre tient compte dès le premier essai de la surface réelle
-          // de la cible dans la direction d'approche.
-          const expandedRadius = Math.max(0, Number(collider.radius) || 0) + clearance;
-          const projection = offsetX * approachDirection.x + offsetZ * approachDirection.z;
-          const perpendicularSq = Math.max(
-            0,
-            centerDistance * centerDistance - projection * projection
-          );
-          if (perpendicularSq <= expandedRadius * expandedRadius) {
-            const exitDistance = projection + Math.sqrt(
-              Math.max(0, expandedRadius * expandedRadius - perpendicularSq)
-            );
-            if (exitDistance > approachDistance) approachDistance = exitDistance;
-          }
-          return;
-        }
-        colliders.push(collider);
-        const obstacleRadius = Math.max(0, Number(collider.radius) || 0);
-        if (centerDistance > obstacleRadius + targetRadius) return;
-        // Une petite cible imbriquée bénéficie immédiatement de la première
-        // distance physiquement atteignable ; un obstacle seulement interposé
-        // ne transforme pas la portée en interaction à distance.
-        const blockedReach = obstacleRadius + clearance - centerDistance;
-        if (blockedReach > approachDistance) approachDistance = blockedReach;
-      });
-      const candidates = [];
-      for (let index = 0; index < 12; index += 1) {
-        const alternatingStep = index === 0
-          ? 0
-          : Math.ceil(index / 2) * (index % 2 ? 1 : -1);
-        const angle = baseAngle +
-          (alternatingStep + attempt * 2) * (Math.PI / 6);
-        const point = new this.THREE.Vector3(
-          anchorPosition.x + Math.cos(angle) * approachDistance,
-          0,
-          anchorPosition.z + Math.sin(angle) * approachDistance
+
+      // Les colliders éloignés restent transmis au PathPlanner pour le trajet,
+      // mais seuls ceux qui recoupent la zone fonctionnelle servent au filtre local.
+      const blockers = colliders
+        .filter((collider) => {
+          if (!collider?.position) return false;
+          const expandedRadius =
+            this.character.radius +
+            Math.max(0, Number(collider.radius) || 0) +
+            blockerPadding;
+          return Math.hypot(
+            collider.position.x - anchorPosition.x,
+            collider.position.z - anchorPosition.z
+          ) <= searchLimit + expandedRadius;
+        })
+        .map((collider) => ({
+          collider,
+          x: Number(collider.position.x) || 0,
+          z: Number(collider.position.z) || 0,
+          radius:
+            this.character.radius +
+            Math.max(0, Number(collider.radius) || 0) +
+            blockerPadding
+        }));
+
+      const pointIsClear = (point, paddingAdjustment = 0) =>
+        blockers.every((entry) =>
+          Math.hypot(point.x - entry.x, point.z - entry.z) >=
+            Math.max(0, entry.radius + paddingAdjustment)
         );
-        const mapBounds = (this.currentMap?.bounds || 27) - 0.4;
-        if (Math.abs(point.x) > mapBounds || Math.abs(point.z) > mapBounds) continue;
-        const clear = colliders.every((collider) =>
-          point.distanceTo(collider.position) >=
-            this.character.radius + collider.radius + 0.16
-        );
-        if (!clear) continue;
+
+      const candidatePath = (point) => {
+        if (!point || pathPlans >= maxPathPlans) return null;
+        if (Math.abs(point.x) > mapBounds || Math.abs(point.z) > mapBounds) return null;
+        const radius = horizontalDistanceToAnchor(point);
+        if (preferred != null) {
+          if (radius < preferred - 0.8 || radius > preferred + 0.8) return null;
+        } else if (radius > interactionDistance + 0.001) {
+          return null;
+        }
+        if (!pointIsClear(point)) return null;
+
+        pathPlans += 1;
         const path = this.character.pathPlanner.plan(
           this.character.root.position,
           point,
           colliders,
           this.character.radius,
-          0.16
+          blockerPadding
         );
-        if (!Array.isArray(path) || !path.length) continue;
+        if (!Array.isArray(path) || !path.length) return null;
+        const finalPoint = path[path.length - 1] || point;
+        const finalRadius = horizontalDistanceToAnchor(finalPoint);
+        if (preferred != null) {
+          if (finalRadius < preferred - 0.8 || finalRadius > preferred + 0.8) {
+            return null;
+          }
+        } else if (finalRadius > interactionDistance + 0.001) {
+          // Le PathPlanner peut corriger un but encombré, mais jamais étendre
+          // la portée fonctionnelle de l'interaction.
+          return null;
+        }
+        if (!pointIsClear(finalPoint, -0.005)) return null;
+
         const pathLength = path.reduce((total, waypoint, pathIndex) => {
           const previous = pathIndex
             ? path[pathIndex - 1]
             : this.character.root.position;
           return total + previous.distanceTo(waypoint);
         }, 0);
-        candidates.push({ point, pathLength });
-      }
-      candidates.sort((a, b) => a.pathLength - b.pathLength);
-      const fallbackPoint = candidates[0]?.point || this.character.pathPlanner.nearestClearGoal(
-        anchorPosition.clone().add(fromResource.normalize()
-          .multiplyScalar(approachDistance)),
-        colliders,
-        this.character.radius,
-        0.2
-      );
-      const resolvedApproachDistance = fallbackPoint
-        ? Math.max(approachDistance, fallbackPoint.distanceTo(anchorPosition))
-        : approachDistance;
-      const result = {
-        point: fallbackPoint,
-        approachDistance: resolvedApproachDistance,
-        pathLength: candidates[0]?.pathLength
+        return { point: finalPoint.clone?.() || finalPoint, pathLength };
       };
-      if (attempt === 0 && preferredDistance == null && fallbackPoint) {
+
+      // Si BlueFox se trouve déjà dans la zone fonctionnelle et hors collider,
+      // il n'est pas renvoyé artificiellement sur sa bordure.
+      if (
+        preferred == null &&
+        horizontalDistanceToAnchor(this.character.root.position) <= interactionDistance &&
+        pointIsClear(this.character.root.position, -0.02)
+      ) {
+        const result = {
+          point: this.character.root.position.clone(),
+          approachDistance: normalApproachDistance,
+          pathLength: 0
+        };
+        if (attempt === 0) {
+          this.__cachedInteractionApproach = {
+            object,
+            mapId: this.currentMapId,
+            at: performance.now(),
+            originX: this.character.root.position.x,
+            originZ: this.character.root.position.z,
+            result
+          };
+        }
+        return result;
+      }
+
+      const radialPoint = (radius, angle) => new this.THREE.Vector3(
+        anchorPosition.x + Math.cos(angle) * radius,
+        0,
+        anchorPosition.z + Math.sin(angle) * radius
+      );
+
+      const tryOrderedPoints = (points, phasePlanLimit) => {
+        const unique = [];
+        const seen = new Set();
+        points.forEach((point) => {
+          if (!point) return;
+          const key = `${Math.round(point.x * 1000)}:${Math.round(point.z * 1000)}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          if (Math.abs(point.x) > mapBounds || Math.abs(point.z) > mapBounds) return;
+          if (!pointIsClear(point, -0.005)) return;
+          unique.push(point);
+        });
+        unique.sort((a, b) =>
+          a.distanceTo(this.character.root.position) -
+          b.distanceTo(this.character.root.position)
+        );
+        const phaseStartPlans = pathPlans;
+        for (const point of unique) {
+          if (pathPlans >= maxPathPlans) break;
+          if (pathPlans - phaseStartPlans >= phasePlanLimit) break;
+          const planned = candidatePath(point);
+          if (planned) return planned;
+        }
+        return null;
+      };
+
+      let chosen = null;
+
+      if (preferred != null) {
+        // FAU-01 : conserver le palier prudent historique autour de 4,6 m,
+        // tout en bornant le coût au plafond historique de 12 plans.
+        const cautiousPoints = [];
+        for (let index = 0; index < 24; index += 1) {
+          const alternatingStep = index === 0
+            ? 0
+            : Math.ceil(index / 2) * (index % 2 ? 1 : -1);
+          const angle = baseAngle +
+            (alternatingStep + attempt * 0.5) * (Math.PI / 12);
+          cautiousPoints.push(radialPoint(preferred, angle));
+        }
+        chosen = tryOrderedPoints(cautiousPoints, 12);
+      } else {
+        // 1) Six essais nominaux maximum : on conserve la priorité du point
+        // historique sans laisser cette phase consommer tout le budget.
+        const nominalPoints = [];
+        for (let index = 0; index < 12; index += 1) {
+          const alternatingStep = index === 0
+            ? 0
+            : Math.ceil(index / 2) * (index % 2 ? 1 : -1);
+          const angle = baseAngle +
+            (alternatingStep + attempt * 0.5) * (Math.PI / 6);
+          nominalPoints.push(radialPoint(normalApproachDistance, angle));
+        }
+        chosen = tryOrderedPoints(nominalPoints, 6);
+
+        if (!chosen) {
+          // 2) Recherche géométrique riche, mais seuls cinq candidats réellement
+          // plausibles sont envoyés au PathPlanner.
+          const regionPoints = [];
+          const minimumRadius = Math.min(0.5, interactionDistance);
+          const innerSpan = Math.max(0, normalApproachDistance - minimumRadius);
+          const radii = [...new Set([
+            normalApproachDistance - innerSpan * 0.33,
+            normalApproachDistance - innerSpan * 0.66,
+            minimumRadius,
+            normalApproachDistance +
+              Math.max(0, interactionDistance - normalApproachDistance) * 0.5,
+            interactionDistance
+          ].map((value) => Math.max(0.05, Number(value.toFixed(4)))))];
+
+          radii.forEach((radius) => {
+            for (let index = 0; index < 24; index += 1) {
+              const angle = baseAngle +
+                (index + attempt * 0.5) * (Math.PI / 12);
+              regionPoints.push(radialPoint(radius, angle));
+            }
+          });
+
+          const circleIntersections = (ax, az, ar, bx, bz, br) => {
+            const dx = bx - ax;
+            const dz = bz - az;
+            const distance = Math.hypot(dx, dz);
+            if (
+              distance < 0.0001 ||
+              distance > ar + br ||
+              distance < Math.abs(ar - br)
+            ) return [];
+            const along =
+              (ar * ar - br * br + distance * distance) /
+              (2 * distance);
+            const heightSq = ar * ar - along * along;
+            if (heightSq < -0.0001) return [];
+            const height = Math.sqrt(Math.max(0, heightSq));
+            const midX = ax + dx * (along / distance);
+            const midZ = az + dz * (along / distance);
+            const normalX = -dz / distance;
+            const normalZ = dx / distance;
+            return [
+              new this.THREE.Vector3(
+                midX + normalX * height,
+                0,
+                midZ + normalZ * height
+              ),
+              new this.THREE.Vector3(
+                midX - normalX * height,
+                0,
+                midZ - normalZ * height
+              )
+            ];
+          };
+
+          blockers.forEach((entry) => {
+            regionPoints.push(...circleIntersections(
+              anchorPosition.x,
+              anchorPosition.z,
+              interactionDistance,
+              entry.x,
+              entry.z,
+              entry.radius
+            ));
+          });
+          for (let left = 0; left < blockers.length; left += 1) {
+            for (let right = left + 1; right < blockers.length; right += 1) {
+              regionPoints.push(...circleIntersections(
+                blockers[left].x,
+                blockers[left].z,
+                blockers[left].radius,
+                blockers[right].x,
+                blockers[right].z,
+                blockers[right].radius
+              ).filter((point) =>
+                horizontalDistanceToAnchor(point) <= interactionDistance + 0.001
+              ));
+            }
+          }
+          chosen = tryOrderedPoints(regionPoints, 5);
+        }
+
+        // 3) Un unique plan reste réservé au fallback historique. Il est lui
+        // aussi rejeté s'il sort de la zone fonctionnelle.
+        if (!chosen && pathPlans < maxPathPlans) {
+          const fallback = this.character.pathPlanner.nearestClearGoal(
+            radialPoint(interactionDistance, baseAngle),
+            colliders,
+            this.character.radius,
+            0.2
+          );
+          chosen = candidatePath(fallback);
+        }
+      }
+
+      const result = {
+        point: chosen?.point || null,
+        // Donnée nominale uniquement : jamais réécrite à partir d'un fallback.
+        approachDistance: preferred ?? normalApproachDistance,
+        pathLength: chosen?.pathLength
+      };
+      if (attempt === 0 && preferred == null && result.point) {
         this.__cachedInteractionApproach = {
           object,
           mapId: this.currentMapId,
@@ -2902,6 +3077,14 @@
             retry ? this.interactionApproachAttempts : 0
           );
       this.__cachedInteractionApproach = null;
+      if (!approach?.point) {
+        this.pendingInteraction = null;
+        this.cautiousInteraction = null;
+        this.interactionApproachStartedAt = 0;
+        this.callbacks.onStatus("BlueFox ne trouve aucun point d’approche accessible dans la portée de cet objet.");
+        this.missionManager?.cancelCurrentAction("interaction-inaccessible");
+        return false;
+      }
       this.pendingInteraction = object;
       object.userData.approachDistance = approach.approachDistance;
       object.userData.interactionProfile = this.interactionProfile(object);
@@ -3716,8 +3899,15 @@
       const profile = object.userData.interactionProfile || this.interactionProfile(object);
       const anchor = object.userData.worldAnchor || object;
       const anchorPosition = this.interactionWorldPosition(object) || anchor.position;
-      const distance = this.character.root.position.distanceTo(anchorPosition);
+      const horizontalDistance = Math.hypot(
+        this.character.root.position.x - anchorPosition.x,
+        this.character.root.position.z - anchorPosition.z
+      );
+      const verticalDistance = Math.abs(
+        Number(this.character.root.position.y || 0) - Number(anchorPosition.y || 0)
+      );
       const interactionDistance = this.interactionValidationDistance(object);
+      const distance = horizontalDistance;
 
       if (this.cautiousInteraction?.object === object) {
         const faunaState = this.faunaInteractionState(object);
@@ -3775,7 +3965,10 @@
         }
       }
 
-      if (distance > interactionDistance) {
+      if (
+        horizontalDistance > interactionDistance ||
+        verticalDistance > interactionDistance
+      ) {
         if (!this.interactionStartedAt && now - this.interactionApproachStartedAt > 6500) {
           this.interactionApproachAttempts += 1;
           if (this.interactionApproachAttempts <= 3) {
