@@ -1812,15 +1812,22 @@
       );
       const deferMissionId = String(intent?.deferMissionId || "");
       if (!intent?.active || !deferMissionId) return false;
-      if (!this.isMissionTransitionOpportunity(deferMissionId, context)) return false;
-      if (this.ensureLifecycle(deferMissionId).status !== "active") return false;
 
       const tree = this.trees.get(deferMissionId);
-      if (
-        !tree ||
-        tree.root.isComplete ||
-        !this.planner.nextAction(tree, context)
-      ) {
+      const stillRunnable = Boolean(
+        this.isMissionTransitionOpportunity(deferMissionId, context) &&
+        this.ensureLifecycle(deferMissionId).status === "active" &&
+        tree &&
+        !tree.root.isComplete &&
+        this.missionRunnableAction(
+          deferMissionId,
+          tree,
+          context,
+          performance.now(),
+          { reportUnresolved: false }
+        )
+      );
+      if (!stillRunnable) {
         const cleared = {
           ...intent,
           deferMissionId: null,
@@ -2162,9 +2169,58 @@
       });
     }
 
+    contextualLocalTransitionOpportunity(
+      missionId,
+      context = this.bridge.context()
+    ) {
+      const definition = this.definition(missionId) || {};
+      const tree = this.trees.get(missionId);
+      if (!tree || tree.root.isComplete) return false;
+
+      const currentMapId = String(
+        this.engine?.currentMapId || context?.mapId || ""
+      );
+      if (!currentMapId) return false;
+
+      const availableLeaves = tree.availableLeaves()
+        .filter((node) => !node.isComplete);
+      if (availableLeaves.some((node) => {
+        const state = this.planner.requiredMapState?.(node, context) || null;
+        return (
+          state?.constrained === true &&
+          String(state.targetMapId || "") === currentMapId
+        );
+      })) return true;
+
+      // CONTEXT_MSC porte une opportunité réellement liée à la scène
+      // matérialisée sur la map courante. Elle peut être perdue en quittant la
+      // map et reste donc éligible au deferral historique du travel.
+      if (definition.pattern === "CONTEXT_MSC") {
+        const requiredIds = (Array.isArray(definition.mapGeneration?.requiredMicroScenes)
+          ? definition.mapGeneration.requiredMicroScenes
+          : [])
+          .map((entry) => String(entry?.id || ""))
+          .filter(Boolean);
+        const materializedIds = new Set(
+          (Array.isArray(this.engine?.currentMap?.group?.userData?.microScenes)
+            ? this.engine.currentMap.group.userData.microScenes
+            : [])
+            .map((entry) => String(entry?.id || ""))
+            .filter(Boolean)
+        );
+        if (
+          requiredIds.length > 0 &&
+          requiredIds.some((id) => materializedIds.has(id))
+        ) return true;
+      }
+
+      return false;
+    }
+
     isMissionTransitionOpportunity(missionId, context = this.bridge.context()) {
       return (
         this.isMissionExclusiveToCurrentMap(missionId) ||
+        this.contextualLocalTransitionOpportunity(missionId, context) ||
         this.historicalCollectionTransitionOpportunity(missionId, context)
       );
     }
@@ -2545,6 +2601,66 @@
       return "exploration";
     }
 
+    prioritizedMissionWork(context, selectionOptions = {}) {
+      if (
+        typeof this.isMissionGuidanceEnabled === "function" &&
+        !this.isMissionGuidanceEnabled()
+      ) {
+        return null;
+      }
+      // Les actions runtime déléguées de la primaire possèdent déjà le cycle
+      // missionnel. Le relais Top4 ne doit jamais lancer une action concurrente.
+      if (
+        this.hasActivePrimaryMission() &&
+        this.delegatedRuntimeAction(this.primaryMissionId)
+      ) {
+        return null;
+      }
+      const excludedMissionIds = selectionOptions.excludedMissionIds instanceof Set
+        ? selectionOptions.excludedMissionIds
+        : new Set(selectionOptions.excludedMissionIds || []);
+      const storedPriorityIds = typeof this.getPrioritizedMissionIds === "function"
+        ? this.getPrioritizedMissionIds()
+        : Array.isArray(this.prioritizedMissionIds)
+          ? this.prioritizedMissionIds
+          : [];
+      const prioritizedMissionIds = [...new Set([
+        this.primaryMissionId,
+        ...storedPriorityIds
+      ].filter(Boolean))]
+        .filter((id) => !excludedMissionIds.has(id))
+        .filter((id) =>
+          this.ensureLifecycle(id).status === "active" &&
+          this.trees.has(id)
+        )
+        .slice(0, 4);
+
+      for (const missionId of prioritizedMissionIds) {
+        const assessment = this.assessMission(missionId, context);
+        if (assessment?.action) {
+          return {
+            kind: "action",
+            missionId,
+            selected: {
+              missionId,
+              action: assessment.action,
+              primary: missionId === this.primaryMissionId
+            }
+          };
+        }
+
+        const travel = this.missionTransitionFor(missionId, context);
+        if (travel && this.missionTransitionExecutable(travel)) {
+          return {
+            kind: "travel",
+            missionId,
+            travel
+          };
+        }
+      }
+      return null;
+    }
+
     chooseRunnableMissionAction(context, selectionOptions = {}) {
       if (
         typeof this.isMissionGuidanceEnabled === "function" &&
@@ -2846,42 +2962,100 @@
       const decisionContext = this.bridge.context();
       const refusedMissionIds = new Set();
 
-      // R-STAB Top4 relay: une action seulement théoriquement runnable ne doit
-      // pas monopoliser tout le cycle si son propriétaire runtime la refuse.
-      // Chaque mission de la shortlist peut être tentée au plus une fois dans
-      // ce cycle ; l'échec alimente le recovery historique mais ne modifie ni
-      // la priorité persistante ni le lifecycle.
+      // La Top4 est arbitrée mission par mission : une transition réellement
+      // exécutable d'une mission mieux classée doit être considérée avant toute
+      // action générique d'une mission moins prioritaire. Le deferral historique
+      // reste le seul moyen pour une opportunité locale perdable de retarder ce
+      // départ.
       for (let attempt = 0; attempt < 4; attempt += 1) {
-        const selected = this.chooseRunnableMissionAction(decisionContext, {
-          excludedMissionIds: refusedMissionIds,
-          allowOutsideShortlistFallback: false
+        const work = this.prioritizedMissionWork(decisionContext, {
+          excludedMissionIds: refusedMissionIds
         });
-        if (!selected?.action) break;
-        if (this.executeSelectedMissionAction(selected, now)) {
+        if (!work) break;
+
+        if (work.kind === "action") {
+          if (this.executeSelectedMissionAction(work.selected, now)) {
+            this.retryAfter = now + 1200;
+            this.idleRetryUntil = 0;
+            return true;
+          }
+          refusedMissionIds.add(work.missionId);
+          continue;
+        }
+
+        const intent = this.ensureMissionTransitionIntent(
+          decisionContext,
+          work.travel
+        );
+        if (!intent?.active) {
+          refusedMissionIds.add(work.missionId);
+          continue;
+        }
+
+        if (this.shouldDeferMissionTransition(work.missionId, decisionContext)) {
+          const deferMissionId = String(intent.deferMissionId || "");
+          const deferTree = this.trees.get(deferMissionId);
+          const deferAction = deferTree
+            ? this.missionRunnableAction(
+                deferMissionId,
+                deferTree,
+                decisionContext,
+                now,
+                { reportUnresolved: false }
+              )
+            : null;
+          if (
+            deferAction &&
+            this.executeSelectedMissionAction({
+              missionId: deferMissionId,
+              action: deferAction,
+              primary: deferMissionId === this.primaryMissionId
+            }, now)
+          ) {
+            this.retryAfter = now + 1200;
+            this.idleRetryUntil = 0;
+            return true;
+          }
+
+          // Une opportunité choisie mais finalement refusée ne doit pas
+          // immobiliser le travel qui l'avait autorisée.
+          const currentIntent = this.memory.getFact?.(
+            this.missionReturnIntentKey(work.missionId),
+            null
+          );
+          if (
+            currentIntent?.active === true &&
+            String(currentIntent.deferMissionId || "") === deferMissionId
+          ) {
+            this.memory.setFact?.(
+              this.missionReturnIntentKey(work.missionId),
+              {
+                ...currentIntent,
+                deferMissionId: null,
+                updatedAt: Date.now()
+              }
+            );
+            this.memory.save?.();
+          }
+        }
+
+        if (
+          this.resumeMissionTransitionIntent(decisionContext, work.travel)
+        ) {
           this.retryAfter = now + 1200;
           this.idleRetryUntil = 0;
           return true;
         }
-        refusedMissionIds.add(selected.missionId);
-      }
 
-      // Une mission refusée localement ne fabrique pas son propre voyage. En
-      // revanche une autre mission du Top4 peut immédiatement reprendre par
-      // une transition connue ou inconnue réellement exécutable.
-      const relayTravel = this.prioritizedMissionTransition(decisionContext, {
-        excludedMissionIds: refusedMissionIds
-      });
-      if (
-        relayTravel &&
-        this.resumeMissionTransitionIntent(decisionContext, relayTravel)
-      ) {
+        // Le travel prioritaire est réel mais momentanément non lançable :
+        // ne pas descendre vers Shelter/COL/autonomie libre dans ce cycle.
         this.retryAfter = now + 1200;
         this.idleRetryUntil = 0;
-        return true;
+        return false;
       }
 
       // Préserver le fallback R-STAB historique hors shortlist, mais seulement
-      // après épuisement des actions et transitions de la Top4.
+      // après épuisement réel des actions et transitions de la Top4.
       const fallback = this.chooseRunnableMissionAction(decisionContext, {
         excludedMissionIds: refusedMissionIds,
         allowOutsideShortlistFallback: true

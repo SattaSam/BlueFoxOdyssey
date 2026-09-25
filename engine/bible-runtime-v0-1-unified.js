@@ -3972,6 +3972,11 @@
 
     consumeTriggerEvent(event, options = {}) {
       const candidates = [];
+      const isPhysicalOpportunity = (mission) => Boolean(
+        event?.type === "exploration.map_discovered" &&
+        /^OPP-/.test(String(mission?.id || "")) &&
+        asArray(mission?.trigger?.featuredMicroSceneIdsAny).length > 0
+      );
 
       for (const template of this.localMissionTemplates()) {
         const mapId = String(event?.mapId || BF.currentEngine?.currentMapId || "");
@@ -4049,11 +4054,16 @@
           if (required > 1 && !triggerCompletesPrerequisite) continue;
 
           const count = this.incrementTrigger(mission, event);
-          if (count < required || options.allowActivation === false) continue;
+          const preservePhysicalOpportunity =
+            isPhysicalOpportunity(mission) && count >= required;
+          if (count < required ||
+              (options.allowActivation === false && !preservePhysicalOpportunity)) continue;
 
           this.rememberDeferredTriggerContext(mission, event);
           this.manager()?.startMission?.(mission.id, {
-            primary: mission.primaryOnActivation === true,
+            primary: preservePhysicalOpportunity
+              ? false
+              : mission.primaryOnActivation === true,
             autoPrimaryEligible: mission.autoPrimaryEligible,
             prerequisites: missionPrerequisites,
             experimentalPrerequisites: asArray(mission.experimentalPrerequisites),
@@ -4073,11 +4083,29 @@
         this.catalog.indexOf(left) - this.catalog.indexOf(right)
       );
 
+      const physicalOpportunityCandidates = candidates.filter(isPhysicalOpportunity);
+      const activatePhysicalOpportunities = (activatedMissionIds = [], handledIds = new Set()) => {
+        physicalOpportunityCandidates.forEach((mission) => {
+          if (handledIds.has(mission.id) || activatedMissionIds.includes(mission.id)) return;
+          if (this.activateMission(mission, event, { primary: false })) {
+            activatedMissionIds.push(mission.id);
+          }
+        });
+        return activatedMissionIds;
+      };
+
       const selected = options.allowActivation === false
         ? null
         : candidates[0] || null;
       if (!selected) {
-        return { matched: candidates.length, activatedMissionId: null, activatedMissionIds: [] };
+        const activatedMissionIds = options.allowActivation === false
+          ? activatePhysicalOpportunities([])
+          : [];
+        return {
+          matched: candidates.length,
+          activatedMissionId: activatedMissionIds[0] || null,
+          activatedMissionIds
+        };
       }
 
       const concurrentGroup = String(
@@ -4090,9 +4118,18 @@
           String(mission.concurrentAvailabilityGroup || "").trim() === concurrentGroup
         );
         const activatedMissionIds = [];
+        const activatedConcurrentPrimaryCandidates = [];
         concurrentCandidates.forEach((mission) => {
-          if (this.activateMission(mission, event)) {
+          const physicalOpportunity = isPhysicalOpportunity(mission);
+          if (this.activateMission(
+            mission,
+            event,
+            physicalOpportunity ? { primary: false } : {}
+          )) {
             activatedMissionIds.push(mission.id);
+            if (!physicalOpportunity) {
+              activatedConcurrentPrimaryCandidates.push(mission.id);
+            }
           }
         });
 
@@ -4113,11 +4150,20 @@
         // historique n'intervient qu'une fois le fan-out complet, afin qu'il
         // voie l'ensemble des missions réellement disponibles.
         const manager = this.manager();
-        if (activatedMissionIds.length > 1) {
+        // Les OPP physiques nouvellement révélées restent des opportunités
+        // secondaires : elles ne participent pas à une réélection forcée qui
+        // pourrait déplacer le Top1 déjà établi. Le comportement historique
+        // des groupes concurrents non-OPP reste inchangé.
+        if (activatedConcurrentPrimaryCandidates.length > 1) {
           manager?.selectBestPrimary?.(performance.now(), true);
           manager?.memory?.save?.();
           manager?.publish?.();
         }
+
+        activatePhysicalOpportunities(
+          activatedMissionIds,
+          new Set(concurrentCandidates.map((mission) => mission.id))
+        );
 
         const activatedMissionId =
           manager?.primaryMissionId || activatedMissionIds[0] || null;
@@ -4128,7 +4174,11 @@
         };
       }
 
-      const activatedMissionId = this.activateMission(selected, event)
+      const activatedMissionId = this.activateMission(
+        selected,
+        event,
+        isPhysicalOpportunity(selected) ? { primary: false } : {}
+      )
         ? selected.id
         : null;
       const activatedMissionIds = activatedMissionId
@@ -4142,6 +4192,11 @@
           }
         });
       }
+
+      activatePhysicalOpportunities(
+        activatedMissionIds,
+        new Set(selected ? [selected.id] : [])
+      );
 
       const effectiveActivatedMissionId =
         activatedMissionId || activatedMissionIds[0] || null;
