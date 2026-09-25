@@ -187,6 +187,67 @@
       return this.rebuildPath();
     }
 
+    positionOverlapsCollider(position, padding = 0) {
+      if (!position) return false;
+      return this.colliders.some((collider) => {
+        const center = collider?.position;
+        if (!center) return false;
+        const clearance = this.radius + Math.max(0, Number(collider.radius) || 0) +
+          Math.max(0, Number(padding) || 0);
+        return Math.hypot(position.x - center.x, position.z - center.z) < clearance;
+      });
+    }
+
+    tryLocalColliderDepenetration(padding = 0.18) {
+      const origin = this.root.position.clone();
+      if (!this.positionOverlapsCollider(origin)) return false;
+
+      const accept = (candidate) => {
+        if (!candidate) return false;
+        candidate.y = 0;
+        this.constrainToWalkable(candidate);
+        if (this.positionOverlapsCollider(candidate, 0.02)) return false;
+        if (candidate.distanceTo(origin) < 0.01) return false;
+        this.root.position.copy(candidate);
+        this.lastSafePosition.copy(candidate);
+        this.stuckTime = 0;
+        this.lastDistance = Infinity;
+        return true;
+      };
+
+      const plannerCandidate = this.pathPlanner.nearestClearGoal?.(
+        origin.clone(),
+        this.colliders,
+        this.radius,
+        padding
+      );
+      if (accept(plannerCandidate)) return true;
+
+      let requiredEscape = 0;
+      this.colliders.forEach((collider) => {
+        const center = collider?.position;
+        if (!center) return;
+        const clearance = this.radius + Math.max(0, Number(collider.radius) || 0) + padding;
+        const distance = Math.hypot(origin.x - center.x, origin.z - center.z);
+        if (distance < clearance) {
+          requiredEscape = Math.max(requiredEscape, clearance - distance);
+        }
+      });
+      const maxRadius = Math.min(4, Math.max(0.8, requiredEscape + 0.8));
+      const radialStep = 0.28;
+      const angularSteps = 24;
+      for (let radius = radialStep; radius <= maxRadius + 0.001; radius += radialStep) {
+        for (let index = 0; index < angularSteps; index += 1) {
+          const angle = (index / angularSteps) * Math.PI * 2;
+          const candidate = origin.clone();
+          candidate.x += Math.cos(angle) * radius;
+          candidate.z += Math.sin(angle) * radius;
+          if (accept(candidate)) return true;
+        }
+      }
+      return false;
+    }
+
     navigationRecoveryDirection(originalTarget, escapeIndex) {
       const away = this.root.position.clone().sub(originalTarget);
       away.y = 0;
@@ -292,6 +353,16 @@
         0.12 + extraPadding
       );
       if (!Array.isArray(plannedPath) || !plannedPath.length) {
+        if (
+          options.embeddedRecoveryAttempted !== true &&
+          this.positionOverlapsCollider(this.root.position) &&
+          this.tryLocalColliderDepenetration()
+        ) {
+          return this.rebuildPath(extraPadding, {
+            ...options,
+            embeddedRecoveryAttempted: true
+          });
+        }
         const failedTarget = this.finalTarget.clone();
         this.stop();
         if (options.suppressFailure !== true) {
