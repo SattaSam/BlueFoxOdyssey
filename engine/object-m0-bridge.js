@@ -279,6 +279,32 @@
   const lower = (value) => String(value ?? "").trim().toLowerCase();
   const asArray = (value) => Array.isArray(value) ? value : value == null ? [] : [value];
 
+  const FAU_CAUTIOUS_EVENT_TAGS = new Set([
+    "fauna_behavior",
+    "cautious_approach",
+    "no_flee"
+  ]);
+
+  // FAU-01 attend un résultat comportemental : ces trois tags décrivent
+  // l'événement à obtenir, pas des propriétés statiques que la créature doit
+  // posséder avant l'approche. Ils restent strictement vérifiés par
+  // eventMatchesNode() au moment du résultat.
+  const studyTargetCriteria = (params = {}) => {
+    const tagsAll = asArray(params.tagsAll);
+    const normalized = new Set(tagsAll.map(lower));
+    const cautiousFaunaStudy =
+      lower(params.subject) === "fauna" &&
+      [...FAU_CAUTIOUS_EVENT_TAGS].every((tag) => normalized.has(tag));
+    if (!cautiousFaunaStudy) return params;
+
+    return {
+      ...params,
+      tagsAll: tagsAll.filter((tag) =>
+        !FAU_CAUTIOUS_EVENT_TAGS.has(lower(tag))
+      )
+    };
+  };
+
   const metadataMatchesMissionCriteria = (metadata, params = {}, options = {}) => {
     const alternatives = asArray(params.anyOfCriteria).filter((entry) => entry && typeof entry === "object");
     if (alternatives.length && !alternatives.some((entry) =>
@@ -1157,7 +1183,11 @@
         const distinctValue = distinctValueFromResolved(node, resolved, engine?.currentMapId);
         if (distinctValue != null && node?.hasDistinctValue?.(distinctValue)) return null;
         if (!(definition && (canStudy(definition) || passiveMissionStudy))) return null;
-        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, resolved), action.params || {}, { skipSubject: true })) return null;
+        if (!metadataMatchesMissionCriteria(
+          definitionMissionMetadata(definition, resolved),
+          studyTargetCriteria(action.params || {}),
+          { skipSubject: true }
+        )) return null;
         if (!matchesStudySubject(definition, action.params?.subject)) return null;
         if (!matchesBoundTarget(engine, action.missionId, resolved)) return null;
         const priority = unstudiedPriority(
@@ -1254,7 +1284,11 @@
         ) continue;
         if (!requiredMapMatches(manager, node, engine.currentMapId)) continue;
         if (!requiredSiteMatchesResolved(manager, node, missionResolved, engine.currentMapId)) continue;
-        if (!metadataMatchesMissionCriteria(definitionMissionMetadata(definition, missionResolved), node.params || {}, { skipSubject: true })) continue;
+        if (!metadataMatchesMissionCriteria(
+          definitionMissionMetadata(definition, missionResolved),
+          studyTargetCriteria(node.params || {}),
+          { skipSubject: true }
+        )) continue;
         if (!matchesStudySubject(definition, node.params?.subject)) continue;
         if (!relationMatches(tree, node, relationEvidenceFromResolved(missionResolved, engine.currentMapId))) continue;
         if (!matchesBoundTarget(engine, missionId, missionResolved)) continue;

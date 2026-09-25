@@ -4948,6 +4948,276 @@
       return this.reconcileLocalExplorationMap(mapId, detail.surfacePercent) || changed;
     }
 
+
+    fau01NestScene(map = BF.currentEngine?.currentMap) {
+      const sceneId = "MSC-CUSTOM-NID-DE-FAUNE5";
+      const scenes = asArray(map?.group?.userData?.microScenes);
+      return scenes.find((entry) =>
+        String(entry?.id || "") === sceneId &&
+        String(entry?.missionId || "") === "FAU-01"
+      ) || null;
+    }
+
+    fau01FaunaDescriptor(object) {
+      if (!object) return null;
+      const root =
+        object?.userData?.worldAnchor ||
+        object?.parent ||
+        object;
+      const data = object?.userData || {};
+      const rootData = root?.userData || {};
+      const definition =
+        data.functional ||
+        rootData.functional ||
+        BF.ObjectLibrary?.getById?.(data.catalogId || rootData.catalogId) ||
+        BF.ObjectLibrary?.get?.(
+          data.libraryType ||
+          rootData.libraryType ||
+          rootData.objectType
+        ) ||
+        null;
+      const type = String(
+        data.libraryType ||
+        rootData.libraryType ||
+        rootData.objectType ||
+        definition?.type ||
+        ""
+      );
+      const actions = new Set(asArray(definition?.interaction?.actions).map(lower));
+      const studyCompatible =
+        actions.has("observe") ||
+        actions.has("inspect") ||
+        actions.has("analyze") ||
+        definition?.gameplay?.inspectable === true ||
+        definition?.gameplay?.analyzable === true;
+      if (
+        !root ||
+        !type ||
+        BF.FaunaRuntime?.isFaunaType?.(type) !== true ||
+        !studyCompatible
+      ) return null;
+      return { object, root, data, rootData, definition, type };
+    }
+
+    bindFau01NestFauna(scene, descriptor) {
+      const sceneId = "MSC-CUSTOM-NID-DE-FAUNE5";
+      const root = descriptor?.root;
+      const object = descriptor?.object;
+      if (!scene?.instanceRoot || !root?.userData || !object?.userData) return false;
+
+      const persistentId = String(
+        scene.instanceRoot?.userData?.persistentMicroSceneId ||
+        scene.instanceId ||
+        ""
+      );
+      const contextRole = String(
+        scene.contextRole ||
+        scene.instanceRoot?.userData?.contextRole ||
+        "faunaFirstApproach"
+      );
+
+      const metadata = {
+        microSceneId: sceneId,
+        bibleMissionId: "FAU-01",
+        contextRole
+      };
+      if (persistentId) metadata.persistentMicroSceneId = persistentId;
+
+      Object.assign(root.userData, metadata, {
+        fau01NestFauna: true
+      });
+      Object.assign(object.userData, metadata, {
+        fau01NestFauna: true
+      });
+
+      scene.instanceRoot.userData.fau01NestFaunaBound = true;
+      scene.instanceRoot.userData.fau01NestFaunaInstanceId = String(
+        root.userData.instanceId ||
+        object.userData.instanceId ||
+        ""
+      ) || null;
+      return true;
+    }
+
+    spawnFau01NestFauna(scene, mapDefinition, map) {
+      const engine = BF.currentEngine;
+      const THREE = engine?.THREE;
+      if (
+        !scene?.instanceRoot ||
+        !map?.group ||
+        !THREE ||
+        !BF.ObjectSpawner ||
+        !BF.ObjectLibrary ||
+        !BF.FaunaRuntime
+      ) return null;
+
+      const faunaTypes = asArray(BF.FaunaRuntime.faunaTypes?.());
+      const type = faunaTypes.find((candidate) => {
+        const definition = BF.ObjectLibrary.get?.(candidate);
+        const actions = new Set(asArray(definition?.interaction?.actions).map(lower));
+        return Boolean(
+          definition &&
+          (
+            actions.has("observe") ||
+            actions.has("inspect") ||
+            actions.has("analyze") ||
+            definition?.gameplay?.inspectable === true ||
+            definition?.gameplay?.analyzable === true
+          )
+        );
+      });
+      if (!type) return null;
+
+      const nestRecord = asArray(scene.records).find((record) =>
+        lower(record?.type) === "abandoned_nest"
+      );
+      const anchorObject =
+        nestRecord?.objectRoot ||
+        nestRecord?.root ||
+        scene.instanceRoot;
+      const worldPoint = this.observationPoint(anchorObject, engine);
+      const localPoint = new THREE.Vector3(
+        Number(worldPoint.x) || 0,
+        Number(worldPoint.y) || 0,
+        Number(worldPoint.z) || 0
+      );
+
+      map.group.updateWorldMatrix?.(true, false);
+      map.group.worldToLocal?.(localPoint);
+      // Décalage court et déterministe : la faune reste dans le nid sans
+      // superposer exactement son origine à celle du décor.
+      localPoint.x += 0.45;
+      localPoint.z += 0.25;
+
+      const spawner = new BF.ObjectSpawner({
+        THREE,
+        scene: map.group,
+        palette: mapDefinition?.palette
+      });
+      const spawned = spawner.spawn(type, {
+        position: {
+          x: localPoint.x,
+          y: localPoint.y,
+          z: localPoint.z
+        },
+        variant: 0,
+        rotation: Number(scene.instanceRoot.rotation?.y) || 0,
+        force: true,
+        scene: map.group,
+        palette: mapDefinition?.palette,
+        source: "bible:FAU-01:nest-fauna"
+      });
+      if (!spawned?.root) return null;
+
+      const hitbox = spawned.instance?.hitbox || null;
+      if (hitbox && Array.isArray(map.interactables) && !map.interactables.includes(hitbox)) {
+        map.interactables.push(hitbox);
+      }
+
+      (spawned.instance?.colliders || []).forEach((collider) => {
+        if (!Array.isArray(map.colliders) || !collider?.offset?.clone) return;
+        spawned.root.updateWorldMatrix?.(true, false);
+        const position = spawned.root.localToWorld(collider.offset.clone());
+        map.colliders.push({
+          position,
+          radius: collider.radius,
+          owner: spawned.root
+        });
+      });
+
+      return hitbox || spawned.root;
+    }
+
+    reconcileFau01NestFauna(mapId = BF.currentEngine?.currentMapId) {
+      if (!this.missionLifecycle("FAU-01").active) return false;
+
+      const engine = BF.currentEngine;
+      const currentMapId = String(engine?.currentMapId || "");
+      if (!engine?.currentMap || String(mapId || currentMapId) !== currentMapId) {
+        return false;
+      }
+
+      const map = engine.currentMap;
+      const scene = this.fau01NestScene(map);
+      if (!scene?.instanceRoot) return false;
+      if (scene.instanceRoot.userData?.fau01NestFaunaBound === true) return true;
+
+      const sceneId = "MSC-CUSTOM-NID-DE-FAUNE5";
+      const persistentId = String(
+        scene.instanceRoot?.userData?.persistentMicroSceneId ||
+        scene.instanceId ||
+        ""
+      );
+      const template = BF.MicroScenes?.get?.(sceneId);
+      const radius = Math.max(1, Number(template?.radius) || 5);
+      const scenePoint = this.observationPoint(scene.instanceRoot, engine);
+
+      const descriptors = asArray(map.interactables)
+        .filter((object) => object?.userData?.active !== false)
+        .map((object) => this.fau01FaunaDescriptor(object))
+        .filter(Boolean);
+
+      // Si une instance a déjà été reliée à ce nid, elle reste l'unique vérité.
+      const alreadyBound = descriptors.find(({ object, root }) => {
+        const actualSceneId = String(
+          object?.userData?.microSceneId ||
+          root?.userData?.microSceneId ||
+          ""
+        );
+        const actualPersistentId = String(
+          object?.userData?.persistentMicroSceneId ||
+          root?.userData?.persistentMicroSceneId ||
+          ""
+        );
+        return actualSceneId === sceneId &&
+          (!persistentId || !actualPersistentId || actualPersistentId === persistentId);
+      });
+      if (alreadyBound) return this.bindFau01NestFauna(scene, alreadyBound);
+
+      const nearby = descriptors
+        .filter(({ object, root }) => {
+          const existingSceneId = String(
+            object?.userData?.microSceneId ||
+            root?.userData?.microSceneId ||
+            ""
+          );
+          const existingMissionId = String(
+            object?.userData?.bibleMissionId ||
+            root?.userData?.bibleMissionId ||
+            ""
+          );
+          if (existingSceneId && existingSceneId !== sceneId) return false;
+          if (existingMissionId && existingMissionId !== "FAU-01") return false;
+          const point = this.observationPoint(object, engine);
+          return Math.hypot(
+            Number(point.x) - Number(scenePoint.x),
+            Number(point.z) - Number(scenePoint.z)
+          ) <= radius + 1;
+        })
+        .sort((left, right) => {
+          const lp = this.observationPoint(left.object, engine);
+          const rp = this.observationPoint(right.object, engine);
+          const ld = Math.hypot(
+            Number(lp.x) - Number(scenePoint.x),
+            Number(lp.z) - Number(scenePoint.z)
+          );
+          const rd = Math.hypot(
+            Number(rp.x) - Number(scenePoint.x),
+            Number(rp.z) - Number(scenePoint.z)
+          );
+          return ld - rd;
+        })[0] || null;
+
+      if (nearby) return this.bindFau01NestFauna(scene, nearby);
+
+      const mapDefinition = BF.maps?.[currentMapId] || null;
+      const spawnedTarget = this.spawnFau01NestFauna(scene, mapDefinition, map);
+      const spawnedDescriptor = this.fau01FaunaDescriptor(spawnedTarget);
+      return spawnedDescriptor
+        ? this.bindFau01NestFauna(scene, spawnedDescriptor)
+        : false;
+    }
+
     onMapTransition(detail) {
       // La transition est émise après chargement de la map courante.
       this.captureObservationMap(BF.currentEngine);
@@ -5006,6 +5276,13 @@
           type: "exploration.map_discovered"
         }, { allowActivation: !crossing.activatedMissionId });
       }
+
+      // FAU-01 devient active sur la découverte de cette map. À ce stade la
+      // MSC persistante est matérialisée et le lifecycle est connu : on peut
+      // relier une vraie faune locale au nid, ou en garantir une seule si
+      // aucune instance compatible n'existe dans son voisinage immédiat.
+      this.reconcileFau01NestFauna(event.mapId);
+
       this.reviewConstructionReadiness();
       this.scheduleCurrentSiteRestore(event.mapId);
 
