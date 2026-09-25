@@ -2103,7 +2103,10 @@
       };
     }
 
-    prioritizedMissionTransition(context = this.bridge.context()) {
+    prioritizedMissionTransition(context = this.bridge.context(), options = {}) {
+      const excludedMissionIds = options.excludedMissionIds instanceof Set
+        ? options.excludedMissionIds
+        : new Set(options.excludedMissionIds || []);
       const stored = typeof this.getPrioritizedMissionIds === "function"
         ? this.getPrioritizedMissionIds()
         : Array.isArray(this.prioritizedMissionIds)
@@ -2112,6 +2115,7 @@
       const candidates = [...new Set(stored)]
         .filter(Boolean)
         .filter((id) => id !== this.primaryMissionId)
+        .filter((id) => !excludedMissionIds.has(id))
         .filter((id) => this.missionPriorityQueueEligible(id, context))
         .map((id) => ({
           missionId: id,
@@ -2541,13 +2545,18 @@
       return "exploration";
     }
 
-    chooseRunnableMissionAction(context) {
+    chooseRunnableMissionAction(context, selectionOptions = {}) {
       if (
         typeof this.isMissionGuidanceEnabled === "function" &&
         !this.isMissionGuidanceEnabled()
       ) {
         return null;
       }
+      const excludedMissionIds = selectionOptions.excludedMissionIds instanceof Set
+        ? selectionOptions.excludedMissionIds
+        : new Set(selectionOptions.excludedMissionIds || []);
+      const allowOutsideShortlistFallback =
+        selectionOptions.allowOutsideShortlistFallback !== false;
       if (
         this.hasActivePrimaryMission() &&
         this.delegatedRuntimeAction(this.primaryMissionId)
@@ -2575,6 +2584,7 @@
         .slice(0, 4);
       const prioritizedMissionSet = new Set(prioritizedMissionIds);
       const assessRunnable = (missionIds) => missionIds
+        .filter((id) => !excludedMissionIds.has(id))
         .map((id) => this.assessMission(id, context))
         .filter((candidate) => candidate?.action);
 
@@ -2584,7 +2594,7 @@
       // d'exécution que si toute la shortlist est localement stérile (R-STAB).
       let assessments = assessRunnable(prioritizedMissionIds);
       let shortlistFallback = false;
-      if (!assessments.length) {
+      if (!assessments.length && allowOutsideShortlistFallback) {
         shortlistFallback = true;
         const fallbackMissionIds = activeMissionIds.filter(
           (id) => !prioritizedMissionSet.has(id)
@@ -2689,6 +2699,37 @@
             primary: candidate.missionId === this.primaryMissionId
           }
         : null;
+    }
+
+    executeSelectedMissionAction(selected, now) {
+      if (!selected?.action) return false;
+      const action = {
+        ...selected.action,
+        missionId: selected.missionId,
+        isSecondary: !selected.primary
+      };
+      const tree = this.trees.get(selected.missionId);
+      if (!tree || !this.bridge.execute(action, now)) {
+        if (tree) this.recordExecutionFailure(action, "execute-false", now);
+        return false;
+      }
+
+      this.currentAction = action;
+      const node = tree.find(action.nodeId);
+      if (node && node.status === Missions.MissionStatus.AVAILABLE) {
+        node.status = Missions.MissionStatus.ACTIVE;
+        if (!node.startedAt) node.startedAt = Date.now();
+      }
+
+      this.engine.callbacks.onAction(
+        selected.primary
+          ? `Mission : ${action.title}.`
+          : `Mission secondaire : ${action.title}.`
+      );
+      this.memory.remember("action-started", action);
+      this.memory.saveTree(tree);
+      this.publish();
+      return true;
     }
 
     hasMissionExecutionAuthority() {
@@ -2803,51 +2844,62 @@
       }
 
       const decisionContext = this.bridge.context();
-      const selected = this.chooseRunnableMissionAction(decisionContext);
-      if (!selected?.action) {
-        const relayTravel = this.prioritizedMissionTransition(decisionContext);
-        if (
-          relayTravel &&
-          this.resumeMissionTransitionIntent(decisionContext, relayTravel)
-        ) {
+      const refusedMissionIds = new Set();
+
+      // R-STAB Top4 relay: une action seulement théoriquement runnable ne doit
+      // pas monopoliser tout le cycle si son propriétaire runtime la refuse.
+      // Chaque mission de la shortlist peut être tentée au plus une fois dans
+      // ce cycle ; l'échec alimente le recovery historique mais ne modifie ni
+      // la priorité persistante ni le lifecycle.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const selected = this.chooseRunnableMissionAction(decisionContext, {
+          excludedMissionIds: refusedMissionIds,
+          allowOutsideShortlistFallback: false
+        });
+        if (!selected?.action) break;
+        if (this.executeSelectedMissionAction(selected, now)) {
           this.retryAfter = now + 1200;
           this.idleRetryUntil = 0;
           return true;
         }
-        this.retryAfter = now + 5000;
-        this.idleRetryUntil = this.retryAfter;
-        return false;
+        refusedMissionIds.add(selected.missionId);
       }
 
-      const action = {
-        ...selected.action,
-        missionId: selected.missionId,
-        isSecondary: !selected.primary
-      };
-      const tree = this.trees.get(selected.missionId);
-      if (!tree || !this.bridge.execute(action, now)) {
-        if (tree) this.recordExecutionFailure(action, "execute-false", now);
+      // Une mission refusée localement ne fabrique pas son propre voyage. En
+      // revanche une autre mission du Top4 peut immédiatement reprendre par
+      // une transition connue ou inconnue réellement exécutable.
+      const relayTravel = this.prioritizedMissionTransition(decisionContext, {
+        excludedMissionIds: refusedMissionIds
+      });
+      if (
+        relayTravel &&
+        this.resumeMissionTransitionIntent(decisionContext, relayTravel)
+      ) {
+        this.retryAfter = now + 1200;
+        this.idleRetryUntil = 0;
+        return true;
+      }
+
+      // Préserver le fallback R-STAB historique hors shortlist, mais seulement
+      // après épuisement des actions et transitions de la Top4.
+      const fallback = this.chooseRunnableMissionAction(decisionContext, {
+        excludedMissionIds: refusedMissionIds,
+        allowOutsideShortlistFallback: true
+      });
+      if (fallback?.action) {
+        if (this.executeSelectedMissionAction(fallback, now)) {
+          this.retryAfter = now + 1200;
+          this.idleRetryUntil = 0;
+          return true;
+        }
         this.retryAfter = now + 4000;
         this.idleRetryUntil = 0;
         return false;
       }
 
-      this.currentAction = action;
-      const node = tree.find(action.nodeId);
-      if (node && node.status === Missions.MissionStatus.AVAILABLE) {
-        node.status = Missions.MissionStatus.ACTIVE;
-        if (!node.startedAt) node.startedAt = Date.now();
-      }
-
-      this.engine.callbacks.onAction(
-        selected.primary
-          ? `Mission : ${action.title}.`
-          : `Mission secondaire : ${action.title}.`
-      );
-      this.memory.remember("action-started", action);
-      this.memory.saveTree(tree);
-      this.publish();
-      return true;
+      this.retryAfter = now + 5000;
+      this.idleRetryUntil = this.retryAfter;
+      return false;
     }
 
     notifyActionCompleted(type, detail = {}, options = {}) {
