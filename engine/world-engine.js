@@ -662,7 +662,13 @@
       this.autonomyMode = normalized;
 
       if (normalized === "off") {
-        this.cancelAutonomousActivity("autonomy-mode-off");
+        // Un simple resync UI/storage OFF -> OFF ne doit pas annuler une
+        // commande manuelle du joueur (notamment un clic au sol).
+        // L'annulation des tâches autonomes n'est nécessaire qu'au vrai
+        // basculement SEMI/FULL -> OFF.
+        if (previous !== "off") {
+          this.cancelAutonomousActivity("autonomy-mode-off");
+        }
         return true;
       }
 
