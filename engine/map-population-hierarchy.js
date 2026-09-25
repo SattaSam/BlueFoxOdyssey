@@ -398,7 +398,10 @@
             ).add(record.root.position);
             options.colliders?.push({ position, radius: collider.radius, owner: record.root });
           });
-          options.animatedObjects?.push({ root: record.root, type, phase: random() * Math.PI * 2 });
+          const animationPhase = random() * Math.PI * 2;
+          if (type !== "debris") {
+            options.animatedObjects?.push({ root: record.root, type, phase: animationPhase });
+          }
         });
         previousSceneId = scene.id;
         zoneStats[zoneIndex].scenes += 1;
