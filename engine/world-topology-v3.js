@@ -240,6 +240,98 @@
             ) || progress;
           });
         }
+
+        // Recovery inverse : une map non coordonnée peut encore conserver son
+        // portail de retour vers une voisine canonique. Tous les exits
+        // résolus doivent toutefois converger vers la même coordonnée : une
+        // contradiction reste un conflit, jamais une raison de déplacer la map.
+        for (const [mapId, definition] of Object.entries(BF.maps || {})) {
+          if (this.coordinates.has(mapId)) continue;
+          const candidates = [];
+
+          for (const [direction, exit] of Object.entries(definition?.exits || {})) {
+            const delta = DELTAS[direction];
+            const targetMapId = String(exit?.targetMap || "");
+            const targetPoint = targetMapId
+              ? this.coordinateOf(targetMapId)
+              : null;
+            if (!delta || !targetPoint) continue;
+            candidates.push({
+              direction,
+              exit,
+              targetMapId,
+              x: targetPoint.x - delta.x,
+              y: targetPoint.y - delta.y
+            });
+          }
+
+          if (!candidates.length) continue;
+          const first = candidates[0];
+          const inconsistent = candidates.some((candidate) =>
+            candidate.x !== first.x || candidate.y !== first.y
+          );
+          if (inconsistent) {
+            const diagnosticCandidates = candidates.map((candidate) => ({
+              direction: candidate.direction,
+              target: candidate.targetMapId,
+              x: candidate.x,
+              y: candidate.y
+            }));
+            const alreadyReported = this.conflicts.some((entry) =>
+              entry?.type === "reverse-exit-inconsistent" &&
+              entry.mapId === mapId &&
+              Array.isArray(entry.candidates) &&
+              entry.candidates.length === diagnosticCandidates.length &&
+              entry.candidates.every((candidate, index) => {
+                const expected = diagnosticCandidates[index];
+                return candidate.direction === expected.direction &&
+                  candidate.target === expected.target &&
+                  candidate.x === expected.x &&
+                  candidate.y === expected.y;
+              })
+            );
+            if (!alreadyReported) {
+              this.conflicts.push({
+                type: "reverse-exit-inconsistent",
+                mapId,
+                candidates: diagnosticCandidates
+              });
+            }
+            continue;
+          }
+
+          const occupant = this.mapAt(first.x, first.y);
+          if (occupant && occupant !== mapId) {
+            const alreadyReported = this.repairs.some((entry) =>
+              entry?.type === "reverse-exit-collision" &&
+              entry.from === mapId &&
+              entry.canonicalTarget === occupant &&
+              entry.coordinate?.x === first.x &&
+              entry.coordinate?.y === first.y
+            );
+            if (!alreadyReported) {
+              this.repairs.push({
+                type: "reverse-exit-collision",
+                from: mapId,
+                canonicalTarget: occupant,
+                coordinate: { x: first.x, y: first.y }
+              });
+            }
+            continue;
+          }
+
+          const generatedOnly = candidates.every((candidate) =>
+            candidate.exit?.generated === true
+          );
+          if (this.place(
+            mapId,
+            first.x,
+            first.y,
+            generatedOnly ? "generated-exit-reverse" : "authored-exit-reverse"
+          )) {
+            progress = true;
+          }
+        }
       }
     }
 
@@ -654,6 +746,7 @@
       mapAt: (x, y) => topology.mapAt(x, y),
       snapshot: () => topology.snapshot(),
       reconcile: () => {
+        topology.solveFromExistingExits();
         const exitsChanged = topology.reconcileGeneratedExits();
         topology.persistIfNeeded();
         if (exitsChanged || !runtimeGeneratedGatesMatch(engine)) {
