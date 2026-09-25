@@ -876,6 +876,14 @@
         }
       }
 
+      const knownDestinationTravel = this.missionKnownDestinationTransition(
+        missionId,
+        mission,
+        availableMapStates,
+        currentMapId
+      );
+      if (knownDestinationTravel) return knownDestinationTravel;
+
       // Une mission déjà active peut dépendre d'un contenu que sa prescription
       // mapGeneration devait placer sur la map de découverte. Si ce contenu
       // n'est pas runnable localement et qu'aucune destination connue n'a été
@@ -905,13 +913,42 @@
         requiredMicroSceneIds.every((id) => materializedMicroSceneIds.has(id))
       );
       const opportunisticMission = /^(?:OPP|ANN|PROS)-/.test(String(missionId));
-      const mapDiscoveryPrescription = Boolean(
+      const explicitMapDiscoveryPrescription = Boolean(
         mission?.mapGeneration &&
         mission?.trigger?.type === "exploration.map_discovered" &&
         !locallyBoundMissionWork &&
         !prescribedMicroScenesPresent &&
         !opportunisticMission
       );
+      const hasDeclaredUnknownTravelStep = Boolean(
+        Array.isArray(mission?.sequence) &&
+        mission.sequence.some((entry) =>
+          Missions.normalizeActionType(entry?.action) === Missions.ActionType.TRAVEL &&
+          entry?.params?.eventDriven === true &&
+          entry?.params?.newOnly === true
+        )
+      );
+      const knownLocalMissionTarget = this.missionHasKnownLocalDestination(
+        missionId,
+        mission,
+        availableMapStates,
+        currentMapId
+      );
+      const inferredUnknownDiscovery = Boolean(
+        mission?.mapGeneration &&
+        mission?.trigger?.type !== "exploration.map_discovered" &&
+        !hasDeclaredUnknownTravelStep &&
+        mission?.navigation?.controlsUnknownTravel !== true &&
+        mission?.instanceScope !== "map" &&
+        mission?.localVisibility !== "current-map" &&
+        !this.missionHasHistoricalCollectionObjective(missionId) &&
+        !knownLocalMissionTarget &&
+        !locallyBoundMissionWork &&
+        !prescribedMicroScenesPresent &&
+        !opportunisticMission
+      );
+      const mapDiscoveryPrescription =
+        explicitMapDiscoveryPrescription || inferredUnknownDiscovery;
       if (mapDiscoveryPrescription) {
         const preferredDirection = String(mission.trigger?.direction || "")
           .trim()
@@ -1027,7 +1064,12 @@
 
     knownDestinationCriteria(travel) {
       const mission = this.travelMissionDefinition(travel);
-      if (mission?.navigation?.autonomousKnownDestination !== true) return null;
+      const derivedFromMissionWork =
+        travel?.node?.params?.missionDerivedKnownDestination === true;
+      if (
+        mission?.navigation?.autonomousKnownDestination !== true &&
+        !derivedFromMissionWork
+      ) return null;
       const params = travel?.node?.params || {};
       const raw = params.knownDestination;
       const explicit = raw && typeof raw === "object" && !Array.isArray(raw)
@@ -1050,6 +1092,147 @@
         criteria.minKnownInstances = Math.max(1, Math.floor(minKnownInstances));
       }
       return Object.keys(criteria).length ? criteria : null;
+    }
+
+    missionNodeKnownDestinationCriteria(node) {
+      const params = node?.params || {};
+      const criteria = {};
+      ["siteId", "microSceneId", "resource", "family", "biome"].forEach((key) => {
+        const value = String(params[key] ?? "").trim();
+        if (value) criteria[key] = value;
+      });
+      const minKnownInstances = Number(params.minKnownInstances);
+      if (Number.isFinite(minKnownInstances) && minKnownInstances > 0) {
+        criteria.minKnownInstances = Math.max(1, Math.floor(minKnownInstances));
+      }
+      return Object.keys(criteria).length ? criteria : null;
+    }
+
+    missionGenerationKnownDestinationCriteria(mission) {
+      const generation = mission?.mapGeneration || null;
+      if (!generation) return null;
+      const criteria = {};
+      const biome = String(generation.biome || "").trim();
+      if (biome && biome !== "random") criteria.biome = biome;
+      const requiredMicroScenes = Array.isArray(generation.requiredMicroScenes)
+        ? generation.requiredMicroScenes
+        : [];
+      const microSceneIds = requiredMicroScenes
+        .map((entry) => String(entry?.id || "").trim())
+        .filter(Boolean);
+      // Une prescription composite/dynamique n'identifie pas nécessairement une
+      // destination sémantique unique. Ne réutiliser une MSC connue que lorsque
+      // la prescription elle-même porte une seule MSC concrète.
+      if (requiredMicroScenes.length === 1 && microSceneIds.length === 1) {
+        criteria.microSceneId = microSceneIds[0];
+      }
+      return Object.keys(criteria).length ? criteria : null;
+    }
+
+    missionHasKnownLocalDestination(
+      missionId,
+      mission,
+      availableMapStates,
+      currentMapId
+    ) {
+      if (
+        mission?.instanceScope === "map" ||
+        mission?.localVisibility === "current-map" ||
+        /^(?:OPP|ANN|PROS)-/.test(String(missionId)) ||
+        this.missionHasHistoricalCollectionObjective(missionId)
+      ) return false;
+      return (availableMapStates || []).some(({ node, state }) => {
+        if (!node || node.isComplete) return false;
+        if (
+          state?.constrained === true &&
+          String(state.targetMapId || "") === currentMapId
+        ) return true;
+        const criteria =
+          this.missionNodeKnownDestinationCriteria(node) ||
+          this.missionGenerationKnownDestinationCriteria(mission);
+        if (!criteria) return false;
+        const travel = {
+          missionId,
+          mission,
+          node: {
+            id: `${node.id}:known-destination-probe`,
+            type: Missions.ActionType.TRAVEL,
+            params: {
+              eventDriven: true,
+              missionDerivedKnownDestination: true,
+              knownDestination: criteria,
+              transitionSource: "mission-known-destination",
+              sourceNodeId: node.id
+            }
+          }
+        };
+        return this.knownDestinationCandidates(travel, criteria).some((entry) =>
+          String(entry.mapId || "") === currentMapId
+        );
+      });
+    }
+
+    missionKnownDestinationTransition(
+      missionId,
+      mission,
+      availableMapStates,
+      currentMapId
+    ) {
+      if (
+        mission?.instanceScope === "map" ||
+        mission?.localVisibility === "current-map" ||
+        /^(?:OPP|ANN|PROS)-/.test(String(missionId)) ||
+        this.missionHasHistoricalCollectionObjective(missionId)
+      ) return null;
+      const candidates = [];
+      (availableMapStates || []).forEach(({ node, state }) => {
+        if (!node || node.isComplete) return;
+        if (
+          state?.constrained === true &&
+          String(state.targetMapId || "") === currentMapId
+        ) return;
+        const criteria =
+          this.missionNodeKnownDestinationCriteria(node) ||
+          this.missionGenerationKnownDestinationCriteria(mission);
+        if (!criteria) return;
+        const travel = {
+          missionId,
+          mission,
+          source: "mission-known-destination",
+          node: {
+            id: `${node.id}:known-destination`,
+            type: Missions.ActionType.TRAVEL,
+            params: {
+              eventDriven: true,
+              missionDerivedKnownDestination: true,
+              knownDestination: criteria,
+              transitionSource: "mission-known-destination",
+              sourceNodeId: node.id
+            }
+          }
+        };
+        const resolvedCandidates = this.knownDestinationCandidates(travel, criteria);
+        // Si une cible sémantiquement valide est déjà connue sur la map courante,
+        // le problème reste local (approche, contexte, retry, propriétaire runtime).
+        // Ne pas fuir vers une autre occurrence uniquement parce que l'action
+        // physique n'est pas runnable à cet instant.
+        if (resolvedCandidates.some((entry) =>
+          String(entry.mapId || "") === currentMapId
+        )) return;
+        const known = resolvedCandidates.filter((entry) =>
+          String(entry.mapId || "") !== currentMapId
+        );
+        if (!known.length) return;
+        const best = known[0];
+        travel.node.params.toMapId = String(best.mapId);
+        travel.node.params.targetMapResolvedFromKnownDestination = true;
+        candidates.push({ travel, best });
+      });
+      candidates.sort((left, right) =>
+        Number(right.best?.baseWeight || 0) - Number(left.best?.baseWeight || 0) ||
+        Number(left.best?.routeHops || 0) - Number(right.best?.routeHops || 0)
+      );
+      return candidates[0]?.travel || null;
     }
 
     mapMatchesKnownBiome(mapId, biome) {
