@@ -400,7 +400,8 @@
       rotation: 0,
       scene: root,
       force: true,
-      source: `persistent:${id}`
+      source: `persistent:${id}`,
+      instanceId: id
     });
 
     records.forEach((spawned) => {

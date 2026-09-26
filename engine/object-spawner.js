@@ -115,6 +115,15 @@
         instance.hitbox.userData.libraryType = type;
         instance.hitbox.userData.variant = options.variant || 0;
         instance.hitbox.userData.functional = definition;
+        if (
+          !Number.isFinite(Number(instance.hitbox.userData.interactionRadius)) &&
+          Array.isArray(instance.colliders) &&
+          instance.colliders.length
+        ) {
+          instance.hitbox.userData.interactionRadius = Math.max(
+            ...instance.colliders.map((collider) => Math.max(0, Number(collider?.radius) || 0))
+          );
+        }
       }
       const record = { type, definition, instance, instanceId, root, position: { x: position.x || 0, y: position.y || 0, z: position.z || 0 } };
       this.instances.push(record);
@@ -250,7 +259,18 @@
               specialRuntimeRoot: true
             });
           }
-          if (instance.hitbox) Object.assign(instance.hitbox.userData, metadata);
+          if (instance.hitbox) {
+            Object.assign(instance.hitbox.userData, metadata);
+            if (
+              !Number.isFinite(Number(instance.hitbox.userData.interactionRadius)) &&
+              Array.isArray(instance.colliders) &&
+              instance.colliders.length
+            ) {
+              instance.hitbox.userData.interactionRadius = Math.max(
+                ...instance.colliders.map((collider) => Math.max(0, Number(collider?.radius) || 0))
+              );
+            }
+          }
 
           const record = {
             type: entry.type,
@@ -276,8 +296,9 @@
       }
 
       const plan = BF.MicroScenes.plan(id, options.origin, options.rotation || 0);
-      const records = plan.map((entry) => this.spawn(entry.type, {
+      const records = plan.map((entry, index) => this.spawn(entry.type, {
         ...options,
+        instanceId: options.instanceId ? `${options.instanceId}:${index}` : undefined,
         position: entry.position,
         rotation: entry.rotation,
         rotationX: entry.rotationX,
@@ -491,6 +512,10 @@
       let standaloneFloatingIsletCount = 0;
       let elevatedFogIndex = 0;
       const placedTypeCounts = new Map();
+      // L'ordre de placement est déterministe pour une définition/seed de map.
+      // Utiliser cet ordre pour stabiliser l'identité des objets reconstruits
+      // sans créer de registre persistant parallèle.
+      let populationInstanceSequence = 0;
       const contextText = `${definition.generator?.biomeId || ""} ${definition.name || ""} ${definition.description || ""} ${(definition.traits || []).map((trait) => `${trait.id || ""} ${trait.label || ""}`).join(" ")}`.toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const floatingContext = /flott|suspend|levitat|ilot|island/.test(contextText);
       const frozenIdentity = `${definition.generator?.biomeId || ""} ${definition.profile || ""} ${definition.name || ""} ${(definition.traits || []).map((trait) => trait.id || "").join(" ")}`.toLocaleLowerCase("fr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -509,7 +534,8 @@
           force: true,
           scene: group,
           palette: definition.palette,
-          source: "map-population"
+          source: "map-population",
+          instanceId: `${definition.id}:population:${type}:${++populationInstanceSequence}`
         });
         const object = record.instance;
         placedTypeCounts.set(type, (placedTypeCounts.get(type) || 0) + 1);
